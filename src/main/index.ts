@@ -28,8 +28,14 @@ if (!app.requestSingleInstanceLock()) {
     const store = createStore();
     const win = createPopover();
     const tray = createTray({
-      onToggle: (bounds) => togglePopover(win, bounds),
-      onOpen: (bounds) => showPopover(win, bounds),
+      onToggle: (bounds) => {
+        refreshAccent();
+        togglePopover(win, bounds);
+      },
+      onOpen: (bounds) => {
+        refreshAccent();
+        showPopover(win, bounds);
+      },
       onRefresh: () => void engine.syncNow(),
       onQuit: () => app.quit(),
     });
@@ -53,8 +59,22 @@ if (!app.requestSingleInstanceLock()) {
       engine.updateChrome({ launchAtLogin: app.getLoginItemSettings().openAtLogin });
     });
 
-    // getAccentColor returns "rrggbbaa"; "multicolor" accent returns "".
-    const readAccent = (): string | null => {
+    // getAccentColor is exact but frozen at its boot-time value (AppKit
+    // caches controlAccentColor per process), while the AppleAccentColor
+    // user default stays fresh. So boot reads the former, and every later
+    // refresh maps the default through this palette (sampled from
+    // getAccentColor itself, one process boot per value, on macOS 26).
+    const ACCENT_HEX: Record<string, string> = {
+      "-1": "#989898", // graphite
+      "0": "#e0383e", // red
+      "1": "#f7821b", // orange
+      "2": "#ffc726", // yellow
+      "3": "#62ba46", // green
+      "4": "#007aff", // blue
+      "5": "#953d96", // purple
+      "6": "#f74f9e", // pink
+    };
+    const readAccentBoot = (): string | null => {
       try {
         const raw = systemPreferences.getAccentColor();
         return raw.length >= 6 ? `#${raw.slice(0, 6)}` : null;
@@ -62,13 +82,40 @@ if (!app.requestSingleInstanceLock()) {
         return null;
       }
     };
-    engine.updateChrome({
-      accentColor: readAccent(),
-      launchAtLogin: app.getLoginItemSettings().openAtLogin,
-    });
-    systemPreferences.subscribeNotification("AppleColorPreferencesChangedNotification", () =>
-      engine.updateChrome({ accentColor: readAccent() }),
-    );
+    // Absent key ("multicolour" or never set) → null → the renderer's
+    // per-theme blue fallback.
+    const readAccentDefault = (): string | null => {
+      try {
+        const raw = String(systemPreferences.getUserDefault("AppleAccentColor", "string"));
+        return ACCENT_HEX[raw] ?? null;
+      } catch {
+        return null;
+      }
+    };
+    let lastAccent: string | null = null;
+    function refreshAccent(source: "boot" | "live" = "live"): void {
+      const accent = source === "boot" ? readAccentBoot() : readAccentDefault();
+      if (accent !== lastAccent) {
+        lastAccent = accent;
+        engine.updateChrome({ accentColor: accent });
+      }
+    }
+    engine.updateChrome({ launchAtLogin: app.getLoginItemSettings().openAtLogin });
+    refreshAccent("boot");
+    // Different macOS versions broadcast different names for an accent
+    // change, and AppKit's cached controlAccentColor can lag the
+    // notification — so listen broadly and re-read twice, and re-read on
+    // every popover open (the only moment the accent is visible anyway).
+    for (const name of [
+      "AppleColorPreferencesChangedNotification",
+      "AppleAquaColorVariantChanged",
+      "AppleInterfaceThemeChangedNotification",
+    ]) {
+      systemPreferences.subscribeNotification(name, () => {
+        setTimeout(refreshAccent, 150);
+        setTimeout(refreshAccent, 1000);
+      });
+    }
 
     app.on("second-instance", () => showPopover(win, tray.bounds()));
 

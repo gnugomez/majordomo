@@ -271,6 +271,15 @@ export class SettingsPane {
         return;
       }
       card.expanded = !card.expanded;
+      if (card.expanded) {
+        // Only one form open at a time; the collapsed form keeps its typed
+        // values (rows are built once and never clobbered).
+        for (const other of this.cards) {
+          if (other !== card) {
+            other.expanded = false;
+          }
+        }
+      }
       this.refresh();
       if (card.expanded) {
         (urlInput ?? tokenInput).focus();

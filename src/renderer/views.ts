@@ -69,11 +69,43 @@ export function updateSyncStatus(target: HTMLElement, state: AppState, now: numb
 export interface InboxHandlers {
   onOpenItem(id: string): void;
   onOpenSettings(): void;
+  /** Fired after a disclosure header toggles; the owner re-renders the pane. */
+  onToggleSection(): void;
 }
 
 function itemTime(iso: string): number {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
+}
+
+// ---------- Collapse state ----------
+// Persisted per section in localStorage so it survives re-renders, state
+// pushes, popover dismissal (which only resets the visible pane), and app
+// restarts. Absent key = the section's own default.
+
+const COLLAPSE_PREFIX = "collapse:";
+
+function isCollapsed(id: string, defaultCollapsed: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(COLLAPSE_PREFIX + id);
+    if (stored === "1") {
+      return true;
+    }
+    if (stored === "0") {
+      return false;
+    }
+  } catch {
+    // Storage unavailable: fall through to the default.
+  }
+  return defaultCollapsed;
+}
+
+function setCollapsed(id: string, collapsed: boolean): void {
+  try {
+    localStorage.setItem(COLLAPSE_PREFIX + id, collapsed ? "1" : "0");
+  } catch {
+    // Best-effort: the toggle still works for this render pass.
+  }
 }
 
 function buildRow(item: InboxItem, now: number, onOpen: (id: string) => void): HTMLElement {
@@ -112,24 +144,47 @@ function buildRow(item: InboxItem, now: number, onOpen: (id: string) => void): H
   return row;
 }
 
-function buildSection(
-  label: string,
-  items: InboxItem[],
+interface SectionDef {
+  /** Stable id, also the localStorage key suffix (e.g. "collapse:overview"). */
+  id: string;
+  label: string;
+  items: InboxItem[];
+  defaultCollapsed: boolean;
+}
+
+/** Collapsible section: a full-row disclosure header (caption, muted count,
+    chevron) over the item rows. Collapsed sections render the header only. */
+function buildDisclosureSection(
+  def: SectionDef,
   now: number,
-  onOpen: (id: string) => void,
-  emptyNote: string
+  handlers: InboxHandlers
 ): HTMLElement {
+  const collapsed = isCollapsed(def.id, def.defaultCollapsed);
   const section = el("section", "section");
-  section.append(el("h2", "section-title", label));
-  if (items.length === 0) {
-    section.append(el("p", "section-empty", emptyNote));
-    return section;
+
+  const header = el("button", "section-header");
+  header.type = "button";
+  header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  header.setAttribute("aria-controls", `rows-${def.id}`);
+  header.append(el("span", "section-label", def.label));
+  header.append(el("span", "section-count", String(def.items.length)));
+  const chevron = el("span", "disclosure-chevron");
+  chevron.innerHTML = ICONS.chevron;
+  header.append(chevron);
+  header.addEventListener("click", () => {
+    setCollapsed(def.id, !collapsed);
+    handlers.onToggleSection();
+  });
+  section.append(header);
+
+  if (!collapsed) {
+    const rows = el("div", "rows");
+    rows.id = `rows-${def.id}`;
+    for (const item of def.items) {
+      rows.append(buildRow(item, now, handlers.onOpenItem));
+    }
+    section.append(rows);
   }
-  const rows = el("div", "rows");
-  for (const item of items) {
-    rows.append(buildRow(item, now, onOpen));
-  }
-  section.append(rows);
   return section;
 }
 
@@ -185,13 +240,28 @@ export function renderInbox(
     return;
   }
 
-  const mentions = items.filter((i) => i.isMention);
-  const rest = items.filter((i) => !i.isMention);
+  // "Overview" holds everything, newest first; the categories below re-show
+  // the same items grouped. Categories are disjoint: review requests are
+  // carved out first (both providers flag reason "review_requested" as a
+  // mention, so a plain isMention filter would swallow them all), then
+  // mentions, then the remainder splits by kind.
+  const reviews = items.filter((i) => i.reason === "review_requested");
+  const mentions = items.filter((i) => i.isMention && i.reason !== "review_requested");
+  const rest = items.filter((i) => !i.isMention && i.reason !== "review_requested");
+  const issues = rest.filter((i) => i.kind === "issue");
+  const pulls = rest.filter((i) => i.kind === "pull" || i.kind === "merge");
 
-  container.append(
-    buildSection("Mentions", mentions, now, handlers.onOpenItem, "No mentions right now.")
-  );
-  if (rest.length > 0) {
-    container.append(buildSection("Everything else", rest, now, handlers.onOpenItem, ""));
+  const sections: SectionDef[] = [
+    { id: "overview", label: "Overview", items, defaultCollapsed: false },
+    { id: "mentions", label: "Mentions", items: mentions, defaultCollapsed: true },
+    { id: "reviews", label: "Review requests", items: reviews, defaultCollapsed: true },
+    { id: "issues", label: "Issues", items: issues, defaultCollapsed: true },
+    { id: "pulls", label: "Pull & merge requests", items: pulls, defaultCollapsed: true },
+  ];
+
+  for (const def of sections) {
+    if (def.items.length > 0) {
+      container.append(buildDisclosureSection(def, now, handlers));
+    }
   }
 }

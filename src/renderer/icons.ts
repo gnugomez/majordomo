@@ -57,6 +57,10 @@ export const ICONS = {
   inbox: svg(
     `<path ${STROKE} stroke-linejoin="round" d="M1.5 9.5 3.4 3.6a1 1 0 0 1 .95-.7h7.3a1 1 0 0 1 .95.7l1.9 5.9v3a1.25 1.25 0 0 1-1.25 1.25H2.75A1.25 1.25 0 0 1 1.5 12.5Z"/><path ${STROKE} stroke-linejoin="round" d="M1.5 9.5h3.75l1 1.75h3.5l1-1.75h3.75"/>`
   ),
+  /** Disclosure chevron: points right; CSS rotates it down when expanded. */
+  chevron: svg(
+    `<path ${STROKE} stroke-linecap="round" stroke-linejoin="round" d="M6 3.75 10.25 8 6 12.25"/>`
+  ),
   /** Warning triangle. */
   warning: svg(
     `<path ${STROKE} stroke-linejoin="round" d="M8 2.5 14.5 13.5H1.5Z"/><path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M8 6.75v2.75"/><circle cx="8" cy="11.6" r=".85" fill="currentColor"/>`

@@ -189,6 +189,9 @@ function render(): void {
   renderInbox(inboxPane, appState, now, {
     onOpenItem: handleOpenItem,
     onOpenSettings: () => setPane("settings"),
+    // Collapse state lives in localStorage (written by the view); a plain
+    // re-render picks it up.
+    onToggleSection: render,
   });
 
   settingsPane.update(appState, uiState.connecting);

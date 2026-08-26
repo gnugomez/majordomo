@@ -14,7 +14,6 @@
   --hover: rgba(0, 0, 0, 0.06);
   --active: rgba(0, 0, 0, 0.1);
   --card: rgba(255, 255, 255, 0.55);
-  --input-bg: rgba(255, 255, 255, 0.6);
   --capsule-bg: rgba(0, 0, 0, 0.06);
   --badge-bg: rgba(0, 0, 0, 0.08);
   --toggle-off: rgba(0, 0, 0, 0.16);
@@ -38,7 +37,6 @@
     --hover: rgba(255, 255, 255, 0.09);
     --active: rgba(255, 255, 255, 0.14);
     --card: rgba(255, 255, 255, 0.08);
-    --input-bg: rgba(255, 255, 255, 0.09);
     --capsule-bg: rgba(255, 255, 255, 0.1);
     --badge-bg: rgba(255, 255, 255, 0.14);
     --toggle-off: rgba(255, 255, 255, 0.24);
@@ -276,7 +274,8 @@ button:focus-visible,
   #settings,
   #app.settings-open #settings,
   .toggle,
-  .toggle-knob {
+  .toggle-knob,
+  .disclosure-chevron {
     transition: none;
   }
 }
@@ -291,20 +290,56 @@ button:focus-visible,
   margin-top: 4px;
 }
 
-/* Section captions scroll with the content, like the captions in the
-   system's own menus. (They used to be sticky; over a transparent window a
-   translucent sticky caption let rows bleed through above it.) */
-.section-title {
-  padding: 8px 16px 3px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-2);
+/* Collapsible section header: a full-row disclosure button — caption left,
+   muted count and chevron trailing. Sized and rounded like the item rows so
+   its press highlight aligns with theirs. No hover fill (matching rows);
+   press feedback only. */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  text-align: left;
 }
 
-.section-empty {
-  padding: 4px 16px 8px;
-  font-size: 12px;
+.section-header:active {
+  background: var(--active);
+}
+
+.section-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-count {
+  flex: none;
+  font-size: 11px;
   color: var(--text-3);
+}
+
+/* Chevron points right when collapsed, rotates down when expanded. */
+.disclosure-chevron {
+  display: flex;
+  color: var(--text-3);
+  transition: transform 0.1s ease;
+}
+
+.disclosure-chevron .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.section-header[aria-expanded="true"] .disclosure-chevron {
+  transform: rotate(90deg);
 }
 
 .rows {
@@ -717,6 +752,13 @@ button:focus-visible,
   justify-content: flex-end;
 }
 
+/* Compact accent action, sized like the row buttons so it doesn't dominate
+   the group. */
+.action-row .primary-btn {
+  padding: 4px 11px;
+  line-height: 1.25;
+}
+
 /* Validation/auth failure: a red-tinted hairline-separated row under the
    form. */
 .error-row {
@@ -750,15 +792,19 @@ button:focus-visible,
   margin-top: 1px;
 }
 
+/* Flat text fields, like System Settings list rows: the group's hairlines
+   already frame each field, so the input itself has no box, border, or
+   fill, and its text sits exactly on the row-label inset. Focus reads as
+   the caret alone (a ring here would flash on every form expand, since
+   expanding programmatically focuses the first field). */
 input {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   width: 100%;
   color: var(--text);
-  background: var(--input-bg);
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -770,8 +816,6 @@ input::placeholder {
 
 input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 input:disabled {
