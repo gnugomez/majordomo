@@ -6,6 +6,10 @@ import { createSyncEngine } from "./sync";
 import { createTray } from "./tray";
 import { createPopover, showPopover, togglePopover } from "./window";
 
+// Keep one identity (userData dir, safeStorage keychain entry) between
+// `electron .` in development and the packaged Majordomo.app.
+app.setName("Majordomo");
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {

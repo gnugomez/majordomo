@@ -22,9 +22,22 @@ npm start        # build with esbuild, launch Electron
 npm run typecheck
 ```
 
+## Install
+
+```sh
+npm run package  # builds release/Majordomo-darwin-arm64/Majordomo.app
+cp -R release/Majordomo-darwin-arm64/Majordomo.app /Applications/
+```
+
+Packaging renders the app icon from `assets/appicon.svg` (via an offscreen
+Electron window, sips, and iconutil — no extra image tooling), marks the app
+`LSUIElement` so it never appears in the Dock, and ad-hoc re-signs the bundle
+so Apple Silicon will launch it.
+
 The app polls GitHub's notifications API and GitLab's todos API every 60
-seconds. GitHub needs a classic PAT with the `notifications` and `repo`
-scopes; GitLab needs a PAT with `read_api`.
+seconds. GitHub needs a classic PAT with just the `notifications` scope (or a
+fine-grained PAT with the account-level "Notifications" read permission);
+GitLab needs a PAT with `read_api`.
 
 ## Layout
 
