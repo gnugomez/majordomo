@@ -12,10 +12,16 @@ const api: MajordomoApi = {
   openItem: (id: string) => ipcRenderer.invoke(IPC.openItem, id),
   markAllRead: () => ipcRenderer.invoke(IPC.markAllRead),
   refresh: () => ipcRenderer.invoke(IPC.refresh),
+  setLaunchAtLogin: (enabled) => ipcRenderer.invoke(IPC.setLaunchAtLogin, enabled),
   onStateUpdated: (cb: (state: AppState) => void) => {
     const listener = (_event: IpcRendererEvent, state: AppState) => cb(state);
     ipcRenderer.on(IPC.stateUpdated, listener);
     return () => ipcRenderer.removeListener(IPC.stateUpdated, listener);
+  },
+  onPopoverVisibility: (cb: (visible: boolean) => void) => {
+    const listener = (_event: IpcRendererEvent, visible: boolean) => cb(visible);
+    ipcRenderer.on(IPC.popoverVisibility, listener);
+    return () => ipcRenderer.removeListener(IPC.popoverVisibility, listener);
   },
 };
 

@@ -4,7 +4,7 @@
 
 import type { AccountConfig, AccountState, AppState, ProviderId } from "../shared/types";
 import type { MajordomoApi } from "../shared/ipc";
-import { AccountsPane } from "./accounts";
+import { SettingsPane } from "./settings";
 import { relativeTime } from "./format";
 import { ICONS } from "./icons";
 import { buildHeader, el, renderInbox, updateSyncStatus } from "./views";
@@ -13,14 +13,21 @@ import { buildHeader, el, renderInbox, updateSyncStatus } from "./views";
 // HTML degrades to the empty state instead of throwing.
 const api: MajordomoApi | undefined = window.majordomo;
 
-type Pane = "inbox" | "accounts";
+type Pane = "inbox" | "settings";
 
 interface UiState {
   pane: Pane;
   connecting: Record<ProviderId, boolean>;
 }
 
-let appState: AppState = { items: [], accounts: [], lastSyncAt: null, syncing: false };
+let appState: AppState = {
+  items: [],
+  accounts: [],
+  lastSyncAt: null,
+  syncing: false,
+  accentColor: null,
+  launchAtLogin: false,
+};
 const uiState: UiState = {
   pane: "inbox",
   connecting: { github: false, gitlab: false },
@@ -41,7 +48,8 @@ const appRoot: HTMLElement = (() => {
 const header = buildHeader({
   onRefresh: handleRefresh,
   onMarkAllRead: handleMarkAllRead,
-  onToggleAccounts: () => setPane(uiState.pane === "accounts" ? "inbox" : "accounts"),
+  // The gear toggles: pressing it again closes the settings pane.
+  onOpenSettings: () => setPane(uiState.pane === "settings" ? "inbox" : "settings"),
 });
 
 const banner = el("div");
@@ -55,13 +63,13 @@ const content = el("div", "content");
 const inboxPane = el("div", "pane");
 inboxPane.id = "inbox";
 
-const accountsPane = new AccountsPane({
+const settingsPane = new SettingsPane({
   onConnect: (provider, config) => void handleConnect(provider, config),
   onDisconnect: (provider) => void handleDisconnect(provider),
-  onClose: () => setPane("inbox"),
+  onToggleLaunchAtLogin: handleToggleLaunchAtLogin,
 });
 
-content.append(inboxPane, accountsPane.root);
+content.append(inboxPane, settingsPane.root);
 appRoot.append(header.root, banner, content);
 
 // ---------- Actions ----------
@@ -114,7 +122,7 @@ async function handleConnect(provider: ProviderId, config: AccountConfig): Promi
     const result = await api.connectAccount(provider, config);
     mergeAccount(result);
     if (result.connected) {
-      accountsPane.clearToken(provider);
+      settingsPane.clearToken(provider);
     }
   } catch (err) {
     mergeAccount({
@@ -139,6 +147,13 @@ async function handleDisconnect(provider: ProviderId): Promise<void> {
   }
 }
 
+function handleToggleLaunchAtLogin(next: boolean): void {
+  // Optimistic flip; the pushed state is authoritative.
+  appState = { ...appState, launchAtLogin: next };
+  render();
+  void api?.setLaunchAtLogin(next);
+}
+
 // ---------- Rendering ----------
 
 function updateBanner(): void {
@@ -157,23 +172,31 @@ function updateBanner(): void {
 function render(): void {
   const now = Date.now();
 
+  // Follow the macOS system accent; the stylesheet's per-theme blues are the
+  // fallback when the main process couldn't read it.
+  if (appState.accentColor) {
+    document.documentElement.style.setProperty("--accent", appState.accentColor);
+  } else {
+    document.documentElement.style.removeProperty("--accent");
+  }
+
   updateSyncStatus(header.syncStatus, appState, now);
   header.refreshBtn.disabled = appState.syncing;
   header.markAllReadBtn.disabled = !appState.items.some((i) => !i.read);
-  header.accountsBtn.classList.toggle("active", uiState.pane === "accounts");
 
   updateBanner();
 
   renderInbox(inboxPane, appState, now, {
     onOpenItem: handleOpenItem,
-    onOpenAccounts: () => setPane("accounts"),
+    onOpenSettings: () => setPane("settings"),
   });
 
-  accountsPane.update(appState, uiState.connecting);
+  settingsPane.update(appState, uiState.connecting);
 
-  const accountsOpen = uiState.pane === "accounts";
-  appRoot.classList.toggle("accounts-open", accountsOpen);
-  accountsPane.root.setAttribute("aria-hidden", accountsOpen ? "false" : "true");
+  const settingsOpen = uiState.pane === "settings";
+  appRoot.classList.toggle("settings-open", settingsOpen);
+  header.settingsBtn.classList.toggle("active", settingsOpen);
+  settingsPane.root.setAttribute("aria-hidden", settingsOpen ? "false" : "true");
 }
 
 // Keep relative timestamps fresh without rebuilding the DOM (a full rebuild
@@ -187,15 +210,40 @@ window.setInterval(() => {
 }, 30_000);
 
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && uiState.pane === "accounts") {
+  if (event.key === "Escape" && uiState.pane === "settings") {
     setPane("inbox");
   }
 });
+
+// The popover must always reopen on the inbox. The window is never actually
+// hidden (it fades to opacity 0 so macOS can't play its window-show
+// animation), so dismissal arrives as an explicit push from the main process.
+// Resetting on dismiss (rather than on show) avoids any visible pane flash;
+// form input values are left alone — only the pane switches.
+window.majordomo?.onPopoverVisibility((visible) => {
+  if (!visible && uiState.pane !== "inbox") {
+    setPane("inbox");
+  }
+});
+
+// Debug escape hatch for visual checks (e.g. injecting a fabricated inbox via
+// CDP). Display-only and renderer-local: it feeds the normal render path and
+// cannot reach the main process, so it is harmless if it exists in prod.
+interface DebugWindow {
+  __debugSetState?: (state: AppState) => void;
+}
+(window as unknown as DebugWindow).__debugSetState = (state: AppState): void => {
+  appState = state;
+  render();
+};
 
 // ---------- Boot ----------
 
 async function init(): Promise<void> {
   if (!api) {
+    // Standalone preview: no vibrancy material behind the transparent page,
+    // so opt into the plain fallback background.
+    document.body.classList.add("no-bridge");
     console.error("window.majordomo is not available; rendering empty state");
     render();
     return;
@@ -218,5 +266,15 @@ async function init(): Promise<void> {
   }
   render();
 }
+
+// The main process focuses the window on every popover open, which lands
+// keyboard focus on the first header button and paints a focus ring. Native
+// menus open focus-clean; drop the ring unless focus is in a text field.
+window.addEventListener("focus", () => {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && !(active instanceof HTMLInputElement)) {
+    active.blur();
+  }
+});
 
 void init();

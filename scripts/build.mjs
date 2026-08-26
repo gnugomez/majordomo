@@ -9,7 +9,7 @@ await Promise.all([
     bundle: true,
     platform: "node",
     format: "cjs",
-    external: ["electron"],
+    external: ["electron", "electron-liquid-glass"],
     outfile: "dist/main/index.js",
   }),
   build({

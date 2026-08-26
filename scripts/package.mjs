@@ -12,7 +12,8 @@ const appPaths = await packager({
   out: "release",
   overwrite: true,
   prune: true,
-  asar: true,
+  // Native modules can't load from inside the asar archive.
+  asar: { unpack: "**/*.node" },
   // Menu-bar app: never show in the Dock or the Cmd-Tab switcher.
   extendInfo: { LSUIElement: true },
   ignore: [
@@ -33,9 +34,26 @@ const appPaths = await packager({
 
 // Packaging modifies the bundle after Electron's own ad-hoc signature was
 // sealed, which leaves it invalid — and Apple Silicon refuses to launch an
-// invalidly-signed app. Re-sign ad-hoc.
+// invalidly-signed app. Re-sign with CODESIGN_IDENTITY when set, else with a
+// "Majordomo Dev" identity if the keychain has one (any stable identity,
+// even self-signed, keeps macOS permissions — notifications, login item —
+// across updates; ad-hoc resets them on every build), else ad-hoc.
+function detectIdentity() {
+  if (process.env.CODESIGN_IDENTITY) return process.env.CODESIGN_IDENTITY;
+  try {
+    const out = execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], {
+      encoding: "utf8",
+    });
+    if (out.includes('"Majordomo Dev"')) return "Majordomo Dev";
+  } catch {
+    // security not available or no keychain access — fall through to ad-hoc.
+  }
+  return "-";
+}
+const identity = detectIdentity();
+console.log(identity === "-" ? "signing: ad-hoc" : `signing: ${identity}`);
 for (const appPath of appPaths) {
-  execFileSync("codesign", ["--force", "--deep", "-s", "-", `${appPath}/Majordomo.app`]);
+  execFileSync("codesign", ["--force", "--deep", "-s", identity, `${appPath}/Majordomo.app`]);
 }
 
 console.log("packaged:", appPaths.join(", "));

@@ -8,7 +8,12 @@ requests, and merge requests into a single mentions-first inbox.
 - **Tray dot** — the menu-bar icon grows a dot whenever unread mentions are
   waiting.
 - **Native notifications** — new mentions notify; clicking a notification opens
-  the item in your browser.
+  the item in your browser. macOS doesn't show the permission prompt for
+  un-notarized builds, so enable Majordomo once under System Settings →
+  Notifications.
+- **Liquid Glass popover** — the window is backed by the native
+  `NSGlassEffectView` material on macOS 26+ (via `electron-liquid-glass`),
+  falling back to the older frosted vibrancy on earlier systems.
 - **PAT auth** — paste a personal access token per provider. Tokens are
   encrypted with the macOS keychain (Electron `safeStorage`) and never leave
   the machine.

@@ -3,19 +3,33 @@
   "version": "0.1.0",
   "description": "macOS menu-bar inbox that unifies GitHub and self-hosted GitLab mentions",
   "private": true,
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gnugomez/majordomo.git"
+  },
   "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
     "icons": "electron scripts/render-tray-icons.cjs",
-    "package": "npm run build && node scripts/make-icns.mjs && node scripts/package.mjs"
+    "package": "npm run build && node scripts/make-icns.mjs && node scripts/package.mjs",
+    "changeset": "changeset",
+    "version": "changeset version"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.1",
     "@electron/packager": "^20.3.0",
     "@types/node": "^26.3.0",
     "electron": "^44.0.0",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "electron-liquid-glass": "^1.1.1"
   }
 }

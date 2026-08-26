@@ -19,8 +19,15 @@ export interface SyncEngine {
   disconnectAccount(provider: ProviderId): void;
   openItem(id: string): void;
   markAllRead(): void;
+  /** Merge window-chrome facts (accent color, login item) into the state and push it. */
+  updateChrome(chrome: Partial<AppChrome>): void;
   /** Kicks off the first sync and the 60s interval. */
   start(): void;
+}
+
+export interface AppChrome {
+  accentColor: string | null;
+  launchAtLogin: boolean;
 }
 
 function errorMessage(err: unknown): string {
@@ -53,6 +60,7 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
   let lastSyncAt: string | null = null;
   let syncing = false;
   let inFlight: Promise<void> | null = null;
+  const chrome: AppChrome = { accentColor: null, launchAtLogin: false };
 
   function allFetchedItems(): FetchedItem[] {
     const all: FetchedItem[] = [];
@@ -75,7 +83,14 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
       accounts: providerIds.map((id) => ({ ...accounts.get(id)! })),
       lastSyncAt,
       syncing,
+      accentColor: chrome.accentColor,
+      launchAtLogin: chrome.launchAtLogin,
     };
+  }
+
+  function updateChrome(partial: Partial<AppChrome>): void {
+    Object.assign(chrome, partial);
+    emitState();
   }
 
   function emitState(): void {
@@ -148,6 +163,7 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
   return {
     getState,
     syncNow,
+    updateChrome,
 
     async connectAccount(provider, config) {
       try {

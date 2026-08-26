@@ -1,47 +1,54 @@
-/* Majordomo renderer — styled to feel like a native macOS popover.
-   Light and dark palettes via custom properties + prefers-color-scheme. */
+/* Majordomo renderer — drawn on a transparent window over NSVisualEffectView
+   glass (vibrancy: "menu"), like the system's own menu-bar dropdowns.
+   Rule zero: no opaque page-wide backgrounds. Everything is black-with-alpha
+   in light mode and white-with-alpha in dark mode; the material does the
+   tinting. The only solid fills are deliberate chrome (accent buttons). */
 
 :root {
   --accent: #007aff;
-  --bg: #f4f4f6;
-  --card: #ffffff;
-  --text: #1d1d1f;
-  --text-2: rgba(60, 60, 67, 0.62);
-  --text-3: rgba(60, 60, 67, 0.36);
-  --hairline: rgba(60, 60, 67, 0.14);
-  --hairline-faint: rgba(60, 60, 67, 0.08);
-  --hover: rgba(0, 0, 0, 0.045);
-  --active: rgba(0, 0, 0, 0.085);
-  --input-bg: #ffffff;
-  --capsule-bg: rgba(120, 120, 128, 0.14);
+  --text: rgba(0, 0, 0, 0.92);
+  --text-2: rgba(0, 0, 0, 0.58);
+  --text-3: rgba(0, 0, 0, 0.38);
+  --hairline: rgba(0, 0, 0, 0.12);
+  --hairline-faint: rgba(0, 0, 0, 0.07);
+  --hover: rgba(0, 0, 0, 0.06);
+  --active: rgba(0, 0, 0, 0.1);
+  --card: rgba(255, 255, 255, 0.55);
+  --input-bg: rgba(255, 255, 255, 0.6);
+  --capsule-bg: rgba(0, 0, 0, 0.06);
+  --badge-bg: rgba(0, 0, 0, 0.08);
+  --toggle-off: rgba(0, 0, 0, 0.16);
   --danger: #d70015;
-  --warn-text: #8a5300;
-  --warn-bg: rgba(255, 159, 10, 0.13);
+  --warn-text: #7a4a00;
+  --warn-bg: rgba(255, 159, 10, 0.15);
   --warn-dot: #ff9500;
   --ok: #248a3d;
-  --scrollbar: rgba(0, 0, 0, 0.28);
+  --scrollbar: rgba(0, 0, 0, 0.3);
+  --fallback-bg: #f4f4f6;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --accent: #0a84ff;
-    --bg: #262628;
-    --card: #333336;
-    --text: rgba(255, 255, 255, 0.88);
-    --text-2: rgba(235, 235, 245, 0.6);
-    --text-3: rgba(235, 235, 245, 0.32);
-    --hairline: rgba(235, 235, 245, 0.14);
-    --hairline-faint: rgba(235, 235, 245, 0.07);
-    --hover: rgba(255, 255, 255, 0.06);
-    --active: rgba(255, 255, 255, 0.11);
-    --input-bg: rgba(255, 255, 255, 0.07);
-    --capsule-bg: rgba(120, 120, 128, 0.28);
+    --text: rgba(255, 255, 255, 0.95);
+    --text-2: rgba(255, 255, 255, 0.6);
+    --text-3: rgba(255, 255, 255, 0.4);
+    --hairline: rgba(255, 255, 255, 0.13);
+    --hairline-faint: rgba(255, 255, 255, 0.08);
+    --hover: rgba(255, 255, 255, 0.09);
+    --active: rgba(255, 255, 255, 0.14);
+    --card: rgba(255, 255, 255, 0.08);
+    --input-bg: rgba(255, 255, 255, 0.09);
+    --capsule-bg: rgba(255, 255, 255, 0.1);
+    --badge-bg: rgba(255, 255, 255, 0.14);
+    --toggle-off: rgba(255, 255, 255, 0.24);
     --danger: #ff453a;
     --warn-text: #ffb340;
-    --warn-bg: rgba(255, 159, 10, 0.14);
+    --warn-bg: rgba(255, 159, 10, 0.15);
     --warn-dot: #ff9f0a;
     --ok: #32d74b;
-    --scrollbar: rgba(255, 255, 255, 0.3);
+    --scrollbar: rgba(255, 255, 255, 0.32);
+    --fallback-bg: #262628;
   }
 }
 
@@ -54,6 +61,7 @@
 html,
 body {
   height: 100%;
+  background: transparent;
 }
 
 body {
@@ -62,13 +70,18 @@ body {
   font-size: 13px;
   line-height: 1.35;
   color: var(--text);
-  background: var(--bg);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
   overflow: hidden;
   accent-color: var(--accent);
+}
+
+/* Standalone preview only (no preload bridge): there is no vibrancy behind
+   the page, so paint a plain backdrop to stay readable. */
+body.no-bridge {
+  background: var(--fallback-bg);
 }
 
 button {
@@ -107,12 +120,13 @@ button:focus-visible,
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 8px 8px 7px 14px;
+  padding: 10px 10px 8px 16px;
   border-bottom: 1px solid var(--hairline);
 }
 
-.app-title {
-  font-size: 13px;
+/* Bold panel title, like "Sound" / "Wi-Fi" in the system's menus. */
+.panel-title {
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -214,7 +228,7 @@ button:focus-visible,
 }
 
 .pane::-webkit-scrollbar {
-  width: 11px;
+  width: 9px;
 }
 
 .pane::-webkit-scrollbar-track {
@@ -223,8 +237,8 @@ button:focus-visible,
 
 .pane::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
-  border-radius: 6px;
-  border: 3px solid transparent;
+  border-radius: 5px;
+  border: 2px solid transparent;
   background-clip: padding-box;
 }
 
@@ -232,27 +246,37 @@ button:focus-visible,
   display: flex;
   flex-direction: column;
   padding: 2px 0 10px;
+  transition: opacity 0.24s ease;
 }
 
-#accounts {
-  z-index: 2; /* above the inbox's sticky section titles (z-index: 1) */
-  background: var(--bg);
-  padding: 10px 12px 14px;
+/* The settings pane slides over a transparent page, so instead of giving it
+   an opaque fill (which would punch a slab into the glass) the inbox fades
+   out underneath it. */
+#app.settings-open #inbox {
+  opacity: 0;
+}
+
+#settings {
+  z-index: 2;
+  padding: 10px 14px 14px;
   transform: translateX(100%);
   visibility: hidden;
   transition: transform 0.24s cubic-bezier(0.32, 0.72, 0.32, 1),
     visibility 0s linear 0.24s;
 }
 
-#app.accounts-open #accounts {
+#app.settings-open #settings {
   transform: none;
   visibility: visible;
   transition: transform 0.24s cubic-bezier(0.32, 0.72, 0.32, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #accounts,
-  #app.accounts-open #accounts {
+  #inbox,
+  #settings,
+  #app.settings-open #settings,
+  .toggle,
+  .toggle-knob {
     transition: none;
   }
 }
@@ -267,17 +291,14 @@ button:focus-visible,
   margin-top: 4px;
 }
 
+/* Section captions scroll with the content, like the captions in the
+   system's own menus. (They used to be sticky; over a transparent window a
+   translucent sticky caption let rows bleed through above it.) */
 .section-title {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 7px 16px 3px;
+  padding: 8px 16px 3px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-2);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .section-empty {
@@ -287,72 +308,77 @@ button:focus-visible,
 }
 
 .rows {
-  padding: 0 8px;
+  padding: 0 6px;
 }
 
 .row {
   position: relative;
   display: grid;
-  grid-template-columns: 12px 18px minmax(0, 1fr);
+  grid-template-columns: 26px minmax(0, 1fr);
   align-items: center;
-  column-gap: 6px;
+  column-gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 7px 8px 7px 4px;
-  border-radius: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
 }
 
-.row:hover {
-  background: var(--hover);
-}
-
+/* No hover highlight: the real NSMenu selection material can't be
+   reproduced in web content, and a translucent imitation reads as fake —
+   rows only give press feedback. */
 .row:active {
   background: var(--active);
 }
 
-/* Inset hairline between rows, hidden around the hovered row (macOS-style). */
+/* Inset hairline between rows, hidden around the pressed row (macOS-style). */
 .row + .row::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 40px;
-  right: 8px;
+  left: 46px;
+  right: 10px;
   height: 1px;
   background: var(--hairline-faint);
 }
 
-.row:hover::before,
-.row:hover + .row::before,
 .row:active::before,
 .row:active + .row::before {
   opacity: 0;
 }
 
-.unread-dot {
-  justify-self: center;
-  width: 7px;
-  height: 7px;
+/* Circular provider badge, like the device/network circles in the system's
+   own menus. Unread rows fill it with the accent; read rows keep it a quiet
+   translucent gray. */
+.provider-badge {
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--badge-bg);
+  color: var(--text-2);
+}
+
+.provider-badge .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.row.unread .provider-badge {
   background: var(--accent);
-  opacity: 0;
+  color: #ffffff;
 }
 
-.row.unread .unread-dot {
-  opacity: 1;
-}
-
+/* Provider glyph leading a settings account row. */
 .provider-mark {
   display: flex;
-  color: var(--text-3);
+  color: var(--text);
 }
 
 .provider-mark .icon {
   width: 16px;
   height: 16px;
-}
-
-.row.unread .provider-mark {
-  color: var(--text-2);
 }
 
 .row-content {
@@ -435,7 +461,7 @@ button:focus-visible,
 
 .capsule.mention {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 /* ---------- Empty states ---------- */
@@ -496,77 +522,165 @@ button:focus-visible,
   opacity: 0.55;
 }
 
-.secondary-btn {
-  background: var(--capsule-bg);
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-size: 12px;
-}
+/* ---------- Settings pane: native grouped lists ---------- */
 
-.secondary-btn:hover {
-  background: var(--active);
-}
-
-.text-btn {
-  color: var(--accent);
+/* Section caption above each group, like "Known Networks" in System
+   Settings. */
+.settings-caption {
+  padding: 16px 10px 6px;
   font-size: 13px;
-  padding: 3px 8px;
-  border-radius: 5px;
-}
-
-.text-btn:hover {
-  background: var(--hover);
-}
-
-/* ---------- Accounts pane ---------- */
-
-.pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 4px 10px;
-}
-
-.pane-title {
-  font-size: 14px;
   font-weight: 600;
-}
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--hairline-faint);
-  border-radius: 10px;
-  padding: 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.card + .card {
-  margin-top: 10px;
-}
-
-.card-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 10px;
-}
-
-.card-head .provider-mark {
   color: var(--text);
 }
 
-.card-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
+.settings-caption:first-child {
+  padding-top: 2px;
 }
 
-.card-status {
+/* One rounded container per section; rows inside are separated by inset
+   hairlines. A single translucent wash so the glass shows through — never
+   an opaque slab. */
+.settings-group {
+  --row-inset: 12px;
+  background: var(--card);
+  border: 1px solid var(--hairline-faint);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* When rows lead with a 16px glyph, hairlines inset to the label start. */
+.settings-group.has-glyphs {
+  --row-inset: 36px;
+}
+
+.group-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 12px;
+}
+
+.group-row[hidden] {
+  display: none;
+}
+
+/* Inset hairline above every row except the container's first. (Rows nested
+   in the display:contents form still count — only the direct first child is
+   exempt.) */
+.group-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--row-inset);
+  right: 0;
+  height: 1px;
+  background: var(--hairline-faint);
+}
+
+.settings-group > .group-row:first-child::before {
+  display: none;
+}
+
+.settings-label {
+  flex: 1;
+  font-size: 13px;
+}
+
+.provider-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.provider-name {
+  font-size: 13px;
+}
+
+/* Host subtitle under a connected GitLab row. */
+.provider-sub {
   font-size: 11px;
   color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-sub[hidden] {
+  display: none;
+}
+
+.connected-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.connected-side[hidden] {
+  display: none;
+}
+
+.acct-user {
+  font-size: 12px;
+  color: var(--text-2);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Small translucent-filled rounded button, like "Details…" in System
+   Settings rows. */
+.row-btn {
+  flex: none;
+  background: var(--badge-bg);
+  border-radius: 6px;
+  padding: 4px 11px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.row-btn:hover:not(:disabled) {
+  background: var(--active);
+}
+
+.row-btn:disabled {
+  opacity: 0.5;
+}
+
+/* macOS-style switch: accent when on, translucent gray when off. */
+.toggle {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--toggle-off);
+  transition: background 0.18s ease;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s ease;
+}
+
+.toggle[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.toggle[aria-checked="true"] .toggle-knob {
+  transform: translateX(10px);
 }
 
 .status-dot {
@@ -584,14 +698,56 @@ button:focus-visible,
   background: var(--warn-dot);
 }
 
+/* The connect form contributes rows to the group without adding a box of
+   its own; visibility is toggled per-row. */
 .connect-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: contents;
 }
 
-.connect-form[hidden] {
+/* Form and message rows indent to the label start, continuing the group's
+   left rhythm. */
+.field-row,
+.action-row,
+.error-row,
+.warn-row {
+  padding-left: var(--row-inset);
+}
+
+.action-row {
+  justify-content: flex-end;
+}
+
+/* Validation/auth failure: a red-tinted hairline-separated row under the
+   form. */
+.error-row {
+  min-height: 34px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 12px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.error-row:empty {
   display: none;
+}
+
+/* Per-account sync-error warning row under a connected provider. */
+.warn-row {
+  align-items: flex-start;
+  min-height: 34px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--warn-text);
+  background: var(--warn-bg);
+}
+
+.warn-row .icon {
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
 }
 
 input {
@@ -620,66 +776,6 @@ input:focus {
 
 input:disabled {
   opacity: 0.5;
-}
-
-.form-row {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.form-error {
-  font-size: 11px;
-  color: var(--danger);
-}
-
-.form-error:empty {
-  display: none;
-}
-
-.connected-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.connected-row[hidden] {
-  display: none;
-}
-
-.connected-as {
-  min-width: 0;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.connected-as strong {
-  font-weight: 600;
-}
-
-.connected-host {
-  color: var(--text-2);
-}
-
-.card-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: 5px;
-  margin-top: 10px;
-  font-size: 11px;
-  color: var(--warn-text);
-}
-
-.card-warning[hidden] {
-  display: none;
-}
-
-.card-warning .icon {
-  width: 12px;
-  height: 12px;
-  margin-top: 1px;
 }
 
 /* ---------- Spinner ---------- */

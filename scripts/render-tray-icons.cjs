@@ -1,8 +1,7 @@
 // Run with: electron scripts/render-tray-icons.cjs  (or: npm run icons)
 // Renders the menu-bar template icons (base + unread-dot variant, 1x and 2x)
-// as anti-aliased vectors via an offscreen window, replacing the old
-// hand-drawn pixel-map approach. Template images are pure black + alpha;
-// macOS recolors them for light/dark menu bars.
+// as anti-aliased vectors via an offscreen window. Template images are pure
+// black + alpha; macOS recolors them for light/dark menu bars.
 const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
 const { join } = require("node:path");

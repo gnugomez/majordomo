@@ -49,6 +49,9 @@ export interface AppState {
   /** ISO 8601, or null if no sync has completed yet. */
   lastSyncAt: string | null;
   syncing: boolean;
+  /** The macOS system accent color as #rrggbb, or null when unavailable. */
+  accentColor: string | null;
+  launchAtLogin: boolean;
 }
 
 /** A fetched item is an InboxItem before local read-state is applied. */

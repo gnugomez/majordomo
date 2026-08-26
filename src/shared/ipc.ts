@@ -17,6 +17,10 @@ export const IPC = {
   markAllRead: "items:mark-all-read",
   /** invoke → void — triggers an immediate sync */
   refresh: "sync:refresh",
+  /** invoke (enabled: boolean) → void — register/unregister as a login item */
+  setLaunchAtLogin: "app:set-launch-at-login",
+  /** main → renderer push, payload boolean — false when the popover is dismissed */
+  popoverVisibility: "popover:visibility",
 } as const;
 
 /** Exposed by the preload script as `window.majordomo`. */
@@ -27,8 +31,11 @@ export interface MajordomoApi {
   openItem(id: string): Promise<void>;
   markAllRead(): Promise<void>;
   refresh(): Promise<void>;
+  setLaunchAtLogin(enabled: boolean): Promise<void>;
   /** Returns an unsubscribe function. */
   onStateUpdated(cb: (state: AppState) => void): () => void;
+  /** Returns an unsubscribe function. cb receives false when the popover is dismissed. */
+  onPopoverVisibility(cb: (visible: boolean) => void): () => void;
 }
 
 declare global {

@@ -36,25 +36,25 @@ export interface HeaderRefs {
   syncStatus: HTMLElement;
   refreshBtn: HTMLButtonElement;
   markAllReadBtn: HTMLButtonElement;
-  accountsBtn: HTMLButtonElement;
+  settingsBtn: HTMLButtonElement;
 }
 
 export interface HeaderHandlers {
   onRefresh(): void;
   onMarkAllRead(): void;
-  onToggleAccounts(): void;
+  onOpenSettings(): void;
 }
 
 export function buildHeader(handlers: HeaderHandlers): HeaderRefs {
   const root = el("header", "header");
-  const title = el("h1", "app-title", "Majordomo");
+  const title = el("h1", "panel-title", "Majordomo");
   const syncStatus = el("div", "sync-status");
   syncStatus.setAttribute("aria-live", "polite");
   const refreshBtn = iconButton(ICONS.refresh, "Refresh now", handlers.onRefresh);
   const markAllReadBtn = iconButton(ICONS.markAllRead, "Mark all as read", handlers.onMarkAllRead);
-  const accountsBtn = iconButton(ICONS.gear, "Accounts", handlers.onToggleAccounts);
-  root.append(title, syncStatus, refreshBtn, markAllReadBtn, accountsBtn);
-  return { root, syncStatus, refreshBtn, markAllReadBtn, accountsBtn };
+  const settingsBtn = iconButton(ICONS.gear, "Settings", handlers.onOpenSettings);
+  root.append(title, syncStatus, refreshBtn, markAllReadBtn, settingsBtn);
+  return { root, syncStatus, refreshBtn, markAllReadBtn, settingsBtn };
 }
 
 export function updateSyncStatus(target: HTMLElement, state: AppState, now: number): void {
@@ -68,7 +68,7 @@ export function updateSyncStatus(target: HTMLElement, state: AppState, now: numb
 
 export interface InboxHandlers {
   onOpenItem(id: string): void;
-  onOpenAccounts(): void;
+  onOpenSettings(): void;
 }
 
 function itemTime(iso: string): number {
@@ -82,10 +82,10 @@ function buildRow(item: InboxItem, now: number, onOpen: (id: string) => void): H
   row.dataset.id = item.id;
   row.title = item.title;
 
-  const dot = el("span", "unread-dot");
-
-  const mark = el("span", "provider-mark");
-  mark.innerHTML = providerIcon(item.provider);
+  // Circular provider badge, like the device/network circles in the system's
+  // own menus: accent-filled while unread, translucent gray once read.
+  const badge = el("span", "provider-badge");
+  badge.innerHTML = providerIcon(item.provider);
 
   const content = el("span", "row-content");
 
@@ -107,7 +107,7 @@ function buildRow(item: InboxItem, now: number, onOpen: (id: string) => void): H
   line2.append(meta, capsule);
 
   content.append(line1, line2);
-  row.append(dot, mark, content);
+  row.append(badge, content);
   row.addEventListener("click", () => onOpen(item.id));
   return row;
 }
@@ -167,7 +167,7 @@ export function renderInbox(
         ICONS.inbox,
         "No accounts connected",
         "Connect GitHub or a self-hosted GitLab to see your mentions in one place.",
-        { label: "Connect an account", onClick: handlers.onOpenAccounts }
+        { label: "Connect an account", onClick: handlers.onOpenSettings }
       )
     );
     return;
