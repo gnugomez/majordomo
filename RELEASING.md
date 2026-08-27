@@ -1,49 +1,51 @@
 # Releasing
 
-Releases are automated with [changesets](https://github.com/changesets/changesets)
-and GitHub Actions. No one bumps versions by hand.
+Releases are automated with [release-please](https://github.com/googleapis/release-please)
+and GitHub Actions, driven entirely by [conventional commits](https://www.conventionalcommits.org)
+(`feat:`, `fix:`, `refactor:`, `chore:`, …). No one bumps versions by hand and
+there are no release side-files to maintain.
 
 ## The flow
 
-1. **Every user-visible PR carries a changeset** (`npx changeset`): a small
-   markdown file under `.changeset/` naming the bump level (patch/minor/major)
-   and describing the change.
-2. **When changesets land on `main`**, the Release workflow opens (or updates)
-   a PR called **"chore: version release"**. It applies all pending
-   changesets: bumps `package.json`, writes `CHANGELOG.md`, and deletes the
-   consumed changeset files.
+1. **Land conventional commits on `main`.** `feat:` bumps the minor version,
+   `fix:` the patch, and a `BREAKING CHANGE:` footer (or `!`) the major.
+2. **release-please maintains a release PR** that accumulates everything
+   unreleased: it bumps `package.json`, updates `CHANGELOG.md`, and rewrites
+   itself as more commits land.
 3. **Merging that PR cuts the release.** The workflow tags `vX.Y.Z`, creates
-   the GitHub release with the changelog notes, packages `Majordomo.app` on a
-   macOS runner, and attaches `Majordomo-darwin-arm64.zip` to the release.
+   the GitHub release with the changelog notes, then a macOS runner packages
+   `Majordomo.app`, signs it, and attaches `Majordomo-darwin-arm64.zip`.
 
-So the release cadence is simply: merge the version PR whenever you want to
-ship what has accumulated.
+Release cadence is simply: merge the release PR whenever you want to ship.
+
+## Signing
+
+CI signs every release with the same certificate, imported from repo secrets —
+a **stable identity across releases**, so macOS keeps the user's per-app
+permissions (notifications, login item) through updates instead of resetting
+them the way rotating ad-hoc signatures do.
+
+- `MACOS_SIGN_P12` — base64 of a PKCS#12 bundle holding a code-signing
+  certificate named **"Majordomo Dev"** (self-signed is fine).
+- `MACOS_SIGN_P12_PASSWORD` — its password.
+
+If the secrets are absent the build falls back to ad-hoc signing. The same
+identity can be imported into a local keychain so `npm run package` produces
+identically-signed builds on a dev machine (`scripts/package.mjs` picks up a
+"Majordomo Dev" keychain identity automatically, or honors
+`CODESIGN_IDENTITY`).
+
+Self-signed still means no notarization: Gatekeeper quarantines downloads
+(right-click → Open the first time, or
+`xattr -dr com.apple.quarantine /Applications/Majordomo.app`), and macOS
+never shows the notification permission prompt — enable Majordomo once under
+System Settings → Notifications. Swapping the secret for a real Developer ID
+certificate and adding notarization removes both papercuts.
 
 ## Installing a released build
 
 Download the zip from the GitHub release, unzip, drag `Majordomo.app` into
-`/Applications`. Builds are ad-hoc signed, not notarized, so Gatekeeper will
-quarantine the download: either right-click → Open the first time, or run
-
-```sh
-xattr -dr com.apple.quarantine /Applications/Majordomo.app
-```
-
-Ad-hoc signing also means macOS never shows the notification permission
-prompt — the first delivery attempt is silently denied. The app still appears
-under **System Settings → Notifications**, and enabling it there makes
-new-mention notifications work normally. Worse, ad-hoc signatures carry no
-stable identity, so macOS forgets that enablement (and other per-app
-permissions) every time a differently-built copy replaces the app.
-
-Both papercuts disappear with a stable signing identity. `npm run package`
-honors `CODESIGN_IDENTITY`, and with no env var set it automatically uses a
-keychain identity named **"Majordomo Dev"** when one exists — create one once
-(a self-signed code-signing certificate via Keychain Access's Certificate
-Assistant, or openssl + `security import`) and every local build signs
-consistently, so permissions persist across updates. Proper Developer ID
-signing + notarization in CI is the long-term fix — it needs an Apple
-Developer account and signing secrets in the repo.
+`/Applications`, and see the Gatekeeper note above.
 
 ## Local/manual release build
 
@@ -53,5 +55,5 @@ npm run package
 ```
 
 This renders the app icon from `assets/appicon.svg`, bundles with
-`@electron/packager` (asar, pruned dev deps, `LSUIElement`), and ad-hoc
-re-signs the bundle so Apple Silicon will launch it.
+`@electron/packager` (asar, pruned dev deps, `LSUIElement`), and re-signs the
+bundle (stable identity when available, ad-hoc otherwise).

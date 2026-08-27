@@ -17,12 +17,9 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
     "icons": "electron scripts/render-tray-icons.cjs",
-    "package": "npm run build && node scripts/make-icns.mjs && node scripts/package.mjs",
-    "changeset": "changeset",
-    "version": "changeset version"
+    "package": "npm run build && node scripts/make-icns.mjs && node scripts/package.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.1",
     "@electron/packager": "^20.3.0",
     "@gitbeaker/rest": "^43.8.0",
     "@octokit/rest": "^22.0.1",
@@ -35,7 +32,7 @@
     "react-dom": "^19.2.8",
     "typescript": "^7.0.2"
   },
-  "dependencies": {
+  "optionalDependencies": {
     "electron-liquid-glass": "^1.1.1"
   }
 }

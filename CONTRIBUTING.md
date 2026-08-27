@@ -59,11 +59,13 @@ MAJORDOMO_USERDATA=/tmp/majordomo-dev npm start
 1. Keep the change focused; match the style of the surrounding code
    (strict TypeScript, double quotes, 2-space indent).
 2. `npm run typecheck` and `npm run build` must pass — CI enforces both.
-3. If your change is user-visible (feature, fix, behavior change), add a
-   changeset: `npx changeset`, pick a bump level, and write one sentence a
-   user would understand. Internal-only changes (docs, CI, refactors) don't
-   need one.
+3. Use [conventional commits](https://www.conventionalcommits.org) —
+   releases and the changelog are generated from them by release-please.
+   `feat:` for user-visible features, `fix:` for bug fixes, `refactor:`/
+   `chore:`/`docs:` for the rest; add a `BREAKING CHANGE:` footer when
+   behavior breaks. If a PR is squash-merged, its title becomes the commit
+   message, so title PRs conventionally too.
 4. For UI changes, include a screenshot over a busy wallpaper — glass
    surfaces can hide contrast problems on plain backgrounds.
 
-Releases are cut from `main` via changesets; see [RELEASING.md](RELEASING.md).
+Releases are cut from `main` by release-please; see [RELEASING.md](RELEASING.md).
