@@ -9,6 +9,14 @@ interface ItemRowProps {
 }
 
 export function ItemRow({ item, now, onOpen }: ItemRowProps) {
+  // A merged/closed/draft PR or MR shows its STATE in the capsule — the
+  // stored reason ("review requested" on a merged PR) would be stale. Open
+  // or unknown state keeps the reason capsule; issues always keep it (their
+  // state shows via the icon alone).
+  const isPullLike = item.kind === "pull" || item.kind === "merge";
+  const stateCapsule =
+    isPullLike && item.state && item.state !== "open" ? item.state : null;
+
   return (
     <button
       type="button"
@@ -17,15 +25,25 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
       onClick={() => onOpen(item.id)}
     >
       {/* Circular provider badge, like the device/network circles in the
-          system's own menus: accent-filled while unread, translucent gray
-          once read. */}
+          system's own menus; unread shows as a small accent dot on the
+          badge's top-right corner (CSS ::after). */}
       <span className="provider-badge">
         <ProviderIcon provider={item.provider} />
       </span>
       <span className="row-content">
         <span className="row-line1">
-          <span className="kind-icon">
-            <KindIcon kind={item.kind} />
+          <span
+            className={
+              item.state
+                ? // GitHub renders completed issues purple, not red — only
+                  // closed PRs/MRs are red.
+                  item.state === "closed" && item.kind === "issue"
+                  ? "kind-icon state-closed-issue"
+                  : `kind-icon state-${item.state}`
+                : "kind-icon"
+            }
+          >
+            <KindIcon kind={item.kind} state={item.state} />
           </span>
           <span className="row-title">{item.title}</span>
         </span>
@@ -35,9 +53,13 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
             <span className="row-sep">·</span>
             <span className="rel-time">{relativeTime(item.updatedAt, now)}</span>
           </span>
-          <span className={item.isMention ? "capsule mention" : "capsule"}>
-            {humanizeReason(item.reason)}
-          </span>
+          {stateCapsule ? (
+            <span className={`capsule state-${stateCapsule}`}>{stateCapsule}</span>
+          ) : (
+            <span className={item.isMention ? "capsule mention" : "capsule"}>
+              {humanizeReason(item.reason)}
+            </span>
+          )}
         </span>
       </span>
     </button>

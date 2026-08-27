@@ -24,6 +24,11 @@
   --ok: #248a3d;
   --scrollbar: rgba(0, 0, 0, 0.3);
   --fallback-bg: #f4f4f6;
+  /* Item states, GitHub's palette. */
+  --state-open: #1f883d;
+  --state-merged: #8250df;
+  --state-closed: #cf222e;
+  --state-draft: #59636e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +52,10 @@
     --ok: #32d74b;
     --scrollbar: rgba(255, 255, 255, 0.32);
     --fallback-bg: #262628;
+    --state-open: #3fb950;
+    --state-merged: #a371f7;
+    --state-closed: #f85149;
+    --state-draft: #9198a1;
   }
 }
 
@@ -460,6 +469,28 @@ button:focus-visible,
   height: 13px;
 }
 
+/* Item-state colors on the kind glyph; no state class keeps the muted look. */
+.kind-icon.state-open {
+  color: var(--state-open);
+}
+
+.kind-icon.state-merged {
+  color: var(--state-merged);
+}
+
+.kind-icon.state-closed {
+  color: var(--state-closed);
+}
+
+/* GitHub shows completed issues in purple; red is reserved for closed PRs. */
+.kind-icon.state-closed-issue {
+  color: var(--state-merged);
+}
+
+.kind-icon.state-draft {
+  color: var(--state-draft);
+}
+
 .row-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -517,6 +548,23 @@ button:focus-visible,
 .capsule.mention {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+/* State capsules on merged/closed/draft PRs and MRs: the state replaces the
+   stale reason, tinted like the mention capsule. */
+.capsule.state-merged {
+  color: var(--state-merged);
+  background: color-mix(in srgb, var(--state-merged) 13%, transparent);
+}
+
+.capsule.state-closed {
+  color: var(--state-closed);
+  background: color-mix(in srgb, var(--state-closed) 13%, transparent);
+}
+
+.capsule.state-draft {
+  color: var(--state-draft);
+  background: color-mix(in srgb, var(--state-draft) 13%, transparent);
 }
 
 /* ---------- Empty states ---------- */

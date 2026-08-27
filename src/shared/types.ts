@@ -5,6 +5,10 @@ export type ProviderId = "github" | "gitlab";
 
 export type ItemKind = "issue" | "pull" | "merge";
 
+/** Upstream lifecycle state, when the provider can tell. Issues use
+ * open/closed; PRs/MRs add merged and draft. */
+export type ItemState = "open" | "closed" | "merged" | "draft";
+
 /** One row in the unified inbox. */
 export interface InboxItem {
   /** Globally unique: `${provider}:${externalId}`. */
@@ -22,6 +26,8 @@ export interface InboxItem {
   isMention: boolean;
   /** ISO 8601 timestamp of the last activity the provider reported. */
   updatedAt: string;
+  /** Absent when the provider couldn't determine it. */
+  state?: ItemState;
   read: boolean;
 }
 

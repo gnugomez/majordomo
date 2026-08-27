@@ -2,7 +2,7 @@
 // config.baseUrl is unused.
 
 import type { Octokit } from "@octokit/rest";
-import type { AccountConfig } from "../shared/types";
+import type { AccountConfig, ItemState } from "../shared/types";
 import type { FetchedItem, ProviderClient } from "./types";
 import {
   TIMEOUT_MS,
@@ -14,6 +14,13 @@ import {
 
 const MAX_PAGES = 2;
 const PER_PAGE = 50;
+
+// The notifications payload carries no issue/PR state, so it is fetched per
+// item from subject.url. STATE_BUDGET caps the uncached lookups per sync
+// (items over budget just omit state this round and catch up on later syncs
+// as the cache fills); STATE_CONCURRENCY bounds how many run at once.
+const STATE_BUDGET = 20;
+const STATE_CONCURRENCY = 5;
 
 const MENTION_REASONS = new Set(["mention", "team_mention", "review_requested"]);
 
@@ -160,7 +167,88 @@ function toFetchedItem(thread: GithubNotification): FetchedItem {
   };
 }
 
+/** The fields read off a subject.url (issue or pull) response. */
+interface GithubSubject {
+  state?: string;
+  merged?: boolean;
+  merged_at?: string | null;
+  draft?: boolean;
+}
+
+/** Maps a subject payload to the item's lifecycle state, if determinable. */
+function toItemState(subjectType: string, subject: GithubSubject): ItemState | undefined {
+  if (subjectType === "PullRequest") {
+    if (subject.merged === true || typeof subject.merged_at === "string") return "merged";
+    if (subject.draft === true) return "draft";
+  }
+  if (subject.state === "open") return "open";
+  if (subject.state === "closed") return "closed";
+  return undefined;
+}
+
+/**
+ * Fills in `state` on the fetched items by looking up each thread's
+ * subject.url, at most STATE_BUDGET uncached lookups per call (newest first).
+ * Results — including "couldn't determine" — are cached per thread id +
+ * updated_at, so unchanged items never refetch across the sync loop and
+ * failed lookups don't retry every minute. Lookup failures are per-item and
+ * silent: the item just ships without a state.
+ */
+async function enrichStates(
+  octokit: Octokit,
+  entries: Array<{ item: FetchedItem; thread: GithubNotification }>,
+  cache: Map<string, ItemState | undefined>
+): Promise<void> {
+  // Rebuilt from this round's threads so the cache never outgrows the inbox.
+  const nextCache = new Map<string, ItemState | undefined>();
+  const pending: Array<{ item: FetchedItem; thread: GithubNotification; key: string }> = [];
+
+  for (const { item, thread } of entries) {
+    // Discussions, security alerts, etc. carry no subject URL — no state.
+    if (!thread.subject.url) continue;
+    const key = `${thread.id}:${thread.updated_at}`;
+    if (cache.has(key)) {
+      const known = cache.get(key);
+      nextCache.set(key, known);
+      if (known !== undefined) item.state = known;
+    } else {
+      pending.push({ item, thread, key });
+    }
+  }
+
+  pending.sort((a, b) => b.thread.updated_at.localeCompare(a.thread.updated_at));
+  const batch = pending.slice(0, STATE_BUDGET);
+
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < batch.length) {
+      const job = batch[cursor++];
+      let state: ItemState | undefined;
+      try {
+        // subject.url is absolute, so request() uses it verbatim.
+        const response = await octokit.request(`GET ${job.thread.subject.url}`, {
+          request: requestOptions(),
+        });
+        state = toItemState(job.thread.subject.type, response.data as GithubSubject);
+      } catch {
+        state = undefined;
+      }
+      nextCache.set(job.key, state);
+      if (state !== undefined) job.item.state = state;
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(STATE_CONCURRENCY, batch.length) }, () => worker())
+  );
+
+  cache.clear();
+  for (const [key, state] of nextCache) cache.set(key, state);
+}
+
 export function createGithubClient(): ProviderClient {
+  // Lives as long as the client (the app's lifetime); see enrichStates.
+  const stateCache = new Map<string, ItemState | undefined>();
+
   return {
     id: "github",
 
@@ -183,7 +271,7 @@ export function createGithubClient(): ProviderClient {
 
     async fetchItems(config: AccountConfig): Promise<FetchedItem[]> {
       const octokit = await createClient(config);
-      const items: FetchedItem[] = [];
+      const entries: Array<{ item: FetchedItem; thread: GithubNotification }> = [];
       let hasNext = true;
 
       for (let page = 1; page <= MAX_PAGES && hasNext; page++) {
@@ -213,7 +301,8 @@ export function createGithubClient(): ProviderClient {
 
         for (const raw of body) {
           try {
-            items.push(toFetchedItem(raw as GithubNotification));
+            const thread = raw as GithubNotification;
+            entries.push({ item: toFetchedItem(thread), thread });
           } catch {
             // One malformed thread must not kill the whole fetch.
           }
@@ -221,7 +310,8 @@ export function createGithubClient(): ProviderClient {
         hasNext = hasNextLink(link);
       }
 
-      return items;
+      await enrichStates(octokit, entries, stateCache);
+      return entries.map(({ item }) => item);
     },
   };
 }

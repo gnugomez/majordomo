@@ -3,7 +3,7 @@
 // and is required.
 
 import type { Gitlab } from "@gitbeaker/rest";
-import type { AccountConfig } from "../shared/types";
+import type { AccountConfig, ItemState } from "../shared/types";
 import type { FetchedItem, ProviderClient } from "./types";
 import {
   TIMEOUT_MS,
@@ -41,7 +41,14 @@ interface GitlabTodo {
   created_at: string;
   target_type: string;
   target_url: string;
-  target?: { title?: string } | null;
+  target?: {
+    title?: string;
+    /** "opened" | "merged" | "closed" (also "locked" on some instances). */
+    state?: string;
+    /** Present on MergeRequest targets; older instances only send work_in_progress. */
+    draft?: boolean;
+    work_in_progress?: boolean;
+  } | null;
   project?: { path_with_namespace?: string } | null;
   body?: string | null;
 }
@@ -122,8 +129,33 @@ function toFriendlyError(error: unknown, ctx: RequestContext): Error {
   return new Error(unreachableMessage(ctx));
 }
 
+/** Upstream lifecycle state, when the todo's target carries it. */
+function toItemState(todo: GitlabTodo): ItemState | undefined {
+  const target = todo.target;
+  switch (target?.state) {
+    case "opened":
+      // An open MR that is still a draft reads better as "draft". The title
+      // prefix backstops older instances that omit the boolean fields.
+      if (
+        todo.target_type === "MergeRequest" &&
+        (target.draft === true ||
+          target.work_in_progress === true ||
+          /^Draft:/i.test(target.title ?? ""))
+      ) {
+        return "draft";
+      }
+      return "open";
+    case "merged":
+      return "merged";
+    case "closed":
+      return "closed";
+    default:
+      return undefined;
+  }
+}
+
 function toFetchedItem(todo: GitlabTodo): FetchedItem {
-  return {
+  const item: FetchedItem = {
     id: `gitlab:${todo.id}`,
     provider: "gitlab",
     kind: todo.target_type === "MergeRequest" ? "merge" : "issue",
@@ -134,6 +166,11 @@ function toFetchedItem(todo: GitlabTodo): FetchedItem {
     isMention: MENTION_ACTIONS.has(todo.action_name),
     updatedAt: todo.created_at,
   };
+  // Omit (rather than set undefined) when unknown: upsert spreads fetched
+  // fields over the stored item, and a missing key keeps the previous state.
+  const state = toItemState(todo);
+  if (state !== undefined) item.state = state;
+  return item;
 }
 
 export function createGitlabClient(): ProviderClient {
