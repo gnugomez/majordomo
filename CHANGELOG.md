@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/gnugomez/majordomo/compare/v0.1.1...v0.2.0) (2026-08-27)
+
+
+### Features
+
+* popover resizes to fit its content, without a scrollbar ([e29f8bf](https://github.com/gnugomez/majordomo/commit/e29f8bf9763f302cceef14b8e4d34466d69046de))
+* show item state with GitHub's iconography and colors ([c1b1c81](https://github.com/gnugomez/majordomo/commit/c1b1c81182de46661194cf50d12449db24bd093a))
+* show who wrote each item ([cb6e849](https://github.com/gnugomez/majordomo/commit/cb6e84906b4e1a590c20d0f119b2d23c5fe8a223))
+
+
+### Bug Fixes
+
+* hovering a truncated repo or author reveals the full text ([57c9f35](https://github.com/gnugomez/majordomo/commit/57c9f354b7f98d2b244aa5d552cf97c043b7965a))
+* keep a persistent local inbox; items read on the web arrive and stay read ([813b052](https://github.com/gnugomez/majordomo/commit/813b052cdf76f4e5ba01457023ea289a7c1b0625))
+* the settings control is a text button ([c5538dc](https://github.com/gnugomez/majordomo/commit/c5538dc0da5dd1702dadc880f7502b80e606e12b))
+
 ## [0.1.1](https://github.com/gnugomez/majordomo/compare/v0.1.0...v0.1.1) (2026-08-27)
 
 
