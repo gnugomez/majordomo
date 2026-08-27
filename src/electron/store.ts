@@ -208,12 +208,22 @@ export function createStore(): Store {
   }
   if (migrated) save();
 
+  // Tokens are resolved from the keychain at most once per run: every
+  // keychain access can pop a macOS permission prompt (until the user picks
+  // "Always Allow"), and the sync loop asks for the account every minute —
+  // uncached, that turns one grudging "Allow" into a dialog per sync.
+  const tokenCache = new Map<ProviderId, string>();
+
   return {
     getAccount(provider) {
       const stored = data.accounts[provider];
       if (!stored) return undefined;
-      const token = keyringRead(provider) ?? decodeToken(stored);
-      if (token === undefined) return undefined;
+      let token = tokenCache.get(provider);
+      if (token === undefined) {
+        token = keyringRead(provider) ?? decodeToken(stored);
+        if (token === undefined) return undefined;
+        tokenCache.set(provider, token);
+      }
       return { config: { token, baseUrl: stored.baseUrl }, username: stored.username };
     },
 
@@ -226,12 +236,14 @@ export function createStore(): Store {
           : config.token;
         account.tokenEncrypted = encrypt;
       }
+      tokenCache.set(provider, config.token);
       data.accounts[provider] = account;
       save();
     },
 
     deleteAccount(provider) {
       keyringDelete(provider);
+      tokenCache.delete(provider);
       delete data.accounts[provider];
       save();
     },
