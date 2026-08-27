@@ -5,7 +5,12 @@
 import type { AccountConfig, InboxItem } from "../shared/types";
 
 /** What a provider fetches: an InboxItem before local read-state is applied. */
-export type FetchedItem = Omit<InboxItem, "read">;
+export type FetchedItem = Omit<InboxItem, "read"> & {
+  /** True when the provider reports the user already handled this upstream
+   * (read notification thread, done todo). Consumed at upsert time to mark
+   * the local item read; never stored. Absent means "unknown/unread". */
+  upstreamRead?: boolean;
+};
 
 /**
  * Implemented once per provider.

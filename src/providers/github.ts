@@ -59,6 +59,7 @@ interface GithubUser {
 interface GithubNotification {
   id: string;
   reason: string;
+  unread?: boolean;
   updated_at: string;
   subject: {
     title: string;
@@ -155,6 +156,7 @@ function toFetchedItem(thread: GithubNotification): FetchedItem {
     reason: thread.reason,
     isMention: MENTION_REASONS.has(thread.reason),
     updatedAt: thread.updated_at,
+    upstreamRead: thread.unread === false,
   };
 }
 
@@ -190,6 +192,9 @@ export function createGithubClient(): ProviderClient {
         let body: unknown;
         try {
           const response = await octokit.rest.activity.listNotificationsForAuthenticatedUser({
+            // Read threads too: items handled on the web while the app was
+            // closed still arrive (as already-read) instead of never showing.
+            all: true,
             per_page: PER_PAGE,
             page,
             request: requestOptions(),

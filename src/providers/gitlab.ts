@@ -161,26 +161,34 @@ export function createGitlabClient(): ProviderClient {
     async fetchItems(config: AccountConfig): Promise<FetchedItem[]> {
       const baseUrl = resolveBaseUrl(config);
       const api = await createClient(config, baseUrl);
-      let body: unknown;
-      try {
-        // perPage + maxPages cap the fetch at 2 pages of 50; gitbeaker
-        // follows the pagination headers under the hood.
-        body = await api.TodoLists.all({
-          state: "pending",
-          perPage: PER_PAGE,
-          maxPages: MAX_PAGES,
-        });
-      } catch (error) {
-        throw toFriendlyError(error, context(baseUrl));
-      }
-      if (!Array.isArray(body)) return [];
-
+      // Pending todos are the inbox; one page of recently-done todos rides
+      // along so items handled on the web while the app was closed still
+      // arrive (as already-read).
+      const lists: Array<{ state: "pending" | "done"; maxPages: number; read: boolean }> = [
+        { state: "pending", maxPages: MAX_PAGES, read: false },
+        { state: "done", maxPages: 1, read: true },
+      ];
       const items: FetchedItem[] = [];
-      for (const raw of body) {
+      for (const list of lists) {
+        let body: unknown;
         try {
-          items.push(toFetchedItem(raw as GitlabTodo));
-        } catch {
-          // One malformed todo must not kill the whole fetch.
+          // perPage + maxPages cap each fetch; gitbeaker follows the
+          // pagination headers under the hood.
+          body = await api.TodoLists.all({
+            state: list.state,
+            perPage: PER_PAGE,
+            maxPages: list.maxPages,
+          });
+        } catch (error) {
+          throw toFriendlyError(error, context(baseUrl));
+        }
+        if (!Array.isArray(body)) continue;
+        for (const raw of body) {
+          try {
+            items.push({ ...toFetchedItem(raw as GitlabTodo), upstreamRead: list.read });
+          } catch {
+            // One malformed todo must not kill the whole fetch.
+          }
         }
       }
       return items;

@@ -7,10 +7,17 @@ import type {
   InboxItem,
   ProviderId,
 } from "../shared/types";
-import type { FetchedItem } from "../providers/types";
-import type { Store } from "./store";
+import type { FetchedItem, ProviderClient } from "../providers/types";
+import type { Store, StoredItem } from "./store";
 
 const SYNC_INTERVAL_MS = 60_000;
+
+// The most items one fetch can return, per provider (pages × 50 in
+// src/providers/github.ts and gitlab.ts: github 2 pages, gitlab 2 pending
+// + 1 done). A fetch that hits its cap can't prove an item disappeared
+// upstream — it may just be beyond the cap — so the absence-means-read rule
+// below is skipped for capped fetches.
+const FETCH_CAP: Record<ProviderId, number> = { github: 100, gitlab: 150 };
 
 export interface SyncEngine {
   getState(): AppState;
@@ -35,8 +42,12 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function createSyncEngine(store: Store, emit: (state: AppState) => void): SyncEngine {
-  const providers = createProviders();
+export function createSyncEngine(
+  store: Store,
+  emit: (state: AppState) => void,
+  // Injectable for tests; the app uses the real registry.
+  providers: Record<ProviderId, ProviderClient> = createProviders(),
+): SyncEngine {
   const providerIds = Object.keys(providers) as ProviderId[];
 
   const accounts = new Map<ProviderId, AccountState>();
@@ -50,31 +61,18 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
     );
   }
 
-  // Seed from the cache so the inbox isn't empty on relaunch before first sync.
-  const itemsByProvider = new Map<ProviderId, FetchedItem[]>();
-  for (const item of store.getCachedItems()) {
-    const list = itemsByProvider.get(item.provider) ?? [];
-    list.push(item);
-    itemsByProvider.set(item.provider, list);
-  }
-
   let lastSyncAt: string | null = null;
   let syncing = false;
   let inFlight: Promise<void> | null = null;
   const chrome: AppChrome = { accentColor: null, launchAtLogin: false, glassEnabled: false };
 
-  function allFetchedItems(): FetchedItem[] {
-    const all: FetchedItem[] = [];
-    for (const list of itemsByProvider.values()) all.push(...list);
-    return all;
+  function toInboxItem(stored: StoredItem): InboxItem {
+    const { firstSeenAt: _first, lastSeenUpstreamAt: _last, ...item } = stored;
+    return item;
   }
 
   function getState(): AppState {
-    const readIds = store.getReadIds();
-    const items: InboxItem[] = allFetchedItems().map((it) => ({
-      ...it,
-      read: readIds.has(it.id),
-    }));
+    const items = store.getItems().map(toInboxItem);
     items.sort((a, b) => {
       if (a.isMention !== b.isMention) return a.isMention ? -1 : 1;
       return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
@@ -111,7 +109,7 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
     const release = () => liveNotifications.delete(notification);
     notification.on("click", () => {
       void shell.openExternal(item.url);
-      store.addReadIds([item.id]);
+      store.markRead([item.id]);
       emitState();
       release();
     });
@@ -124,9 +122,9 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
     syncing = true;
     emitState();
 
-    // Very first sync ever: seed seenIds without notifying.
-    const firstRun = store.getSeenIds().size === 0;
-    const fetchedNow: FetchedItem[] = [];
+    // Very first sync ever (empty collection): seed without notifying.
+    const firstRun = store.getItems().length === 0;
+    const newIds: string[] = [];
 
     await Promise.all(
       providerIds.map(async (id) => {
@@ -134,25 +132,40 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
         if (!stored) return;
         const account = accounts.get(id)!;
         try {
-          const items = await providers[id].fetchItems(stored.config);
-          itemsByProvider.set(id, items);
-          fetchedNow.push(...items);
+          const fetched = await providers[id].fetchItems(stored.config);
           delete account.error;
+
+          // Reconcile, never replace: the collection is the app's own.
+          newIds.push(...store.upsertItems(fetched));
+
+          // Items upstream stopped returning (GitHub's /notifications only
+          // lists unread threads, for one) were handled there: mark them
+          // read locally. Only a successful, uncapped fetch proves absence.
+          if (fetched.length < FETCH_CAP[id]) {
+            const fetchedIds = new Set(fetched.map((item) => item.id));
+            const absent = store
+              .getItems()
+              .filter((item) => item.provider === id && !item.read && !fetchedIds.has(item.id))
+              .map((item) => item.id);
+            if (absent.length > 0) store.markRead(absent);
+          }
         } catch (err) {
-          // Keep this provider's previous items; just surface the error.
+          // Keep this provider's items untouched; just surface the error.
           account.error = errorMessage(err);
         }
       }),
     );
 
-    if (!firstRun) {
-      const seenIds = store.getSeenIds();
-      for (const item of fetchedNow) {
-        if (item.isMention && !seenIds.has(item.id)) notify(item);
+    if (!firstRun && newIds.length > 0) {
+      const byId = new Map(store.getItems().map((item) => [item.id, item]));
+      for (const id of newIds) {
+        const item = byId.get(id);
+        // Items that arrive already handled upstream don't deserve a ping.
+        if (item?.isMention && !item.read) notify(item);
       }
     }
-    store.addSeenIds(fetchedNow.map((item) => item.id));
-    store.setCachedItems(allFetchedItems());
+
+    store.prune();
 
     lastSyncAt = new Date().toISOString();
     syncing = false;
@@ -193,21 +206,20 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
 
     disconnectAccount(provider) {
       store.deleteAccount(provider);
-      itemsByProvider.delete(provider);
-      store.setCachedItems(allFetchedItems());
+      store.deleteProviderItems(provider);
       accounts.set(provider, { provider, connected: false });
       emitState();
     },
 
     openItem(id) {
-      const item = allFetchedItems().find((it) => it.id === id);
+      const item = store.getItems().find((it) => it.id === id);
       if (item) void shell.openExternal(item.url);
-      store.addReadIds([id]);
+      store.markRead([id]);
       emitState();
     },
 
     markAllRead() {
-      store.addReadIds(allFetchedItems().map((item) => item.id));
+      store.markAllRead();
       emitState();
     },
 
