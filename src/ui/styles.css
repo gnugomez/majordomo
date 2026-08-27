@@ -320,8 +320,8 @@ button:focus-visible,
 }
 
 /* Collapsible section header: a full-row disclosure button — caption left,
-   muted count and chevron trailing. Sized and rounded like the item rows so
-   its hover/press highlight aligns with theirs. */
+   muted count and chevron trailing. Sized and rounded like the item rows.
+   No hover highlight (unlike rows); press feedback only. */
 .section-header {
   display: flex;
   align-items: center;
@@ -331,10 +331,6 @@ button:focus-visible,
   padding: 7px 10px;
   border-radius: 8px;
   text-align: left;
-}
-
-.section-header:hover {
-  background: var(--hover);
 }
 
 .section-header:active {
