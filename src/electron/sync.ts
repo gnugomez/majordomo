@@ -100,14 +100,23 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
     emit(getState());
   }
 
+  // Strong references to shown notifications: Electron only delivers the
+  // "click" event while the Notification object is alive, and a local that
+  // goes out of scope gets garbage-collected — silently dropping clicks.
+  const liveNotifications = new Set<Notification>();
+
   function notify(item: FetchedItem): void {
     if (!Notification.isSupported()) return;
     const notification = new Notification({ title: item.repo, body: item.title });
+    const release = () => liveNotifications.delete(notification);
     notification.on("click", () => {
       void shell.openExternal(item.url);
       store.addReadIds([item.id]);
       emitState();
+      release();
     });
+    notification.on("close", release);
+    liveNotifications.add(notification);
     notification.show();
   }
 
