@@ -5,10 +5,8 @@ MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
 
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with groups per kind
-- 🔑 Sign in by pasting a personal access token — GitHub needs the
-  `notifications` scope, GitLab needs `read_api`
-- 🔒 Everything stays on your machine. Read-only, no backend, tokens in the
-  OS keychain
+- 🔒 Everything stays on your machine — read-only, no backend, tokens in
+  the OS keychain
 
 ## Install
 
@@ -20,6 +18,15 @@ From the [latest release](https://github.com/gnugomez/majordomo/releases):
   you want notifications.
 - **Windows**: run `Majordomo-Setup.exe`.
 - **Linux**: no prebuilt package yet — build it yourself (below).
+
+## Tokens
+
+Sign in from the settings pane by pasting a personal access token:
+
+| Provider | Scope |
+| --- | --- |
+| GitHub | `notifications` (classic token) |
+| GitLab (self-hosted) | `read_api` |
 
 ## Build
 
