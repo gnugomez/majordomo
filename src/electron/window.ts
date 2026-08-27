@@ -6,7 +6,12 @@ import { IPC } from "../shared/ipc";
 
 const POPOVER_WIDTH = 380;
 const POPOVER_HEIGHT = 540;
+const MIN_POPOVER_HEIGHT = 140;
 const TRAY_GAP = 4;
+
+// Whether the popover was last anchored above the tray (bottom taskbar):
+// resizes must then keep the bottom edge fixed instead of the top.
+let anchoredAbove = false;
 
 // Plain show()/hide(). An always-ordered window driven by opacity (to dodge
 // macOS's window-show animation) was tried and rolled back: with the Liquid
@@ -98,7 +103,7 @@ function applyGlass(win: BrowserWindow): void {
  * (macOS menu bar), above a bottom tray (Windows taskbar), near the cursor
  * when the DE reports no tray bounds at all (some Linux AppIndicator hosts) —
  * always clamped inside the work area of the display it lands on. */
-function popoverPosition(trayBounds: Rectangle): { x: number; y: number } {
+function popoverPosition(trayBounds: Rectangle, height: number): { x: number; y: number } {
   const hasTrayBounds = trayBounds.width > 0 || trayBounds.height > 0;
   const anchor = hasTrayBounds
     ? {
@@ -110,6 +115,7 @@ function popoverPosition(trayBounds: Rectangle): { x: number; y: number } {
 
   let x = Math.round(anchor.x - POPOVER_WIDTH / 2);
   let y: number;
+  anchoredAbove = false;
   if (!hasTrayBounds) {
     y = anchor.y + TRAY_GAP;
   } else if (anchor.y <= area.y + area.height / 2) {
@@ -117,20 +123,34 @@ function popoverPosition(trayBounds: Rectangle): { x: number; y: number } {
     y = Math.round(trayBounds.y + trayBounds.height + TRAY_GAP);
   } else {
     // Tray in the bottom half (Windows taskbar): open above it.
-    y = Math.round(trayBounds.y - TRAY_GAP - POPOVER_HEIGHT);
+    y = Math.round(trayBounds.y - TRAY_GAP - height);
+    anchoredAbove = true;
   }
 
   x = Math.min(Math.max(x, area.x), area.x + area.width - POPOVER_WIDTH);
-  y = Math.min(Math.max(y, area.y), area.y + area.height - POPOVER_HEIGHT);
+  y = Math.min(Math.max(y, area.y), area.y + area.height - height);
   return { x, y };
 }
 
 export function showPopover(win: BrowserWindow, trayBounds: Rectangle): void {
-  const { x, y } = popoverPosition(trayBounds);
+  const { x, y } = popoverPosition(trayBounds, win.getBounds().height);
   win.setPosition(x, y, false);
   win.show();
   win.focus();
   win.webContents.send(IPC.popoverVisibility, true);
+}
+
+/** Resizes the popover to hug the renderer's content, like native menu
+ * extras: clamped, keeping the tray-adjacent edge fixed, animated while
+ * visible (macOS ignores the flag elsewhere). */
+export function resizePopover(win: BrowserWindow, contentHeight: number): void {
+  const height = Math.round(
+    Math.min(POPOVER_HEIGHT, Math.max(MIN_POPOVER_HEIGHT, contentHeight)),
+  );
+  const bounds = win.getBounds();
+  if (bounds.height === height) return;
+  const y = anchoredAbove ? bounds.y + bounds.height - height : bounds.y;
+  win.setBounds({ x: bounds.x, y, width: bounds.width, height }, win.isVisible());
 }
 
 export function hidePopover(win: BrowserWindow): void {

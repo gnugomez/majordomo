@@ -5,7 +5,13 @@ import type { AccountConfig, AppState, ProviderId } from "../shared/types";
 import { createStore } from "./store";
 import { createSyncEngine, type SyncEngine } from "./sync";
 import { createTray } from "./tray";
-import { createPopover, defaultGlassEnabled, showPopover, togglePopover } from "./window";
+import {
+  createPopover,
+  defaultGlassEnabled,
+  resizePopover,
+  showPopover,
+  togglePopover,
+} from "./window";
 
 // Squirrel.Windows install/update/uninstall events relaunch the app with a
 // --squirrel-* flag; the module creates/removes shortcuts and we must exit
@@ -166,6 +172,9 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle(IPC.setGlassEnabled, (_event, enabled: boolean) => {
       store.setGlassEnabled(enabled);
       engine.updateChrome({ glassEnabled: enabled });
+    });
+    ipcMain.handle(IPC.setPopoverHeight, (_event, px: number) => {
+      if (Number.isFinite(px)) resizePopover(win, px);
     });
 
     const refreshAccent = setupAccent(engine);

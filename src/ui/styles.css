@@ -22,7 +22,6 @@
   --warn-bg: rgba(255, 159, 10, 0.15);
   --warn-dot: #ff9500;
   --ok: #248a3d;
-  --scrollbar: rgba(0, 0, 0, 0.3);
   --fallback-bg: #f4f4f6;
   /* Item states, GitHub's palette. */
   --state-open: #1f883d;
@@ -50,7 +49,6 @@
     --warn-bg: rgba(255, 159, 10, 0.15);
     --warn-dot: #ff9f0a;
     --ok: #32d74b;
-    --scrollbar: rgba(255, 255, 255, 0.32);
     --fallback-bg: #262628;
     --state-open: #3fb950;
     --state-merged: #a371f7;
@@ -245,19 +243,10 @@ button:focus-visible,
   overscroll-behavior: contain;
 }
 
+/* No scrollbar at all, on any platform — scrolling still works via
+   trackpad/wheel, the content just never shifts or shows a bar. */
 .pane::-webkit-scrollbar {
-  width: 9px;
-}
-
-.pane::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.pane::-webkit-scrollbar-thumb {
-  background: var(--scrollbar);
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  display: none;
 }
 
 #inbox {

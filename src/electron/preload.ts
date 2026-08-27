@@ -14,6 +14,7 @@ const api: MajordomoApi = {
   refresh: () => ipcRenderer.invoke(IPC.refresh),
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke(IPC.setLaunchAtLogin, enabled),
   setGlassEnabled: (enabled) => ipcRenderer.invoke(IPC.setGlassEnabled, enabled),
+  setPopoverHeight: (px) => ipcRenderer.invoke(IPC.setPopoverHeight, px),
   onStateUpdated: (cb: (state: AppState) => void) => {
     const listener = (_event: IpcRendererEvent, state: AppState) => cb(state);
     ipcRenderer.on(IPC.stateUpdated, listener);
