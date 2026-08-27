@@ -3,6 +3,10 @@
 A little menu bar app that puts your GitHub and GitLab stuff — issues, PRs,
 MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
 
+<p align="center">
+  <img src=".github/screenshot.png" width="380" alt="The Majordomo popover" />
+</p>
+
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with groups per kind
 - 🔒 Everything stays on your machine — read-only, no backend, tokens in
