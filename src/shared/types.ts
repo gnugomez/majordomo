@@ -49,9 +49,13 @@ export interface AppState {
   /** ISO 8601, or null if no sync has completed yet. */
   lastSyncAt: string | null;
   syncing: boolean;
-  /** The macOS system accent color as #rrggbb, or null when unavailable. */
+  /** The system accent color as #rrggbb, or null when unavailable. */
   accentColor: string | null;
   launchAtLogin: boolean;
+  /** Host OS, so the UI can adapt (login-item support, wording). */
+  platform: "darwin" | "win32" | "linux";
+  /** Translucent background (Liquid Glass / acrylic / compositor blur). */
+  glassEnabled: boolean;
 }
 
 // The provider contract (ProviderClient, FetchedItem) lives in

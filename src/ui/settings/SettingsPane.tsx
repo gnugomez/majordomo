@@ -27,6 +27,7 @@ interface SettingsPaneProps {
   onConnect: (provider: ProviderId, config: AccountConfig) => void;
   onDisconnect: (provider: ProviderId) => void;
   onToggleLaunchAtLogin: (next: boolean) => void;
+  onToggleGlassEnabled: (next: boolean) => void;
 }
 
 export function SettingsPane({
@@ -36,6 +37,7 @@ export function SettingsPane({
   onConnect,
   onDisconnect,
   onToggleLaunchAtLogin,
+  onToggleGlassEnabled,
 }: SettingsPaneProps) {
   // Which provider's inline form is open (one at a time). Collapsed forms
   // keep their typed values — the form components stay mounted.
@@ -73,7 +75,13 @@ export function SettingsPane({
         })}
       </section>
       <h3 className="settings-caption">General</h3>
-      <GeneralGroup launchAtLogin={state.launchAtLogin} onToggleLaunchAtLogin={onToggleLaunchAtLogin} />
+      <GeneralGroup
+        platform={state.platform}
+        launchAtLogin={state.launchAtLogin}
+        glassEnabled={state.glassEnabled}
+        onToggleLaunchAtLogin={onToggleLaunchAtLogin}
+        onToggleGlassEnabled={onToggleGlassEnabled}
+      />
     </section>
   );
 }

@@ -1,23 +1,25 @@
 # Majordomo 📬
 
-A little macOS menu bar app that puts your GitHub and GitLab stuff — issues,
-PRs, MRs, mentions — in one inbox.
+A little menu bar app that puts your GitHub and GitLab stuff — issues, PRs,
+MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
 
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with groups per kind
-- 🪟 Native look: Liquid Glass, your accent color, light and dark
 - 🔑 Sign in by pasting a personal access token — GitHub needs the
   `notifications` scope, GitLab needs `read_api`
-- 🔒 Everything stays on your Mac. Read-only, no backend, tokens in the
-  keychain
+- 🔒 Everything stays on your machine. Read-only, no backend, tokens in the
+  OS keychain
 
 ## Install
 
-Grab `Majordomo-darwin-arm64.zip` from the
-[latest release](https://github.com/gnugomez/majordomo/releases), unzip, and
-drop `Majordomo.app` into `/Applications`. First launch: right-click → Open
-(the app isn't notarized), and enable Majordomo under System Settings →
-Notifications if you want notifications.
+From the [latest release](https://github.com/gnugomez/majordomo/releases):
+
+- **macOS**: download the `.dmg` and drag `Majordomo.app` into
+  `/Applications`. First launch: right-click → Open (the app isn't
+  notarized), and enable Majordomo under System Settings → Notifications if
+  you want notifications.
+- **Windows**: run `Majordomo-Setup.exe`.
+- **Linux**: no prebuilt package yet — build it yourself (below).
 
 ## Build
 

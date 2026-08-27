@@ -18,6 +18,8 @@ const EMPTY_STATE: AppState = {
   syncing: false,
   accentColor: null,
   launchAtLogin: false,
+  platform: "darwin",
+  glassEnabled: true,
 };
 
 export interface AppActions {
@@ -27,6 +29,7 @@ export interface AppActions {
   connect(provider: ProviderId, config: AccountConfig): void;
   disconnect(provider: ProviderId): void;
   setLaunchAtLogin(next: boolean): void;
+  setGlassEnabled(next: boolean): void;
 }
 
 export interface AppStateHook {
@@ -135,6 +138,11 @@ export function useAppState(): AppStateHook {
       // Optimistic flip; the pushed state is authoritative.
       setState((s) => ({ ...s, launchAtLogin: next }));
       void api?.setLaunchAtLogin(next);
+    },
+    setGlassEnabled(next) {
+      // Optimistic flip; the pushed state is authoritative.
+      setState((s) => ({ ...s, glassEnabled: next }));
+      void api?.setGlassEnabled(next);
     },
   };
 

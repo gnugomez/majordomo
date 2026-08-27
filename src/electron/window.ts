@@ -1,4 +1,5 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, screen } from "electron";
+import { release } from "node:os";
 import { join } from "node:path";
 import type { Rectangle } from "electron";
 import { IPC } from "../shared/ipc";
@@ -12,8 +13,30 @@ const TRAY_GAP = 4;
 // Glass view attached, the compositor sometimes flashed the wrong background
 // color on re-show.
 
-/** Creates the popover window that anchors under the tray icon. */
+/** Windows build number (e.g. 22631 for 11 23H2), 0 elsewhere. */
+function windowsBuild(): number {
+  if (process.platform !== "win32") return 0;
+  return Number(release().split(".")[2]) || 0;
+}
+
+/** Whether the translucent background should start enabled on this machine.
+ * The toggle itself is renderer-side paint — main only persists the flag. */
+export function defaultGlassEnabled(): boolean {
+  switch (process.platform) {
+    case "darwin":
+      return true;
+    case "win32":
+      // Acrylic needs Windows 11 (build 22000+).
+      return windowsBuild() >= 22000;
+    default:
+      // Linux: transparency is compositor roulette — opaque by default.
+      return false;
+  }
+}
+
+/** Creates the popover window that anchors to the tray icon. */
 export function createPopover(): BrowserWindow {
+  const acrylic = process.platform === "win32" && windowsBuild() >= 22000;
   const win = new BrowserWindow({
     width: POPOVER_WIDTH,
     height: POPOVER_HEIGHT,
@@ -25,9 +48,13 @@ export function createPopover(): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    // Transparent window; the Liquid Glass view is attached behind the
-    // page in applyGlass() once the renderer has loaded.
-    transparent: true,
+    // darwin: transparent window; the Liquid Glass view is attached behind
+    // the page in applyGlass() once the renderer has loaded.
+    // win32: backgroundMaterial wants a non-transparent frameless window;
+    // on builds < 22000 there is no material and the renderer paints opaque.
+    // linux: transparent best-effort — compositors like KDE can blur it.
+    transparent: process.platform !== "win32",
+    ...(acrylic ? { backgroundMaterial: "acrylic" as const } : {}),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -38,7 +65,9 @@ export function createPopover(): BrowserWindow {
   win.setAlwaysOnTop(true, "floating");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.on("blur", () => hidePopover(win));
-  win.webContents.once("did-finish-load", () => applyGlass(win));
+  if (process.platform === "darwin") {
+    win.webContents.once("did-finish-load", () => applyGlass(win));
+  }
   void win.loadFile(join(__dirname, "../renderer/index.html"));
   return win;
 }
@@ -65,9 +94,39 @@ function applyGlass(win: BrowserWindow): void {
   }
 }
 
+/** Where to place the popover for the given tray bounds: under a top tray
+ * (macOS menu bar), above a bottom tray (Windows taskbar), near the cursor
+ * when the DE reports no tray bounds at all (some Linux AppIndicator hosts) —
+ * always clamped inside the work area of the display it lands on. */
+function popoverPosition(trayBounds: Rectangle): { x: number; y: number } {
+  const hasTrayBounds = trayBounds.width > 0 || trayBounds.height > 0;
+  const anchor = hasTrayBounds
+    ? {
+        x: Math.round(trayBounds.x + trayBounds.width / 2),
+        y: Math.round(trayBounds.y + trayBounds.height / 2),
+      }
+    : screen.getCursorScreenPoint();
+  const area = screen.getDisplayNearestPoint(anchor).workArea;
+
+  let x = Math.round(anchor.x - POPOVER_WIDTH / 2);
+  let y: number;
+  if (!hasTrayBounds) {
+    y = anchor.y + TRAY_GAP;
+  } else if (anchor.y <= area.y + area.height / 2) {
+    // Tray in the top half (menu bar, top taskbar): open below it.
+    y = Math.round(trayBounds.y + trayBounds.height + TRAY_GAP);
+  } else {
+    // Tray in the bottom half (Windows taskbar): open above it.
+    y = Math.round(trayBounds.y - TRAY_GAP - POPOVER_HEIGHT);
+  }
+
+  x = Math.min(Math.max(x, area.x), area.x + area.width - POPOVER_WIDTH);
+  y = Math.min(Math.max(y, area.y), area.y + area.height - POPOVER_HEIGHT);
+  return { x, y };
+}
+
 export function showPopover(win: BrowserWindow, trayBounds: Rectangle): void {
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - POPOVER_WIDTH / 2);
-  const y = Math.round(trayBounds.y + trayBounds.height + TRAY_GAP);
+  const { x, y } = popoverPosition(trayBounds);
   win.setPosition(x, y, false);
   win.show();
   win.focus();

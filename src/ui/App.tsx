@@ -70,8 +70,15 @@ export function App() {
 
   const settingsOpen = pane === "settings";
 
+  // Without the translucent material the page paints its own solid, rounded
+  // panel (the window itself stays transparent).
+  const appClass =
+    [settingsOpen && "settings-open", !state.glassEnabled && "opaque"]
+      .filter(Boolean)
+      .join(" ") || undefined;
+
   return (
-    <div id="app" className={settingsOpen ? "settings-open" : undefined}>
+    <div id="app" className={appClass}>
       <Header
         syncing={state.syncing}
         lastSyncAt={state.lastSyncAt}
@@ -97,6 +104,7 @@ export function App() {
           onConnect={actions.connect}
           onDisconnect={actions.disconnect}
           onToggleLaunchAtLogin={actions.setLaunchAtLogin}
+          onToggleGlassEnabled={actions.setGlassEnabled}
         />
       </div>
     </div>

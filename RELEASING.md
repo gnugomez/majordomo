@@ -13,8 +13,10 @@ there are no release side-files to maintain.
    unreleased: it bumps `package.json`, updates `CHANGELOG.md`, and rewrites
    itself as more commits land.
 3. **Merging that PR cuts the release.** The workflow tags `vX.Y.Z`, creates
-   the GitHub release with the changelog notes, then a macOS runner packages
-   `Majordomo.app`, signs it, and attaches `Majordomo-darwin-arm64.zip`.
+   the GitHub release with the changelog notes, then a macOS runner packages,
+   signs, and attaches `Majordomo-arm64.dmg`, and a Windows runner builds and
+   attaches `Majordomo-Setup.exe`. Linux has no prebuilt artifact — it's
+   self-build (`npm run package:linux`).
 
 Release cadence is simply: merge the release PR whenever you want to ship.
 

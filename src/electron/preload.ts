@@ -13,6 +13,7 @@ const api: MajordomoApi = {
   markAllRead: () => ipcRenderer.invoke(IPC.markAllRead),
   refresh: () => ipcRenderer.invoke(IPC.refresh),
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke(IPC.setLaunchAtLogin, enabled),
+  setGlassEnabled: (enabled) => ipcRenderer.invoke(IPC.setGlassEnabled, enabled),
   onStateUpdated: (cb: (state: AppState) => void) => {
     const listener = (_event: IpcRendererEvent, state: AppState) => cb(state);
     ipcRenderer.on(IPC.stateUpdated, listener);

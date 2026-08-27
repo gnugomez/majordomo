@@ -9,7 +9,7 @@ await Promise.all([
     bundle: true,
     platform: "node",
     format: "cjs",
-    external: ["electron", "electron-liquid-glass"],
+    external: ["electron", "electron-liquid-glass", "@napi-rs/keyring"],
     outfile: "dist/main/index.js",
   }),
   build({

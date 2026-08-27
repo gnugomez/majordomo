@@ -28,6 +28,7 @@ export interface SyncEngine {
 export interface AppChrome {
   accentColor: string | null;
   launchAtLogin: boolean;
+  glassEnabled: boolean;
 }
 
 function errorMessage(err: unknown): string {
@@ -60,7 +61,7 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
   let lastSyncAt: string | null = null;
   let syncing = false;
   let inFlight: Promise<void> | null = null;
-  const chrome: AppChrome = { accentColor: null, launchAtLogin: false };
+  const chrome: AppChrome = { accentColor: null, launchAtLogin: false, glassEnabled: false };
 
   function allFetchedItems(): FetchedItem[] {
     const all: FetchedItem[] = [];
@@ -85,6 +86,8 @@ export function createSyncEngine(store: Store, emit: (state: AppState) => void):
       syncing,
       accentColor: chrome.accentColor,
       launchAtLogin: chrome.launchAtLogin,
+      platform: process.platform as AppState["platform"],
+      glassEnabled: chrome.glassEnabled,
     };
   }
 

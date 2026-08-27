@@ -83,6 +83,16 @@ body.no-bridge {
   background: var(--fallback-bg);
 }
 
+/* Opaque mode ("Translucent background" off, or platforms without a glass
+   material): the page paints its own solid, rounded panel on the transparent
+   window. Radius matches the native glass view (GLASS_CORNER_RADIUS). The
+   alpha-based tokens read the same over this fill as over the material. */
+#app.opaque {
+  background: var(--fallback-bg);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
 button {
   font: inherit;
   color: inherit;
