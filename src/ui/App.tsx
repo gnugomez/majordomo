@@ -54,18 +54,30 @@ export function App() {
     []
   );
 
-  // The main process focuses the window on every popover open, which lands
-  // keyboard focus on the first header button and paints a focus ring. Native
+  // The main process focuses the window on every popover open, which can land
+  // keyboard focus on the first header button and paint a focus ring. Native
   // menus open focus-clean; drop the ring unless focus is in a text field.
+  // Chromium sometimes (re)assigns focus just after the window-focus event
+  // and again around show, so scrub on both signals plus a following tick.
   useEffect(() => {
-    const onFocus = (): void => {
+    const scrub = (): void => {
       const active = document.activeElement;
       if (active instanceof HTMLElement && !(active instanceof HTMLInputElement)) {
         active.blur();
       }
     };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    const scrubNowAndNext = (): void => {
+      scrub();
+      window.setTimeout(scrub, 0);
+    };
+    window.addEventListener("focus", scrubNowAndNext);
+    const unsubscribe = window.majordomo?.onPopoverVisibility((visible) => {
+      if (visible) scrubNowAndNext();
+    });
+    return () => {
+      window.removeEventListener("focus", scrubNowAndNext);
+      unsubscribe?.();
+    };
   }, []);
 
   const settingsOpen = pane === "settings";
