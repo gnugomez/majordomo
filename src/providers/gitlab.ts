@@ -48,8 +48,12 @@ interface GitlabTodo {
     /** Present on MergeRequest targets; older instances only send work_in_progress. */
     draft?: boolean;
     work_in_progress?: boolean;
+    /** Whoever opened the issue/MR. */
+    author?: { username?: string } | null;
   } | null;
   project?: { path_with_namespace?: string } | null;
+  /** Whoever triggered the todo (fallback author when the target lacks one). */
+  author?: { username?: string } | null;
   body?: string | null;
 }
 
@@ -170,6 +174,8 @@ function toFetchedItem(todo: GitlabTodo): FetchedItem {
   // fields over the stored item, and a missing key keeps the previous state.
   const state = toItemState(todo);
   if (state !== undefined) item.state = state;
+  const author = todo.target?.author?.username ?? todo.author?.username;
+  if (author) item.author = author;
   return item;
 }
 

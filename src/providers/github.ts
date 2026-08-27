@@ -173,6 +173,18 @@ interface GithubSubject {
   merged?: boolean;
   merged_at?: string | null;
   draft?: boolean;
+  user?: { login?: string } | null;
+}
+
+/** What one subject lookup teaches us; cached per thread id + updated_at. */
+interface Enrichment {
+  state?: ItemState;
+  author?: string;
+}
+
+function applyEnrichment(item: FetchedItem, known: Enrichment): void {
+  if (known.state !== undefined) item.state = known.state;
+  if (known.author !== undefined) item.author = known.author;
 }
 
 /** Maps a subject payload to the item's lifecycle state, if determinable. */
@@ -197,20 +209,20 @@ function toItemState(subjectType: string, subject: GithubSubject): ItemState | u
 async function enrichStates(
   octokit: Octokit,
   entries: Array<{ item: FetchedItem; thread: GithubNotification }>,
-  cache: Map<string, ItemState | undefined>
+  cache: Map<string, Enrichment>
 ): Promise<void> {
   // Rebuilt from this round's threads so the cache never outgrows the inbox.
-  const nextCache = new Map<string, ItemState | undefined>();
+  const nextCache = new Map<string, Enrichment>();
   const pending: Array<{ item: FetchedItem; thread: GithubNotification; key: string }> = [];
 
   for (const { item, thread } of entries) {
     // Discussions, security alerts, etc. carry no subject URL — no state.
     if (!thread.subject.url) continue;
     const key = `${thread.id}:${thread.updated_at}`;
-    if (cache.has(key)) {
-      const known = cache.get(key);
+    const known = cache.get(key);
+    if (known !== undefined) {
       nextCache.set(key, known);
-      if (known !== undefined) item.state = known;
+      applyEnrichment(item, known);
     } else {
       pending.push({ item, thread, key });
     }
@@ -223,18 +235,22 @@ async function enrichStates(
   async function worker(): Promise<void> {
     while (cursor < batch.length) {
       const job = batch[cursor++];
-      let state: ItemState | undefined;
+      let known: Enrichment;
       try {
         // subject.url is absolute, so request() uses it verbatim.
         const response = await octokit.request(`GET ${job.thread.subject.url}`, {
           request: requestOptions(),
         });
-        state = toItemState(job.thread.subject.type, response.data as GithubSubject);
+        const subject = response.data as GithubSubject;
+        known = {
+          state: toItemState(job.thread.subject.type, subject),
+          author: subject.user?.login ?? undefined,
+        };
       } catch {
-        state = undefined;
+        known = {};
       }
-      nextCache.set(job.key, state);
-      if (state !== undefined) job.item.state = state;
+      nextCache.set(job.key, known);
+      applyEnrichment(job.item, known);
     }
   }
   await Promise.all(
@@ -242,12 +258,12 @@ async function enrichStates(
   );
 
   cache.clear();
-  for (const [key, state] of nextCache) cache.set(key, state);
+  for (const [key, known] of nextCache) cache.set(key, known);
 }
 
 export function createGithubClient(): ProviderClient {
   // Lives as long as the client (the app's lifetime); see enrichStates.
-  const stateCache = new Map<string, ItemState | undefined>();
+  const stateCache = new Map<string, Enrichment>();
 
   return {
     id: "github",

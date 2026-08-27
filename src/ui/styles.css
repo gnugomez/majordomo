@@ -523,6 +523,15 @@ button:focus-visible,
   color: var(--text-3);
 }
 
+/* The author yields before the repo does, and both before time/separators. */
+.row-author {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .capsule {
   flex: none;
   font-size: 10px;

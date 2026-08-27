@@ -28,6 +28,8 @@ export interface InboxItem {
   updatedAt: string;
   /** Absent when the provider couldn't determine it. */
   state?: ItemState;
+  /** Login of whoever wrote the issue/PR/MR, when the provider knows it. */
+  author?: string;
   read: boolean;
 }
 

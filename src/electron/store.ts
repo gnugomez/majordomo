@@ -251,6 +251,10 @@ export function createStore(): Store {
         if (existing) {
           data.items[item.id] = {
             ...item,
+            // Enriched fields can be absent on rounds where the provider
+            // skipped the lookup — never forget what a prior sync learned.
+            state: item.state ?? existing.state,
+            author: item.author ?? existing.author,
             read: existing.read || upstreamRead === true,
             firstSeenAt: existing.firstSeenAt,
             lastSeenUpstreamAt: now,

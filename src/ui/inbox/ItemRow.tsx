@@ -50,6 +50,12 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
         <span className="row-line2">
           <span className="row-meta">
             <span className="row-repo">{item.repo}</span>
+            {item.author && (
+              <>
+                <span className="row-sep">·</span>
+                <span className="row-author">{item.author}</span>
+              </>
+            )}
             <span className="row-sep">·</span>
             <span className="rel-time">{relativeTime(item.updatedAt, now)}</span>
           </span>
