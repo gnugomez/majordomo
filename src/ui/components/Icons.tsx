@@ -151,25 +151,6 @@ export function MarkAllReadIcon() {
   );
 }
 
-/** Settings gear: toothed ring around a hub. */
-export function GearIcon() {
-  return (
-    <Svg>
-      <circle
-        cx="8"
-        cy="8"
-        r="5.6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2.6}
-        strokeDasharray="2.2 2.2"
-        strokeDashoffset={1.1}
-      />
-      <circle cx="8" cy="8" r="3.4" fill="none" stroke="currentColor" strokeWidth={1.5} />
-    </Svg>
-  );
-}
-
 /** Indeterminate spinner (rotated via CSS). */
 export function SpinnerIcon() {
   return (

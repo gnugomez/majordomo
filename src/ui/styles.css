@@ -198,6 +198,26 @@ button:focus-visible,
   opacity: 0.4;
 }
 
+/* The settings control is text, like "Wi-Fi Settings…" in native menus. */
+.header-text-btn {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.header-text-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.header-text-btn:active,
+.header-text-btn.active {
+  background: var(--active);
+  color: var(--text);
+}
+
 /* ---------- Sync-error banner ---------- */
 
 #banner {
