@@ -12,11 +12,12 @@ MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
 
 From the [latest release](https://github.com/gnugomez/majordomo/releases):
 
-- **macOS**: download the `.dmg` and drag `Majordomo.app` into
+- **macOS**: download the `.dmg` for your chip (arm64 for Apple silicon,
+  x64 for Intel) and drag `Majordomo.app` into
   `/Applications`. First launch: right-click → Open (the app isn't
   notarized), and enable Majordomo under System Settings → Notifications if
   you want notifications.
-- **Windows**: run `Majordomo-Setup.exe`.
+- **Windows**: run the `-Setup.exe` for your architecture.
 - **Linux**: no prebuilt package yet — build it yourself (below).
 
 ## Tokens

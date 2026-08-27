@@ -31,11 +31,16 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: rp
 
-  # When a release was just created: build the signed .app and attach a DMG.
+  # When a release was just created: build the signed .app per arch and
+  # attach a DMG for each (the arm64 runner cross-packages x64; the keyring
+  # prebuild for the target arch is force-installed).
   build-macos:
     needs: release-please
     if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: macos-15
+    strategy:
+      matrix:
+        arch: [arm64, x64]
     permissions:
       contents: write
     env:
@@ -48,6 +53,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm install --no-save --force @napi-rs/keyring-darwin-${{ matrix.arch }}
 
       # A stable signing identity (even self-signed) keeps macOS permissions
       # for the app across releases; without the secret we fall back to
@@ -70,12 +76,15 @@ jobs:
           echo "CODESIGN_IDENTITY=Majordomo Dev" >> "$GITHUB_ENV"
 
       - name: Package
-        run: npm run package
+        run: |
+          node scripts/build.mjs
+          node scripts/make-icns.mjs
+          node scripts/package.mjs --platform=darwin --arch=${{ matrix.arch }}
 
       - name: Attach the DMG to the release
         run: |
-          hdiutil create -volname Majordomo -srcfolder release/Majordomo-darwin-arm64/Majordomo.app -ov -format UDZO Majordomo-arm64.dmg
-          gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" Majordomo-arm64.dmg
+          hdiutil create -volname Majordomo -srcfolder "release/Majordomo-darwin-${{ matrix.arch }}/Majordomo.app" -ov -format UDZO "Majordomo-macos-${{ matrix.arch }}.dmg"
+          gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" "Majordomo-macos-${{ matrix.arch }}.dmg"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -85,6 +94,9 @@ jobs:
     needs: release-please
     if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
     permissions:
       contents: write
     steps:
@@ -94,17 +106,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm install --no-save --force @napi-rs/keyring-win32-${{ matrix.arch }}-msvc
+        shell: bash
 
       - name: Package
-        run: npm run package:win
+        run: |
+          node scripts/build.mjs
+          node scripts/package.mjs --platform=win32 --arch=${{ matrix.arch }}
         shell: bash
 
       - name: Build the installer
-        run: node scripts/make-windows-installer.mjs
+        run: node scripts/make-windows-installer.mjs --arch=${{ matrix.arch }}
         shell: bash
 
       - name: Attach the installer to the release
-        run: gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" release/installer/Majordomo-Setup.exe
+        run: gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" "release/installer/Majordomo-windows-${{ matrix.arch }}-Setup.exe"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
