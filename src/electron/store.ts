@@ -81,6 +81,13 @@ export interface Store {
 // external — same pattern as electron-liquid-glass in window.ts). Every call
 // is wrapped: if there is no usable keyring backend, callers fall back to the
 // safeStorage-in-JSON path.
+//
+// The keyring is only used on Windows/Linux. On macOS, keychain item ACLs
+// pin "Always Allow" to the exact build (its code hash) for apps without an
+// Apple-issued certificate, so every rebuild re-prompts — safeStorage
+// (Chromium Safe Storage, still Keychain-derived encryption) is prompt-free
+// across rebuilds and is what macOS uses instead.
+const USE_KEYRING = process.platform !== "darwin";
 
 interface KeyringEntry {
   setPassword(password: string): void;
@@ -189,21 +196,45 @@ export function createStore(): Store {
     }
   }
 
-  // Migrate JSON-stored tokens into the OS keychain. The token is stripped
-  // from the JSON only after the keyring write was confirmed by a read-back;
-  // on any failure it stays where it is, so a token is never lost.
-  for (const [provider, stored] of Object.entries(data.accounts) as [
-    ProviderId,
-    StoredAccount,
-  ][]) {
-    if (stored.token === undefined) continue;
-    const token = decodeToken(stored);
-    if (token === undefined) continue;
-    if (keyringWrite(provider, token)) {
-      delete stored.token;
-      delete stored.tokenEncrypted;
+  function encodeToken(stored: StoredAccount, token: string): void {
+    const encrypt = safeStorage.isEncryptionAvailable();
+    stored.token = encrypt ? safeStorage.encryptString(token).toString("base64") : token;
+    stored.tokenEncrypted = encrypt;
+  }
+
+  if (USE_KEYRING) {
+    // Migrate JSON-stored tokens into the OS keyring. The token is stripped
+    // from the JSON only after the write was confirmed by a read-back; on
+    // any failure it stays where it is, so a token is never lost.
+    for (const [provider, stored] of Object.entries(data.accounts) as [
+      ProviderId,
+      StoredAccount,
+    ][]) {
+      if (stored.token === undefined) continue;
+      const token = decodeToken(stored);
+      if (token === undefined) continue;
+      if (keyringWrite(provider, token)) {
+        delete stored.token;
+        delete stored.tokenEncrypted;
+        migrated = true;
+        console.log(`majordomo: migrated ${provider} token to the OS keychain`);
+      }
+    }
+  } else {
+    // macOS: tokens that a previous version put in the keychain move back
+    // into safeStorage-encrypted JSON (one final access prompt, then never
+    // again). The keychain entry is removed only after the JSON write.
+    for (const [provider, stored] of Object.entries(data.accounts) as [
+      ProviderId,
+      StoredAccount,
+    ][]) {
+      if (stored.token !== undefined) continue;
+      const token = keyringRead(provider);
+      if (token === undefined) continue;
+      encodeToken(stored, token);
+      keyringDelete(provider);
       migrated = true;
-      console.log(`majordomo: migrated ${provider} token to the OS keychain`);
+      console.log(`majordomo: moved the ${provider} token back to encrypted storage`);
     }
   }
   if (migrated) save();
@@ -220,7 +251,7 @@ export function createStore(): Store {
       if (!stored) return undefined;
       let token = tokenCache.get(provider);
       if (token === undefined) {
-        token = keyringRead(provider) ?? decodeToken(stored);
+        token = (USE_KEYRING ? keyringRead(provider) : undefined) ?? decodeToken(stored);
         if (token === undefined) return undefined;
         tokenCache.set(provider, token);
       }
@@ -229,12 +260,8 @@ export function createStore(): Store {
 
     setAccount(provider, config, username) {
       const account: StoredAccount = { baseUrl: config.baseUrl, username };
-      if (!keyringWrite(provider, config.token)) {
-        const encrypt = safeStorage.isEncryptionAvailable();
-        account.token = encrypt
-          ? safeStorage.encryptString(config.token).toString("base64")
-          : config.token;
-        account.tokenEncrypted = encrypt;
+      if (!USE_KEYRING || !keyringWrite(provider, config.token)) {
+        encodeToken(account, config.token);
       }
       tokenCache.set(provider, config.token);
       data.accounts[provider] = account;
@@ -242,7 +269,7 @@ export function createStore(): Store {
     },
 
     deleteAccount(provider) {
-      keyringDelete(provider);
+      if (USE_KEYRING) keyringDelete(provider);
       tokenCache.delete(provider);
       delete data.accounts[provider];
       save();

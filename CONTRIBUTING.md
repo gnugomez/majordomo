@@ -51,9 +51,11 @@ MAJORDOMO_USERDATA=/tmp/majordomo-dev npm start
   alpha-based colors that work over any wallpaper, light and dark.
 - **Read-only.** The app never writes back to the providers. Read state is
   local.
-- **Local-only.** No backend, no telemetry. Tokens live in the OS keychain
-  (macOS Keychain / Windows Credential Manager / Secret Service), with an
-  encrypted-file fallback where no keychain exists.
+- **Local-only.** No backend, no telemetry. Tokens are stored encrypted:
+  on macOS via Electron's `safeStorage` (Keychain-derived key — per-item
+  keychain ACLs re-prompt on every rebuild of a non-Developer-ID app), on
+  Windows/Linux in the native keyring (Credential Manager / Secret Service),
+  with an encrypted-file fallback where neither exists.
 
 ## Adding a provider
 
