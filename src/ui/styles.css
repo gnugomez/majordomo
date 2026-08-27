@@ -532,6 +532,13 @@ button:focus-visible,
   white-space: nowrap;
 }
 
+/* Hovering a truncated part of the meta line makes it fully readable: it
+   stops yielding space, so its siblings shrink instead. */
+.row-repo:hover,
+.row-author:hover {
+  flex-shrink: 0;
+}
+
 .capsule {
   flex: none;
   font-size: 10px;
