@@ -46,7 +46,10 @@ GitLab needs a PAT with `read_api`.
 
 ## Layout
 
-- `src/shared/` — types and the IPC contract; imported by everything, imports nothing.
-- `src/providers/` — GitHub and GitLab clients normalizing to `FetchedItem`.
-- `src/main/` — Electron main process: tray, popover window, sync loop, storage, notifications.
-- `src/renderer/` — the popover UI (vanilla TypeScript, no framework).
+- `src/shared/` — domain types and the IPC contract; imported by everything, imports nothing.
+- `src/providers/` — one client per provider behind the `ProviderClient` contract
+  (`providers/types.ts`); GitHub on `@octokit/rest`, GitLab on `@gitbeaker/rest`.
+- `src/electron/` — the Electron shell: tray, Liquid Glass popover window, sync
+  loop, encrypted token store, notifications, preload bridge.
+- `src/ui/` — the popover UI in React, one component per file
+  (`inbox/`, `settings/`, `components/`, `hooks/`).

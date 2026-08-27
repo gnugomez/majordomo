@@ -1,14 +1,36 @@
-// GitLab provider client for self-hosted instances. config.baseUrl is the
-// instance origin (e.g. "https://gitlab.example.com") and is required.
+// GitLab provider client for self-hosted instances, built on @gitbeaker/rest.
+// config.baseUrl is the instance origin (e.g. "https://gitlab.example.com")
+// and is required.
 
-import type { AccountConfig, FetchedItem, ProviderClient } from "../shared/types";
-import { getJson, type RequestContext } from "./http";
+import type { Gitlab } from "@gitbeaker/rest";
+import type { AccountConfig } from "../shared/types";
+import type { FetchedItem, ProviderClient } from "./types";
+import {
+  TIMEOUT_MS,
+  invalidJsonMessage,
+  statusMessage,
+  timeoutMessage,
+  unreachableMessage,
+  type RequestContext,
+} from "./errors";
 
 const MAX_PAGES = 2;
+const PER_PAGE = 50;
 
 const MENTION_ACTIONS = new Set(["mentioned", "directly_addressed", "review_requested"]);
 
-// Minimal shapes: only the fields we read.
+// Loaded lazily at the point of use so the library is never evaluated during
+// startup — createProviders() runs in the main process boot path.
+let gitbeakerModule: Promise<typeof import("@gitbeaker/rest")> | undefined;
+
+function loadGitbeaker(): Promise<typeof import("@gitbeaker/rest")> {
+  gitbeakerModule ??= import("@gitbeaker/rest");
+  return gitbeakerModule;
+}
+
+// Minimal shapes: only the fields we read. Gitbeaker's TodoSchema types
+// project and target as required; the API can omit them, so we keep our own
+// honest shape and narrow each entry to it.
 interface GitlabUser {
   username: string;
 }
@@ -49,8 +71,55 @@ function context(baseUrl: string): RequestContext {
   return { service: "GitLab", origin: baseUrl, originIsUserSupplied: true };
 }
 
-function headers(config: AccountConfig): Record<string, string> {
-  return { "PRIVATE-TOKEN": config.token };
+async function createClient(config: AccountConfig, baseUrl: string): Promise<Gitlab> {
+  const { Gitlab } = await loadGitbeaker();
+  return new Gitlab({
+    host: baseUrl,
+    token: config.token,
+    queryTimeout: TIMEOUT_MS,
+  });
+}
+
+/** Reads the HTTP status a GitbeakerRequestError carries in its cause. */
+function requestErrorStatus(error: Error): number | undefined {
+  const cause = (error as { cause?: { response?: { status?: unknown } } }).cause;
+  const status = cause?.response?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
+/** Maps a gitbeaker failure to an Error whose message is fit for the UI. */
+function toFriendlyError(error: unknown, ctx: RequestContext): Error {
+  if (error instanceof Error) {
+    switch (error.name) {
+      case "GitbeakerTimeoutError":
+        // queryTimeout elapsed before the instance answered.
+        return new Error(timeoutMessage(ctx));
+      case "GitbeakerRequestError": {
+        // The instance answered with a non-success status.
+        const status = requestErrorStatus(error);
+        return new Error(
+          status === undefined ? unreachableMessage(ctx) : statusMessage(status, ctx)
+        );
+      }
+      case "GitbeakerRetryError": {
+        // Thrown after gitbeaker exhausts its built-in retries on 429/502;
+        // the final status only travels in the message text.
+        const match = /last status code: (\d+)/.exec(error.message);
+        const status = match ? Number(match[1]) : 502;
+        return new Error(statusMessage(status, ctx));
+      }
+      case "SyntaxError":
+        // The body claimed to be JSON but did not parse.
+        return new Error(invalidJsonMessage(ctx));
+      case "AbortError":
+      case "TimeoutError":
+        return new Error(timeoutMessage(ctx));
+      default:
+        break;
+    }
+  }
+  // Anything else is a network-level failure (DNS, refused connection, TLS).
+  return new Error(unreachableMessage(ctx));
 }
 
 function toFetchedItem(todo: GitlabTodo): FetchedItem {
@@ -73,11 +142,13 @@ export function createGitlabClient(): ProviderClient {
 
     async validate(config: AccountConfig): Promise<{ username: string }> {
       const baseUrl = resolveBaseUrl(config);
-      const { body } = await getJson(
-        `${baseUrl}/api/v4/user`,
-        headers(config),
-        context(baseUrl)
-      );
+      const api = await createClient(config, baseUrl);
+      let body: unknown;
+      try {
+        body = await api.Users.showCurrentUser();
+      } catch (error) {
+        throw toFriendlyError(error, context(baseUrl));
+      }
       const user = body as GitlabUser | undefined;
       if (!user || typeof user.username !== "string") {
         throw new Error(
@@ -89,30 +160,29 @@ export function createGitlabClient(): ProviderClient {
 
     async fetchItems(config: AccountConfig): Promise<FetchedItem[]> {
       const baseUrl = resolveBaseUrl(config);
-      const ctx = context(baseUrl);
-      const items: FetchedItem[] = [];
-      let page: string | undefined = "1";
-
-      for (let fetched = 0; fetched < MAX_PAGES && page; fetched++) {
-        const { headers: responseHeaders, body } = await getJson(
-          `${baseUrl}/api/v4/todos?state=pending&per_page=50&page=${page}`,
-          headers(config),
-          ctx
-        );
-        if (body === undefined || !Array.isArray(body)) break;
-
-        for (const raw of body) {
-          try {
-            items.push(toFetchedItem(raw as GitlabTodo));
-          } catch {
-            // One malformed todo must not kill the whole fetch.
-          }
-        }
-
-        const next = responseHeaders.get("x-next-page");
-        page = next && next.trim() !== "" ? next.trim() : undefined;
+      const api = await createClient(config, baseUrl);
+      let body: unknown;
+      try {
+        // perPage + maxPages cap the fetch at 2 pages of 50; gitbeaker
+        // follows the pagination headers under the hood.
+        body = await api.TodoLists.all({
+          state: "pending",
+          perPage: PER_PAGE,
+          maxPages: MAX_PAGES,
+        });
+      } catch (error) {
+        throw toFriendlyError(error, context(baseUrl));
       }
+      if (!Array.isArray(body)) return [];
 
+      const items: FetchedItem[] = [];
+      for (const raw of body) {
+        try {
+          items.push(toFetchedItem(raw as GitlabTodo));
+        } catch {
+          // One malformed todo must not kill the whole fetch.
+        }
+      }
       return items;
     },
   };

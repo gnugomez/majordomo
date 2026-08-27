@@ -1,7 +1,8 @@
 import { app, safeStorage } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { AccountConfig, FetchedItem, ProviderId } from "../shared/types";
+import type { AccountConfig, ProviderId } from "../shared/types";
+import type { FetchedItem } from "../providers/types";
 
 // JSON persistence for account configs (token encrypted via safeStorage when
 // available), read/seen item ids, and the cached inbox items.

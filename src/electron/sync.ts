@@ -4,10 +4,10 @@ import type {
   AccountConfig,
   AccountState,
   AppState,
-  FetchedItem,
   InboxItem,
   ProviderId,
 } from "../shared/types";
+import type { FetchedItem } from "../providers/types";
 import type { Store } from "./store";
 
 const SYNC_INTERVAL_MS = 60_000;

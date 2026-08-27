@@ -57,7 +57,8 @@
 }
 
 html,
-body {
+body,
+#root {
   height: 100%;
   background: transparent;
 }
@@ -292,8 +293,7 @@ button:focus-visible,
 
 /* Collapsible section header: a full-row disclosure button — caption left,
    muted count and chevron trailing. Sized and rounded like the item rows so
-   its press highlight aligns with theirs. No hover fill (matching rows);
-   press feedback only. */
+   its hover/press highlight aligns with theirs. */
 .section-header {
   display: flex;
   align-items: center;
@@ -303,6 +303,10 @@ button:focus-visible,
   padding: 7px 10px;
   border-radius: 8px;
   text-align: left;
+}
+
+.section-header:hover {
+  background: var(--hover);
 }
 
 .section-header:active {
@@ -349,33 +353,38 @@ button:focus-visible,
 .row {
   position: relative;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
+  grid-template-columns: 23px minmax(0, 1fr);
   align-items: center;
-  column-gap: 10px;
+  column-gap: 9px;
   width: 100%;
   text-align: left;
-  padding: 9px 10px;
+  padding: 4px 10px;
   border-radius: 8px;
 }
 
-/* No hover highlight: the real NSMenu selection material can't be
-   reproduced in web content, and a translucent imitation reads as fake —
-   rows only give press feedback. */
+/* Subtle full-row hover fill, slightly stronger while pressed. */
+.row:hover {
+  background: var(--hover);
+}
+
 .row:active {
   background: var(--active);
 }
 
-/* Inset hairline between rows, hidden around the pressed row (macOS-style). */
+/* Inset hairline between rows, hidden around the hovered/pressed row
+   (macOS-style). */
 .row + .row::before {
   content: "";
   position: absolute;
   top: 0;
-  left: 46px;
+  left: 42px;
   right: 10px;
   height: 1px;
   background: var(--hairline-faint);
 }
 
+.row:hover::before,
+.row:hover + .row::before,
 .row:active::before,
 .row:active + .row::before {
   opacity: 0;
@@ -385,8 +394,8 @@ button:focus-visible,
    own menus. Unread rows fill it with the accent; read rows keep it a quiet
    translucent gray. */
 .provider-badge {
-  width: 26px;
-  height: 26px;
+  width: 23px;
+  height: 23px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -396,8 +405,8 @@ button:focus-visible,
 }
 
 .provider-badge .icon {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .row.unread .provider-badge {
@@ -420,7 +429,8 @@ button:focus-visible,
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  line-height: 1.2;
 }
 
 .row-line1 {
@@ -487,7 +497,7 @@ button:focus-visible,
   flex: none;
   font-size: 10px;
   line-height: 1;
-  padding: 3px 6px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: var(--capsule-bg);
   color: var(--text-2);

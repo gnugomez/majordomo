@@ -54,14 +54,5 @@ export interface AppState {
   launchAtLogin: boolean;
 }
 
-/** A fetched item is an InboxItem before local read-state is applied. */
-export type FetchedItem = Omit<InboxItem, "read">;
-
-/** Implemented once per provider, consumed by the main-process sync loop. */
-export interface ProviderClient {
-  id: ProviderId;
-  /** Throws with a human-readable message on bad token/URL; returns the username on success. */
-  validate(config: AccountConfig): Promise<{ username: string }>;
-  /** Returns the current inbox for this provider. Throws with a human-readable message on failure. */
-  fetchItems(config: AccountConfig): Promise<FetchedItem[]>;
-}
+// The provider contract (ProviderClient, FetchedItem) lives in
+// src/providers/types.ts — the renderer never needs it.
