@@ -3,6 +3,14 @@ name: Release
 on:
   push:
     branches: [main]
+  # Rebuild and re-attach artifacts for an existing release (e.g. after a
+  # workflow fix) without cutting a new version.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build artifacts for (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +22,7 @@ jobs:
   # Maintains the release PR from conventional commits; merging that PR
   # creates the vX.Y.Z tag and the GitHub release.
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
@@ -25,7 +34,7 @@ jobs:
   # When a release was just created: build the signed .app and attach a DMG.
   build-macos:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: macos-15
     permissions:
       contents: write
@@ -49,10 +58,15 @@ jobs:
           echo "$MACOS_SIGN_P12" | base64 -d > sign.p12
           security create-keychain -p ci-keychain build.keychain
           security default-keychain -s build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
           security unlock-keychain -p ci-keychain build.keychain
           security import sign.p12 -k build.keychain -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci-keychain build.keychain
-          rm sign.p12
+          # Self-signed: codesign only accepts identities the system trusts.
+          /usr/bin/openssl pkcs12 -in sign.p12 -passin env:MACOS_SIGN_P12_PASSWORD -nokeys -clcerts -out cert.pem
+          sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain cert.pem
+          security find-identity -v -p codesigning build.keychain
+          rm sign.p12 cert.pem
           echo "CODESIGN_IDENTITY=Majordomo Dev" >> "$GITHUB_ENV"
 
       - name: Package
@@ -61,7 +75,7 @@ jobs:
       - name: Attach the DMG to the release
         run: |
           hdiutil create -volname Majordomo -srcfolder release/Majordomo-darwin-arm64/Majordomo.app -ov -format UDZO Majordomo-arm64.dmg
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" Majordomo-arm64.dmg
+          gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" Majordomo-arm64.dmg
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -69,7 +83,7 @@ jobs:
   # build the Squirrel installer. No Linux artifact — Linux is self-build.
   build-windows:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
     permissions:
       contents: write
@@ -90,7 +104,7 @@ jobs:
         shell: bash
 
       - name: Attach the installer to the release
-        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" release/installer/Majordomo-Setup.exe
+        run: gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" release/installer/Majordomo-Setup.exe
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
