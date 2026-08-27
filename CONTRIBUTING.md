@@ -1,12 +1,13 @@
 # Contributing to Majordomo
 
-Thanks for your interest! Majordomo is a macOS menu-bar app that unifies
-GitHub and self-hosted GitLab issues, PRs, and MRs into one mentions-first
-inbox. Contributions of all sizes are welcome.
+Thanks for your interest! Majordomo is a menu-bar/tray app for macOS,
+Windows, and Linux that unifies GitHub and self-hosted GitLab issues, PRs,
+and MRs into one inbox. Contributions of all sizes are welcome.
 
 ## Getting set up
 
-You need macOS (the app is macOS-only) and Node.js 22+.
+You need Node.js 22+ (any OS; the glass material and DMG packaging are
+macOS-specific, everything else is cross-platform).
 
 ```sh
 npm install
@@ -30,9 +31,8 @@ MAJORDOMO_USERDATA=/tmp/majordomo-dev npm start
 - `src/providers/` — one client per provider behind the `ProviderClient`
   contract documented in `providers/types.ts`. GitHub uses `@octokit/rest`
   (notifications API), GitLab uses `@gitbeaker/rest` (todos API); both load
-  lazily and normalize to `FetchedItem`. To add a provider, implement
-  `ProviderClient` and register it in `createProviders()`. Friendly error
-  strings live in `providers/errors.ts` — they surface verbatim in the UI.
+  lazily and normalize to `FetchedItem`. Friendly error strings live in
+  `providers/errors.ts` — they surface verbatim in the UI.
 - `src/electron/` — the Electron shell: tray, Liquid Glass popover window,
   sync loop, encrypted token store, notifications, preload bridge.
 - `src/ui/` — the popover UI in React: `App.tsx` + `hooks/` own state,
@@ -46,13 +46,42 @@ MAJORDOMO_USERDATA=/tmp/majordomo-dev npm start
   no state libraries, routers, or speculative abstraction. The only runtime
   dependency in the shipped bundle's node_modules is `electron-liquid-glass`;
   everything else is inlined by esbuild.
-- **Native-feeling.** The popover should read as a macOS menu, not a web
-  page: system font, glass material, alpha-based colors that work over any
-  wallpaper, light and dark.
-- **Read-only.** The app never writes back to GitHub or GitLab. Read state
-  is local.
-- **Local-only.** No backend, no telemetry. Tokens are encrypted with the
-  macOS keychain via Electron's `safeStorage`.
+- **Native-feeling.** The popover should read as a system menu, not a web
+  page: system font, glass/acrylic material where the OS offers one,
+  alpha-based colors that work over any wallpaper, light and dark.
+- **Read-only.** The app never writes back to the providers. Read state is
+  local.
+- **Local-only.** No backend, no telemetry. Tokens live in the OS keychain
+  (macOS Keychain / Windows Credential Manager / Secret Service), with an
+  encrypted-file fallback where no keychain exists.
+
+## Adding a provider
+
+Everything downstream of a provider only sees `FetchedItem`s, so a new
+provider (Gitea, Bitbucket, Jira, …) is a contained change:
+
+1. **Implement `ProviderClient`** (`src/providers/types.ts` documents the
+   rules) in a new `src/providers/<name>.ts`: `validate(config)` checks the
+   token and returns the username; `fetchItems(config)` returns the
+   account's current inbox as `FetchedItem`s. Use the provider's official
+   client library if a maintained one exists, load it lazily (see
+   `github.ts`), and map failures to human-readable strings — they render
+   verbatim in the Accounts pane (reuse `providers/errors.ts`).
+   Key mapping decisions: `id` must be stable across fetches
+   (`"<name>:<externalId>"` — it's the dedup and read-state key), and
+   `isMention` marks what deserves a notification and the Mentions group
+   (mentions, direct addresses, review requests).
+2. **Register it**: add the id to the `ProviderId` union in
+   `src/shared/types.ts` and the instance to `createProviders()` in
+   `src/providers/index.ts`.
+3. **Teach the UI about it**: a small monochrome glyph in
+   `src/ui/components/Icons.tsx`, the display name in
+   `src/ui/components/Banner.tsx`, and an entry in the `PROVIDERS` list in
+   `src/ui/settings/SettingsPane.tsx` (set `needsBaseUrl: true` for
+   self-hosted services so the URL field shows).
+
+The typechecker walks you through the rest — extending `ProviderId` flags
+every switch that needs the new case.
 
 ## Pull requests
 
