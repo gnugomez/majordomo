@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.1](https://github.com/gnugomez/majordomo/compare/v0.2.0...v0.2.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* hover-expanded repo no longer paints over the capsule ([c1d7d60](https://github.com/gnugomez/majordomo/commit/c1d7d6068ac86ed228b10a7cf39901eb74616a4f))
+* no focus ring flash on open; keyboard focus ring is muted ([8dc9277](https://github.com/gnugomez/majordomo/commit/8dc9277f611c1ec49f4004b3d06e253b25be99d8))
+* no hover highlight on section headers ([6f8e902](https://github.com/gnugomez/majordomo/commit/6f8e9020ff7c2c24f3c650e454ff491db5b58277))
+* no press highlight on section headers either ([6e44710](https://github.com/gnugomez/majordomo/commit/6e447108a69204a6a46c581bee7bba768765f68b))
+* prompt-free token storage on macOS via safeStorage ([afb4aed](https://github.com/gnugomez/majordomo/commit/afb4aedb6c7b6cbc2e87f73b5993f2fef3923301))
+* read each token from the keychain once per run ([a720c8f](https://github.com/gnugomez/majordomo/commit/a720c8f44372521e13fb41b7b942c822b3a5cd70))
+
+
+### Refactoring
+
+* safeStorage for tokens on every platform, keyring removed ([9f57fb6](https://github.com/gnugomez/majordomo/commit/9f57fb65871471ff12b09421b77f761d33ccd107))
+
 ## [0.2.0](https://github.com/gnugomez/majordomo/compare/v0.1.1...v0.2.0) (2026-08-27)
 
 
