@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/gnugomez/majordomo/compare/v0.1.0...v0.1.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* notification clicks open the item (keep notifications referenced) ([ea4ca8b](https://github.com/gnugomez/majordomo/commit/ea4ca8b7bf079ab9a98a8110233402a986e4e295))
+
 ## 0.1.0 (2026-08-27)
 
 
