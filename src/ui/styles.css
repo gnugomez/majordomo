@@ -520,6 +520,7 @@ button:focus-visible,
   align-items: baseline;
   gap: 4px;
   min-width: 0;
+  overflow: hidden;
   font-size: 11px;
   color: var(--text-2);
   white-space: nowrap;
@@ -546,11 +547,13 @@ button:focus-visible,
   white-space: nowrap;
 }
 
-/* Hovering a truncated part of the meta line makes it fully readable: it
-   stops yielding space, so its siblings shrink instead. */
+/* Hovering a truncated part of the meta line makes it readable: it stops
+   yielding space, so its siblings shrink instead. Capped to the meta box —
+   without the cap a very long repo would paint over the capsule and time. */
 .row-repo:hover,
 .row-author:hover {
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .capsule {
