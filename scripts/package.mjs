@@ -1,12 +1,6 @@
 // Packages the built app (dist/) into release/Majordomo-<platform>-<arch>/.
 // Usage: node scripts/package.mjs [--platform=darwin|win32|linux] [--arch=arm64|x64]
 // Defaults to the host platform/arch. Run via: npm run package (macOS flow).
-//
-// Cross-packaging caveat: npm installs only the host's @napi-rs/keyring
-// binary, so a linux/win32 package built on macOS ships without the target's
-// keyring module (the app then falls back to safeStorage-in-JSON tokens).
-// Real builds package on the target OS — CI's windows job, self-build on
-// Linux — where npm ci provides the right binary.
 import { execFileSync } from "node:child_process";
 import { packager } from "@electron/packager";
 

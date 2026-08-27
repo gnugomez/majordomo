@@ -6,11 +6,8 @@ import type { FetchedItem } from "../providers/types";
 
 // JSON persistence for account metadata, the app's own persistent item
 // collection (upstream disappearance is a read signal, never a delete — see
-// sync.ts), and preferences. Tokens live in the OS keychain
-// (@napi-rs/keyring); where no keyring backend exists (e.g. Linux without a
-// Secret Service) they stay in the JSON, safeStorage-encrypted when available.
-
-const KEYRING_SERVICE = "Majordomo";
+// sync.ts), and preferences. Tokens are stored in the JSON too,
+// safeStorage-encrypted (see the token storage note below).
 
 /** Read items vanish this long after upstream last mentioned them. */
 const RETAIN_READ_MS = 30 * 24 * 60 * 60 * 1000;
@@ -76,74 +73,13 @@ export interface Store {
   setGlassEnabled(enabled: boolean): void;
 }
 
-// --- OS keychain access ------------------------------------------------
-// @napi-rs/keyring is a native module, resolved at runtime (esbuild leaves it
-// external — same pattern as electron-liquid-glass in window.ts). Every call
-// is wrapped: if there is no usable keyring backend, callers fall back to the
-// safeStorage-in-JSON path.
-//
-// The keyring is only used on Windows/Linux. On macOS, keychain item ACLs
-// pin "Always Allow" to the exact build (its code hash) for apps without an
-// Apple-issued certificate, so every rebuild re-prompts — safeStorage
-// (Chromium Safe Storage, still Keychain-derived encryption) is prompt-free
-// across rebuilds and is what macOS uses instead.
-const USE_KEYRING = process.platform !== "darwin";
-
-interface KeyringEntry {
-  setPassword(password: string): void;
-  getPassword(): string | null;
-  deletePassword(): boolean;
-}
-type KeyringEntryCtor = new (service: string, username: string) => KeyringEntry;
-
-let entryCtor: KeyringEntryCtor | null | undefined;
-
-function keyringEntry(provider: ProviderId): KeyringEntry | null {
-  if (entryCtor === undefined) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      entryCtor = (require("@napi-rs/keyring") as { Entry: KeyringEntryCtor }).Entry;
-    } catch (err) {
-      console.error("majordomo: OS keyring unavailable, tokens stay in the JSON store:", err);
-      entryCtor = null;
-    }
-  }
-  if (!entryCtor) return null;
-  try {
-    return new entryCtor(KEYRING_SERVICE, `${provider}-token`);
-  } catch {
-    return null;
-  }
-}
-
-function keyringRead(provider: ProviderId): string | undefined {
-  try {
-    return keyringEntry(provider)?.getPassword() ?? undefined;
-  } catch {
-    // NoEntry, locked keyring, no backend — treat all as "not there".
-    return undefined;
-  }
-}
-
-/** Writes the token and confirms it by reading it back. */
-function keyringWrite(provider: ProviderId, token: string): boolean {
-  try {
-    const entry = keyringEntry(provider);
-    if (!entry) return false;
-    entry.setPassword(token);
-    return entry.getPassword() === token;
-  } catch {
-    return false;
-  }
-}
-
-function keyringDelete(provider: ProviderId): void {
-  try {
-    keyringEntry(provider)?.deletePassword();
-  } catch {
-    // Nothing stored, or no keyring — either way there is nothing to delete.
-  }
-}
+// --- Token storage -------------------------------------------------------
+// Tokens live safeStorage-encrypted in the JSON store on every platform:
+// Chromium's os_crypt derives the key from the macOS Keychain, Windows
+// DPAPI, or the Linux Secret Service. A previous version kept tokens as OS
+// keychain/keyring items instead; on macOS that re-prompted for access on
+// every rebuild (item ACLs pin the exact build hash for apps without an
+// Apple-issued certificate), so it was rolled back.
 
 export function createStore(): Store {
   const file = join(app.getPath("userData"), "majordomo.json");
@@ -202,47 +138,9 @@ export function createStore(): Store {
     stored.tokenEncrypted = encrypt;
   }
 
-  if (USE_KEYRING) {
-    // Migrate JSON-stored tokens into the OS keyring. The token is stripped
-    // from the JSON only after the write was confirmed by a read-back; on
-    // any failure it stays where it is, so a token is never lost.
-    for (const [provider, stored] of Object.entries(data.accounts) as [
-      ProviderId,
-      StoredAccount,
-    ][]) {
-      if (stored.token === undefined) continue;
-      const token = decodeToken(stored);
-      if (token === undefined) continue;
-      if (keyringWrite(provider, token)) {
-        delete stored.token;
-        delete stored.tokenEncrypted;
-        migrated = true;
-        console.log(`majordomo: migrated ${provider} token to the OS keychain`);
-      }
-    }
-  } else {
-    // macOS: tokens that a previous version put in the keychain move back
-    // into safeStorage-encrypted JSON (one final access prompt, then never
-    // again). The keychain entry is removed only after the JSON write.
-    for (const [provider, stored] of Object.entries(data.accounts) as [
-      ProviderId,
-      StoredAccount,
-    ][]) {
-      if (stored.token !== undefined) continue;
-      const token = keyringRead(provider);
-      if (token === undefined) continue;
-      encodeToken(stored, token);
-      keyringDelete(provider);
-      migrated = true;
-      console.log(`majordomo: moved the ${provider} token back to encrypted storage`);
-    }
-  }
   if (migrated) save();
 
-  // Tokens are resolved from the keychain at most once per run: every
-  // keychain access can pop a macOS permission prompt (until the user picks
-  // "Always Allow"), and the sync loop asks for the account every minute —
-  // uncached, that turns one grudging "Allow" into a dialog per sync.
+  // Decoded tokens are memoized so decryption runs once per account per run.
   const tokenCache = new Map<ProviderId, string>();
 
   return {
@@ -251,7 +149,7 @@ export function createStore(): Store {
       if (!stored) return undefined;
       let token = tokenCache.get(provider);
       if (token === undefined) {
-        token = (USE_KEYRING ? keyringRead(provider) : undefined) ?? decodeToken(stored);
+        token = decodeToken(stored);
         if (token === undefined) return undefined;
         tokenCache.set(provider, token);
       }
@@ -260,16 +158,13 @@ export function createStore(): Store {
 
     setAccount(provider, config, username) {
       const account: StoredAccount = { baseUrl: config.baseUrl, username };
-      if (!USE_KEYRING || !keyringWrite(provider, config.token)) {
-        encodeToken(account, config.token);
-      }
+      encodeToken(account, config.token);
       tokenCache.set(provider, config.token);
       data.accounts[provider] = account;
       save();
     },
 
     deleteAccount(provider) {
-      if (USE_KEYRING) keyringDelete(provider);
       tokenCache.delete(provider);
       delete data.accounts[provider];
       save();

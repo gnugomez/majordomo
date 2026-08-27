@@ -32,8 +32,7 @@ jobs:
         id: rp
 
   # When a release was just created: build the signed .app per arch and
-  # attach a DMG for each (the arm64 runner cross-packages x64; the keyring
-  # prebuild for the target arch is force-installed).
+  # attach a DMG for each (the arm64 runner cross-packages x64).
   build-macos:
     needs: release-please
     if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
@@ -53,7 +52,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm install --no-save --force @napi-rs/keyring-darwin-${{ matrix.arch }}
 
       # A stable signing identity (even self-signed) keeps macOS permissions
       # for the app across releases; without the secret we fall back to
@@ -106,8 +104,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm install --no-save --force @napi-rs/keyring-win32-${{ matrix.arch }}-msvc
-        shell: bash
 
       - name: Package
         run: |
