@@ -1,4 +1,4 @@
-# Majordomo 📬
+# Majordomo 🛎️
 
 A little menu bar app that puts your GitHub and GitLab stuff — issues, PRs,
 MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
