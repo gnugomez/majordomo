@@ -9,8 +9,8 @@ MRs, mentions — in one inbox. Works on macOS, Windows, and Linux.
 
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with groups per kind
-- 🔒 Everything stays on your machine — read-only, no backend, tokens in
-  the OS keychain
+- 🔒 Everything stays on your machine — read-only, no backend, tokens
+  encrypted at rest
 
 ## Install
 
@@ -32,6 +32,10 @@ Sign in from the settings pane by pasting a personal access token:
 | --- | --- |
 | GitHub | `notifications` (classic token) |
 | GitLab (self-hosted) | `read_api` |
+
+Tokens are stored encrypted with a key held by the OS (macOS Keychain,
+Windows DPAPI, Linux Secret Service). On Linux systems without a Secret
+Service the token falls back to plain text in the app's data directory.
 
 ## Build
 

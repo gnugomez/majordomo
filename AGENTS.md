@@ -9,9 +9,9 @@ Details live in CONTRIBUTING.md (layout, adding a provider) and RELEASING.md.
   (ProviderClient impls on official client libs) → `src/electron` (shell) and
   `src/ui` (React). Don't cross those lines.
 - **Lean**: no state libs, routers, or new deps without a strong reason.
-  esbuild bundles everything; only native modules (`electron-liquid-glass`,
-  `@napi-rs/keyring`) ship in node_modules — lazy-require them in try/catch
-  with a graceful fallback, list them as esbuild externals.
+  esbuild bundles everything; only native modules (currently just
+  `electron-liquid-glass`) ship in node_modules — lazy-require them in
+  try/catch with a graceful fallback, list them as esbuild externals.
 - **Style**: strict TypeScript, double quotes, 2-space indent, one component
   per file. Provider errors are human-readable strings — they render verbatim.
 - **UI**: native-feeling over a transparent glass window — alpha-based color
@@ -28,4 +28,5 @@ Details live in CONTRIBUTING.md (layout, adding a provider) and RELEASING.md.
   the renderer exposes `window.__debugSetState(state)` for injecting fixture
   data during visual checks.
 - **Principles**: read-only against providers, local-only (no backend, no
-  telemetry), tokens in the OS keychain.
+  telemetry), tokens safeStorage-encrypted at rest (never as per-item OS
+  keychain entries — see CONTRIBUTING.md).

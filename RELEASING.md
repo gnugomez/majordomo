@@ -47,7 +47,7 @@ certificate and adding notarization removes both papercuts.
 
 ## Installing a released build
 
-Download the zip from the GitHub release, unzip, drag `Majordomo.app` into
+Download the DMG from the GitHub release, open it, drag `Majordomo.app` into
 `/Applications`, and see the Gatekeeper note above.
 
 ## Local/manual release build
