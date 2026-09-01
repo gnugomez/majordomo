@@ -200,7 +200,18 @@ export function createSyncEngine(
         void syncNow();
         return { ...state };
       } catch (err) {
-        return { provider, connected: false, baseUrl: config.baseUrl, error: errorMessage(err) };
+        const state: AccountState = {
+          provider,
+          connected: false,
+          baseUrl: config.baseUrl,
+          error: errorMessage(err),
+        };
+        // Recorded, not just returned: state pushes rebuild the accounts
+        // list from this map, and one lands within a minute (the sync
+        // interval) — an unrecorded error would vanish mid-read. It clears
+        // on the next attempt or disconnect.
+        accounts.set(provider, state);
+        return { ...state };
       }
     },
 
