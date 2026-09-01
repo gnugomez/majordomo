@@ -4,14 +4,15 @@
 
 import type { Gitlab } from "@gitbeaker/rest";
 import type { AccountConfig, ItemState } from "../shared/types";
+import type { RequestContext } from "./errors";
 import type { FetchedItem, FetchResult, ProviderClient } from "./types";
 import {
-  TIMEOUT_MS,
   invalidJsonMessage,
+
   statusMessage,
+  TIMEOUT_MS,
   timeoutMessage,
   unreachableMessage,
-  type RequestContext,
 } from "./errors";
 
 const MAX_PAGES = 2;
@@ -62,7 +63,7 @@ function resolveBaseUrl(config: AccountConfig): string {
   const trimmed = (config.baseUrl ?? "").trim().replace(/\/+$/, "");
   if (trimmed === "") {
     throw new Error(
-      "GitLab needs the URL of your instance (e.g. https://gitlab.example.com) — add it in the Accounts pane."
+      "GitLab needs the URL of your instance (e.g. https://gitlab.example.com) — add it in the Accounts pane.",
     );
   }
   try {
@@ -72,7 +73,7 @@ function resolveBaseUrl(config: AccountConfig): string {
     }
   } catch {
     throw new Error(
-      `"${trimmed}" does not look like a URL — expected something like https://gitlab.example.com.`
+      `"${trimmed}" does not look like a URL — expected something like https://gitlab.example.com.`,
     );
   }
   return trimmed;
@@ -109,7 +110,7 @@ function toFriendlyError(error: unknown, ctx: RequestContext): Error {
         // The instance answered with a non-success status.
         const status = requestErrorStatus(error);
         return new Error(
-          status === undefined ? unreachableMessage(ctx) : statusMessage(status, ctx)
+          status === undefined ? unreachableMessage(ctx) : statusMessage(status, ctx),
         );
       }
       case "GitbeakerRetryError": {
@@ -141,10 +142,10 @@ function toItemState(todo: GitlabTodo): ItemState | undefined {
       // An open MR that is still a draft reads better as "draft". The title
       // prefix backstops older instances that omit the boolean fields.
       if (
-        todo.target_type === "MergeRequest" &&
-        (target.draft === true ||
-          target.work_in_progress === true ||
-          /^Draft:/i.test(target.title ?? ""))
+        todo.target_type === "MergeRequest"
+        && (target.draft === true
+          || target.work_in_progress === true
+          || /^Draft:/i.test(target.title ?? ""))
       ) {
         return "draft";
       }
@@ -173,9 +174,11 @@ function toFetchedItem(todo: GitlabTodo): FetchedItem {
   // Omit (rather than set undefined) when unknown: upsert spreads fetched
   // fields over the stored item, and a missing key keeps the previous state.
   const state = toItemState(todo);
-  if (state !== undefined) item.state = state;
+  if (state !== undefined)
+    item.state = state;
   const author = todo.target?.author?.username ?? todo.author?.username;
-  if (author) item.author = author;
+  if (author)
+    item.author = author;
   return item;
 }
 
@@ -195,7 +198,7 @@ export function createGitlabClient(): ProviderClient {
       const user = body as GitlabUser | undefined;
       if (!user || typeof user.username !== "string") {
         throw new Error(
-          `${baseUrl} accepted the token but returned no username — is it really a GitLab instance?`
+          `${baseUrl} accepted the token but returned no username — is it really a GitLab instance?`,
         );
       }
       return { username: user.username };
@@ -231,7 +234,8 @@ export function createGitlabClient(): ProviderClient {
           throw toFriendlyError(error, context(baseUrl));
         }
         if (!Array.isArray(body)) {
-          if (list.state === "pending") complete = false;
+          if (list.state === "pending")
+            complete = false;
           continue;
         }
         if (list.state === "pending" && body.length >= list.maxPages * PER_PAGE) {

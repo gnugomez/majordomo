@@ -2,22 +2,26 @@
 // its expected result locally first; the main process pushes authoritative
 // state that overwrites the guess.
 
-import { useEffect, useRef, useState } from "react";
-import type { AccountConfig, AccountState, AppState, ProviderId } from "../../shared/types";
 import type { MajordomoApi } from "../../shared/ipc";
+import type { AccountConfig, AccountState, AppState, ProviderId } from "../../shared/types";
+import { useEffect, useRef, useState } from "react";
 import { debugInjector } from "../debug";
 
 // The preload script installs this; guard so a standalone preview of the raw
 // HTML degrades to the empty state instead of throwing.
 const api: MajordomoApi | undefined = window.majordomo;
 
-/** Best-effort host guess for the first paint (platform-specific styling
+/**
+ * Best-effort host guess for the first paint (platform-specific styling
  * applies from the very first frame); the real value arrives with the
- * initial getState(). */
+ * initial getState().
+ */
 function guessPlatform(): AppState["platform"] {
   const ua = navigator.userAgent;
-  if (ua.includes("Windows")) return "win32";
-  if (ua.includes("Linux")) return "linux";
+  if (ua.includes("Windows"))
+    return "win32";
+  if (ua.includes("Linux"))
+    return "linux";
   return "darwin";
 }
 
@@ -33,13 +37,13 @@ const EMPTY_STATE: AppState = {
 };
 
 export interface AppActions {
-  refresh(): void;
-  markAllRead(): void;
-  openItem(id: string): void;
-  connect(provider: ProviderId, config: AccountConfig): void;
-  disconnect(provider: ProviderId): void;
-  setLaunchAtLogin(next: boolean): void;
-  setGlassEnabled(next: boolean): void;
+  refresh: () => void;
+  markAllRead: () => void;
+  openItem: (id: string) => void;
+  connect: (provider: ProviderId, config: AccountConfig) => void;
+  disconnect: (provider: ProviderId) => void;
+  setLaunchAtLogin: (next: boolean) => void;
+  setGlassEnabled: (next: boolean) => void;
 }
 
 export interface AppStateHook {
@@ -55,7 +59,7 @@ export function useAppState(): AppStateHook {
     gitlab: false,
   });
   // Re-entrancy guard for connect(); state updates are async, a ref is not.
-  const inFlight = useRef<Record<ProviderId, boolean>>({ github: false, gitlab: false });
+  const inFlightRef = useRef<Record<ProviderId, boolean>>({ github: false, gitlab: false });
 
   useEffect(() => {
     debugInjector.current = setState;
@@ -117,10 +121,10 @@ export function useAppState(): AppStateHook {
       void api?.openItem(id);
     },
     connect(provider, config) {
-      if (!api || inFlight.current[provider]) {
+      if (!api || inFlightRef.current[provider]) {
         return;
       }
-      inFlight.current[provider] = true;
+      inFlightRef.current[provider] = true;
       setConnecting((c) => ({ ...c, [provider]: true }));
       api
         .connectAccount(provider, config)
@@ -133,7 +137,7 @@ export function useAppState(): AppStateHook {
           });
         })
         .finally(() => {
-          inFlight.current[provider] = false;
+          inFlightRef.current[provider] = false;
           setConnecting((c) => ({ ...c, [provider]: false }));
         });
     },

@@ -1,8 +1,8 @@
-import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
-import { IPC } from "../shared/ipc";
 import type { MajordomoApi } from "../shared/ipc";
 import type { AccountConfig, AppState, ProviderId } from "../shared/types";
+import { contextBridge, ipcRenderer } from "electron";
+import { IPC } from "../shared/ipc";
 
 const api: MajordomoApi = {
   getState: () => ipcRenderer.invoke(IPC.getState),

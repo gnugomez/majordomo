@@ -5,8 +5,10 @@ export type ProviderId = "github" | "gitlab";
 
 export type ItemKind = "issue" | "pull" | "merge";
 
-/** Upstream lifecycle state, when the provider can tell. Issues use
- * open/closed; PRs/MRs add merged and draft. */
+/**
+ * Upstream lifecycle state, when the provider can tell. Issues use
+ * open/closed; PRs/MRs add merged and draft.
+ */
 export type ItemState = "open" | "closed" | "merged" | "draft";
 
 /** One row in the unified inbox. */

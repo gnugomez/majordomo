@@ -1,6 +1,6 @@
 import { syncedLabel } from "../format";
-import { MarkAllReadIcon, RefreshIcon, SpinnerIcon } from "./Icons";
 import { IconButton } from "./IconButton";
+import { MarkAllReadIcon, RefreshIcon, SpinnerIcon } from "./Icons";
 
 interface HeaderProps {
   syncing: boolean;
@@ -27,14 +27,16 @@ export function Header({
     <header className="header">
       <h1 className="panel-title">Majordomo</h1>
       <div className="sync-status" aria-live="polite">
-        {syncing ? (
-          <>
-            <SpinnerIcon />
-            <span>Syncing…</span>
-          </>
-        ) : (
-          syncedLabel(lastSyncAt, now)
-        )}
+        {syncing
+          ? (
+              <>
+                <SpinnerIcon />
+                <span>Syncing…</span>
+              </>
+            )
+          : (
+              syncedLabel(lastSyncAt, now)
+            )}
       </div>
       <IconButton icon={<RefreshIcon />} label="Refresh now" disabled={syncing} onClick={onRefresh} />
       <IconButton

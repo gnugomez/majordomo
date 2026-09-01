@@ -1,16 +1,19 @@
-import { Menu, Tray, nativeTheme } from "electron";
-import { join } from "node:path";
 import type { Rectangle } from "electron";
+import { join } from "node:path";
+import process from "node:process";
+import { Menu, nativeTheme, Tray } from "electron";
 
 export interface TrayHandle {
-  bounds(): Rectangle;
+  bounds: () => Rectangle;
   /** Shows the dot variant iff there are unread mentions. */
-  setDot(dot: boolean): void;
+  setDot: (dot: boolean) => void;
 }
 
-/** macOS gets Template images (pure black + alpha, recolored by the system).
+/**
+ * macOS gets Template images (pure black + alpha, recolored by the system).
  * Windows/Linux have no template auto-inversion, so pick the white or black
- * glyph from the current theme: dark UI → white glyph (`Light` files). */
+ * glyph from the current theme: dark UI → white glyph (`Light` files).
+ */
 function iconPath(dot: boolean): string {
   if (process.platform === "darwin") {
     return join(__dirname, "../assets", dot ? "trayDotTemplate.png" : "trayTemplate.png");
@@ -20,10 +23,10 @@ function iconPath(dot: boolean): string {
 }
 
 export function createTray(opts: {
-  onToggle(bounds: Rectangle): void;
-  onOpen(bounds: Rectangle): void;
-  onRefresh(): void;
-  onQuit(): void;
+  onToggle: (bounds: Rectangle) => void;
+  onOpen: (bounds: Rectangle) => void;
+  onRefresh: () => void;
+  onQuit: () => void;
 }): TrayHandle {
   let dotShown = false;
 
@@ -54,7 +57,8 @@ export function createTray(opts: {
   return {
     bounds: () => tray.getBounds(),
     setDot(dot: boolean) {
-      if (dot === dotShown) return;
+      if (dot === dotShown)
+        return;
       dotShown = dot;
       tray.setImage(iconPath(dot));
     },

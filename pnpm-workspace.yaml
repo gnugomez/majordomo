@@ -5,9 +5,21 @@
 # pointing outside the bundle, so keep node_modules flat.
 nodeLinker: hoisted
 
+shellEmulator: true
+
+trustPolicy: no-downgrade
+
 # Install scripts are blocked by default. esbuild stages its platform binary
 # and electron-winstaller its 7-Zip; electron downloads lazily on first run
 # and electron-liquid-glass ships prebuilds, so neither needs one.
 allowBuilds:
-  esbuild: true
   electron-winstaller: true
+  esbuild: true
+
+# semver@6.3.1 is Babel's pinned semver-6 line (via eslint-plugin-react-hooks
+# → @babel/core). Published after semver 7.x releases that carry provenance
+# but without any itself, so the date-based trust check reads it as a
+# downgrade. False positive: its lockfile integrity matches the registry's
+# published integrity for the 2023 ReDoS-fix release.
+trustPolicyExclude:
+  - semver@6.3.1

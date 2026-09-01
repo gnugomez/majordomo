@@ -21,8 +21,10 @@ export const IPC = {
   setLaunchAtLogin: "app:set-launch-at-login",
   /** invoke (enabled: boolean) → void — toggle the translucent background */
   setGlassEnabled: "app:set-glass-enabled",
-  /** invoke (px: number) → void — the renderer's content height; the window
-   * resizes to hug it, like native menu extras (clamped to a max) */
+  /**
+   * invoke (px: number) → void — the renderer's content height; the window
+   * resizes to hug it, like native menu extras (clamped to a max)
+   */
   setPopoverHeight: "popover:set-content-height",
   /** main → renderer push, payload boolean — false when the popover is dismissed */
   popoverVisibility: "popover:visibility",
@@ -30,19 +32,19 @@ export const IPC = {
 
 /** Exposed by the preload script as `window.majordomo`. */
 export interface MajordomoApi {
-  getState(): Promise<AppState>;
-  connectAccount(provider: ProviderId, config: AccountConfig): Promise<AccountState>;
-  disconnectAccount(provider: ProviderId): Promise<void>;
-  openItem(id: string): Promise<void>;
-  markAllRead(): Promise<void>;
-  refresh(): Promise<void>;
-  setLaunchAtLogin(enabled: boolean): Promise<void>;
-  setGlassEnabled(enabled: boolean): Promise<void>;
-  setPopoverHeight(px: number): Promise<void>;
+  getState: () => Promise<AppState>;
+  connectAccount: (provider: ProviderId, config: AccountConfig) => Promise<AccountState>;
+  disconnectAccount: (provider: ProviderId) => Promise<void>;
+  openItem: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
+  refresh: () => Promise<void>;
+  setLaunchAtLogin: (enabled: boolean) => Promise<void>;
+  setGlassEnabled: (enabled: boolean) => Promise<void>;
+  setPopoverHeight: (px: number) => Promise<void>;
   /** Returns an unsubscribe function. */
-  onStateUpdated(cb: (state: AppState) => void): () => void;
+  onStateUpdated: (cb: (state: AppState) => void) => () => void;
   /** Returns an unsubscribe function. cb receives false when the popover is dismissed. */
-  onPopoverVisibility(cb: (visible: boolean) => void): () => void;
+  onPopoverVisibility: (cb: (visible: boolean) => void) => () => void;
 }
 
 declare global {

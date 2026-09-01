@@ -5,10 +5,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner } from "./components/Banner";
 import { Header } from "./components/Header";
-import { InboxPane } from "./inbox/InboxPane";
-import { SettingsPane } from "./settings/SettingsPane";
 import { useAppState } from "./hooks/useAppState";
 import { useNow } from "./hooks/useNow";
+import { InboxPane } from "./inbox/InboxPane";
+import { SettingsPane } from "./settings/SettingsPane";
 
 type Pane = "inbox" | "settings";
 
@@ -50,7 +50,7 @@ export function App() {
           setPane("inbox");
         }
       }),
-    []
+    [],
   );
 
   // The main process focuses the window on every popover open, which can land
@@ -65,15 +65,19 @@ export function App() {
         active.blur();
       }
     };
+    let scrubTimer = 0;
     const scrubNowAndNext = (): void => {
       scrub();
-      window.setTimeout(scrub, 0);
+      window.clearTimeout(scrubTimer);
+      scrubTimer = window.setTimeout(scrub, 0);
     };
     window.addEventListener("focus", scrubNowAndNext);
     const unsubscribe = window.majordomo?.onPopoverVisibility((visible) => {
-      if (visible) scrubNowAndNext();
+      if (visible)
+        scrubNowAndNext();
     });
     return () => {
+      window.clearTimeout(scrubTimer);
       window.removeEventListener("focus", scrubNowAndNext);
       unsubscribe?.();
     };
@@ -83,8 +87,8 @@ export function App() {
 
   // Without the translucent material the page paints its own solid, rounded
   // panel (the window itself stays transparent).
-  const appClass =
-    [
+  const appClass
+    = [
       `platform-${state.platform}`,
       settingsOpen && "settings-open",
       !state.glassEnabled && "opaque",
@@ -97,13 +101,14 @@ export function App() {
   // pane-child resize (section collapse is DisclosureSection-local state that
   // never re-renders App — the section element shrinking is the only signal).
   // Empty states stretch to fill (flex: 1), so they get a fixed height.
-  const lastSentHeight = useRef(0);
+  const lastSentHeightRef = useRef(0);
   const measure = () => {
     const header = document.querySelector<HTMLElement>("#app .header");
     const banner = document.querySelector<HTMLElement>("#app #banner");
     const open = document.querySelector("#app.settings-open") !== null;
     const paneEl = document.querySelector<HTMLElement>(open ? "#settings" : "#inbox");
-    if (!header || !paneEl) return;
+    if (!header || !paneEl)
+      return;
     let content: number;
     if (paneEl.querySelector(".empty")) {
       content = 380;
@@ -112,11 +117,11 @@ export function App() {
       for (const child of Array.from(paneEl.children) as HTMLElement[]) {
         bottom = Math.max(bottom, child.offsetTop + child.offsetHeight);
       }
-      content = bottom + parseFloat(getComputedStyle(paneEl).paddingBottom || "0");
+      content = bottom + Number.parseFloat(getComputedStyle(paneEl).paddingBottom || "0");
     }
     const desired = Math.ceil(header.offsetHeight + (banner?.offsetHeight ?? 0) + content);
-    if (desired !== lastSentHeight.current) {
-      lastSentHeight.current = desired;
+    if (desired !== lastSentHeightRef.current) {
+      lastSentHeightRef.current = desired;
       void window.majordomo?.setPopoverHeight(desired);
     }
   };
@@ -142,7 +147,6 @@ export function App() {
       resizes.disconnect();
       mutations.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

@@ -222,8 +222,10 @@ export function ProviderIcon({ provider }: { provider: ProviderId }) {
   return provider === "github" ? <GithubIcon /> : <GitlabIcon />;
 }
 
-/** Kind + state pick the canonical GitHub badge shape; unknown state falls
-    back to the plain open shape. */
+/**
+     Kind + state pick the canonical GitHub badge shape; unknown state falls
+    back to the plain open shape.
+ */
 export function KindIcon({ kind, state }: { kind: ItemKind; state?: ItemState }) {
   if (kind === "issue") {
     return state === "closed" ? <IssueClosedIcon /> : <IssueOpenedIcon />;

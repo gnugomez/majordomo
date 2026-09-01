@@ -2,6 +2,7 @@
 // via Electron (offscreen render) and sips — macOS-only tooling, which is
 // fine: the .ico is committed, so CI never needs to regenerate it.
 // Run with: node scripts/make-ico.mjs
+import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 

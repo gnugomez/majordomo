@@ -3,6 +3,7 @@
 // package.mjs --platform=win32 --arch=<arch>).
 // Squirrel.Windows tooling only runs on Windows — CI's windows runner does.
 // Run with: node scripts/make-windows-installer.mjs [--arch=x64|arm64]
+import process from "node:process";
 import { createWindowsInstaller } from "electron-winstaller";
 
 if (process.platform !== "win32") {

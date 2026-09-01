@@ -1,5 +1,5 @@
-import { build } from "esbuild";
 import { cpSync, mkdirSync } from "node:fs";
+import { build } from "esbuild";
 
 mkdirSync("dist/renderer", { recursive: true });
 

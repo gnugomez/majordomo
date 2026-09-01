@@ -3,13 +3,13 @@
 
 import type { Octokit } from "@octokit/rest";
 import type { AccountConfig, ItemState } from "../shared/types";
+import type { RequestContext } from "./errors";
 import type { FetchedItem, FetchResult, ProviderClient } from "./types";
 import {
-  TIMEOUT_MS,
   statusMessage,
+  TIMEOUT_MS,
   timeoutMessage,
   unreachableMessage,
-  type RequestContext,
 } from "./errors";
 
 const MAX_PAGES = 2;
@@ -92,16 +92,16 @@ interface OctokitRequestError extends Error {
 
 function isRequestError(error: unknown): error is OctokitRequestError {
   return (
-    error instanceof Error &&
-    error.name === "HttpError" &&
-    typeof (error as { status?: unknown }).status === "number"
+    error instanceof Error
+    && error.name === "HttpError"
+    && typeof (error as { status?: unknown }).status === "number"
   );
 }
 
 function isTimeoutError(error: unknown): boolean {
   return (
-    error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError")
+    error instanceof Error
+    && (error.name === "AbortError" || error.name === "TimeoutError")
   );
 }
 
@@ -115,7 +115,7 @@ function toFriendlyError(error: unknown): Error {
     // No response: octokit wrapped a network-level failure (it forces the
     // status to 500, so the status is meaningless here).
     return new Error(
-      isTimeoutError(error.cause) ? timeoutMessage(CONTEXT) : unreachableMessage(CONTEXT)
+      isTimeoutError(error.cause) ? timeoutMessage(CONTEXT) : unreachableMessage(CONTEXT),
     );
   }
   // Octokit re-throws aborts raw rather than wrapping them.
@@ -127,9 +127,11 @@ function toFriendlyError(error: unknown): Error {
 
 /** True when a Link header advertises a rel="next" page. */
 function hasNextLink(linkHeader: string | undefined): boolean {
-  if (!linkHeader) return false;
+  if (!linkHeader)
+    return false;
   for (const part of linkHeader.split(",")) {
-    if (/<([^>]+)>\s*;\s*rel="next"/.test(part)) return true;
+    if (/<[^>]+>\s*;\s*rel="next"/.test(part))
+      return true;
   }
   return false;
 }
@@ -183,18 +185,24 @@ interface Enrichment {
 }
 
 function applyEnrichment(item: FetchedItem, known: Enrichment): void {
-  if (known.state !== undefined) item.state = known.state;
-  if (known.author !== undefined) item.author = known.author;
+  if (known.state !== undefined)
+    item.state = known.state;
+  if (known.author !== undefined)
+    item.author = known.author;
 }
 
 /** Maps a subject payload to the item's lifecycle state, if determinable. */
 function toItemState(subjectType: string, subject: GithubSubject): ItemState | undefined {
   if (subjectType === "PullRequest") {
-    if (subject.merged === true || typeof subject.merged_at === "string") return "merged";
-    if (subject.draft === true) return "draft";
+    if (subject.merged === true || typeof subject.merged_at === "string")
+      return "merged";
+    if (subject.draft === true)
+      return "draft";
   }
-  if (subject.state === "open") return "open";
-  if (subject.state === "closed") return "closed";
+  if (subject.state === "open")
+    return "open";
+  if (subject.state === "closed")
+    return "closed";
   return undefined;
 }
 
@@ -209,7 +217,7 @@ function toItemState(subjectType: string, subject: GithubSubject): ItemState | u
 async function enrichStates(
   octokit: Octokit,
   entries: Array<{ item: FetchedItem; thread: GithubNotification }>,
-  cache: Map<string, Enrichment>
+  cache: Map<string, Enrichment>,
 ): Promise<void> {
   // Rebuilt from this round's threads so the cache never outgrows the inbox.
   const nextCache = new Map<string, Enrichment>();
@@ -217,7 +225,8 @@ async function enrichStates(
 
   for (const { item, thread } of entries) {
     // Discussions, security alerts, etc. carry no subject URL — no state.
-    if (!thread.subject.url) continue;
+    if (!thread.subject.url)
+      continue;
     const key = `${thread.id}:${thread.updated_at}`;
     const known = cache.get(key);
     if (known !== undefined) {
@@ -254,7 +263,7 @@ async function enrichStates(
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(STATE_CONCURRENCY, batch.length) }, () => worker())
+    Array.from({ length: Math.min(STATE_CONCURRENCY, batch.length) }, () => worker()),
   );
 
   cache.clear();
@@ -312,11 +321,14 @@ export function createGithubClient(): ProviderClient {
         } catch (error) {
           // Octokit surfaces 304 as a thrown error, but it means "nothing
           // new", not a failure.
-          if (isRequestError(error) && error.status === 304) break;
+          if (isRequestError(error) && error.status === 304)
+            break;
           throw toFriendlyError(error);
         }
-        if (status === 304 || body === undefined) break;
-        if (!Array.isArray(body)) break;
+        if (status === 304 || body === undefined)
+          break;
+        if (!Array.isArray(body))
+          break;
 
         for (const raw of body) {
           try {

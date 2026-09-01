@@ -1,9 +1,11 @@
+import type { AccountConfig, AppState, ProviderId } from "../shared/types";
+import type { SyncEngine } from "./sync";
+import process from "node:process";
 import { app, ipcMain, systemPreferences } from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 import { IPC } from "../shared/ipc";
-import type { AccountConfig, AppState, ProviderId } from "../shared/types";
 import { createStore } from "./store";
-import { createSyncEngine, type SyncEngine } from "./sync";
+import { createSyncEngine } from "./sync";
 import { createTray } from "./tray";
 import {
   createPopover,
@@ -137,6 +139,11 @@ if (!app.requestSingleInstanceLock()) {
 
     const store = createStore();
     const win = createPopover();
+    // The tray menu drives the engine (refresh) and the engine drives the
+    // tray (unread dot) — a cycle, so both land in `let` bindings that the
+    // callbacks close over and the assignments below fill in.
+    let engine: SyncEngine;
+    let refreshAccent: (source?: "boot" | "live") => void;
     const tray = createTray({
       onToggle: (bounds) => {
         refreshAccent();
@@ -149,23 +156,23 @@ if (!app.requestSingleInstanceLock()) {
       onRefresh: () => void engine.syncNow(),
       onQuit: () => app.quit(),
     });
-    const engine = createSyncEngine(store, (state: AppState) => {
+    engine = createSyncEngine(store, (state: AppState) => {
       tray.setDot(state.items.some((item) => item.isMention && !item.read));
-      if (!win.isDestroyed()) win.webContents.send(IPC.stateUpdated, state);
+      if (!win.isDestroyed())
+        win.webContents.send(IPC.stateUpdated, state);
     });
 
     ipcMain.handle(IPC.getState, () => engine.getState());
     ipcMain.handle(IPC.connectAccount, (_event, provider: ProviderId, config: AccountConfig) =>
-      engine.connectAccount(provider, config),
-    );
+      engine.connectAccount(provider, config));
     ipcMain.handle(IPC.disconnectAccount, (_event, provider: ProviderId) =>
-      engine.disconnectAccount(provider),
-    );
+      engine.disconnectAccount(provider));
     ipcMain.handle(IPC.openItem, (_event, id: string) => engine.openItem(id));
     ipcMain.handle(IPC.markAllRead, () => engine.markAllRead());
     ipcMain.handle(IPC.refresh, () => engine.syncNow());
     ipcMain.handle(IPC.setLaunchAtLogin, (_event, enabled: boolean) => {
-      if (!loginItemSupported) return;
+      if (!loginItemSupported)
+        return;
       app.setLoginItemSettings({ openAtLogin: enabled });
       engine.updateChrome({ launchAtLogin: app.getLoginItemSettings().openAtLogin });
     });
@@ -174,10 +181,11 @@ if (!app.requestSingleInstanceLock()) {
       engine.updateChrome({ glassEnabled: enabled });
     });
     ipcMain.handle(IPC.setPopoverHeight, (_event, px: number) => {
-      if (Number.isFinite(px)) resizePopover(win, px);
+      if (Number.isFinite(px))
+        resizePopover(win, px);
     });
 
-    const refreshAccent = setupAccent(engine);
+    refreshAccent = setupAccent(engine);
     engine.updateChrome({
       launchAtLogin: loginItemSupported && app.getLoginItemSettings().openAtLogin,
       glassEnabled: store.getGlassEnabled() ?? defaultGlassEnabled(),

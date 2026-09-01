@@ -1,5 +1,4 @@
-import { Notification, shell } from "electron";
-import { createProviders } from "../providers";
+import type { FetchedItem, ProviderClient } from "../providers/types";
 import type {
   AccountConfig,
   AccountState,
@@ -7,27 +6,31 @@ import type {
   InboxItem,
   ProviderId,
 } from "../shared/types";
-import type { FetchedItem, ProviderClient } from "../providers/types";
 import type { Store, StoredItem } from "./store";
+import process from "node:process";
+import { Notification, shell } from "electron";
+import { createProviders } from "../providers";
 
 const SYNC_INTERVAL_MS = 60_000;
 
-/** Notification-title fallback for items without a repo (a GitLab todo may
+/**
+ * Notification-title fallback for items without a repo (a GitLab todo may
  * carry no project). Mirrors the display names in src/ui/components/Banner.tsx
- * — the renderer never sees this copy. */
+ * — the renderer never sees this copy.
+ */
 const PROVIDER_NAMES: Record<ProviderId, string> = { github: "GitHub", gitlab: "GitLab" };
 
 export interface SyncEngine {
-  getState(): AppState;
-  syncNow(): Promise<void>;
-  connectAccount(provider: ProviderId, config: AccountConfig): Promise<AccountState>;
-  disconnectAccount(provider: ProviderId): void;
-  openItem(id: string): void;
-  markAllRead(): void;
+  getState: () => AppState;
+  syncNow: () => Promise<void>;
+  connectAccount: (provider: ProviderId, config: AccountConfig) => Promise<AccountState>;
+  disconnectAccount: (provider: ProviderId) => void;
+  openItem: (id: string) => void;
+  markAllRead: () => void;
   /** Merge window-chrome facts (accent color, login item) into the state and push it. */
-  updateChrome(chrome: Partial<AppChrome>): void;
+  updateChrome: (chrome: Partial<AppChrome>) => void;
   /** Kicks off the first sync and the 60s interval. */
-  start(): void;
+  start: () => void;
 }
 
 export interface AppChrome {
@@ -72,7 +75,8 @@ export function createSyncEngine(
   function getState(): AppState {
     const items = store.getItems().map(toInboxItem);
     items.sort((a, b) => {
-      if (a.isMention !== b.isMention) return a.isMention ? -1 : 1;
+      if (a.isMention !== b.isMention)
+        return a.isMention ? -1 : 1;
       return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
     });
     return {
@@ -102,7 +106,8 @@ export function createSyncEngine(
   const liveNotifications = new Set<Notification>();
 
   function notify(item: FetchedItem): void {
-    if (!Notification.isSupported()) return;
+    if (!Notification.isSupported())
+      return;
     const notification = new Notification({
       title: item.repo || PROVIDER_NAMES[item.provider],
       body: item.title,
@@ -130,14 +135,16 @@ export function createSyncEngine(
     await Promise.all(
       providerIds.map(async (id) => {
         const stored = store.getAccount(id);
-        if (!stored) return;
+        if (!stored)
+          return;
         const account = accounts.get(id)!;
         try {
           const { items: fetched, complete } = await providers[id].fetchItems(stored.config);
           // Disconnected while the fetch was in flight: upserting now would
           // resurrect the items deleteProviderItems just removed — as
           // unread orphans nothing would ever prune.
-          if (!store.getAccount(id)) return;
+          if (!store.getAccount(id))
+            return;
           delete account.error;
 
           // Reconcile, never replace: the collection is the app's own.
@@ -153,12 +160,14 @@ export function createSyncEngine(
               .getItems()
               .filter((item) => item.provider === id && !item.read && !fetchedIds.has(item.id))
               .map((item) => item.id);
-            if (absent.length > 0) store.markRead(absent);
+            if (absent.length > 0)
+              store.markRead(absent);
           }
         } catch (err) {
           // Keep this provider's items untouched; just surface the error —
           // unless the account was disconnected mid-fetch.
-          if (!store.getAccount(id)) return;
+          if (!store.getAccount(id))
+            return;
           account.error = errorMessage(err);
         }
       }),
@@ -169,7 +178,8 @@ export function createSyncEngine(
       for (const id of newIds) {
         const item = byId.get(id);
         // Items that arrive already handled upstream don't deserve a ping.
-        if (item?.isMention && !item.read) notify(item);
+        if (item?.isMention && !item.read)
+          notify(item);
       }
     }
 
@@ -232,7 +242,8 @@ export function createSyncEngine(
 
     openItem(id) {
       const item = store.getItems().find((it) => it.id === id);
-      if (!item) return;
+      if (!item)
+        return;
       void shell.openExternal(item.url);
       store.markRead([id]);
       emitState();

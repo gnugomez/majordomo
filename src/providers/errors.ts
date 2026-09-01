@@ -31,10 +31,10 @@ export function unreachableMessage(ctx: RequestContext): string {
 /** The host answered, but with a body that was not JSON. */
 export function invalidJsonMessage(ctx: RequestContext): string {
   return (
-    `${ctx.service} returned a response that was not valid JSON — ` +
-    (ctx.originIsUserSupplied
-      ? `is ${ctx.origin} really a ${ctx.service} instance?`
-      : "try again later.")
+    `${ctx.service} returned a response that was not valid JSON — ${
+      ctx.originIsUserSupplied
+        ? `is ${ctx.origin} really a ${ctx.service} instance?`
+        : "try again later."}`
   );
 }
 

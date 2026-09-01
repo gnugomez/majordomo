@@ -6,21 +6,24 @@
 // - tray*Light / tray*Dark: white and black glyphs for Windows/Linux, where
 //   template auto-inversion doesn't exist — the app picks the variant from
 //   nativeTheme (dark UI → Light files).
-const { app, BrowserWindow } = require("electron");
+const { Buffer } = require("node:buffer");
 const { writeFileSync } = require("node:fs");
 const { join } = require("node:path");
+const { app, BrowserWindow } = require("electron");
 
 app.disableHardwareAcceleration();
 // Windows are destroyed between renders; don't let that quit the app.
 app.on("window-all-closed", () => {});
 
 // The same Feather "inbox" glyph the app icon uses, scaled into a 16pt canvas.
-const glyphFor = (color) => `
+function glyphFor(color) {
+  return `
   <g transform="translate(1,1.5) scale(0.5833)" fill="none" stroke="${color}"
      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
     <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
   </g>`;
+}
 
 function svgFor(size, withDot, color) {
   const glyph = glyphFor(color);
@@ -49,7 +52,7 @@ async function render(size, withDot, color, outName) {
   });
   win.webContents.setFrameRate(10);
 
-  await win.loadURL("data:text/html;base64," + Buffer.from(html).toString("base64"));
+  await win.loadURL(`data:text/html;base64,${Buffer.from(html).toString("base64")}`);
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   const image = lastPaint ?? (await win.webContents.capturePage());

@@ -23,7 +23,8 @@ Details live in CONTRIBUTING.md (layout, adding a provider) and RELEASING.md.
   and version); `ci:`/`build:` for pipeline work — never `feat:`; `chore:`/
   `docs:`/`refactor:` for the rest. Releases only via release-please — never
   bump versions or edit CHANGELOG.md by hand.
-- **Checks**: `pnpm typecheck` and `pnpm build` must pass. Run a dev copy
+- **Checks**: `pnpm typecheck`, `pnpm lint` (ESLint, antfu config;
+  `lint:fix` autofixes), and `pnpm build` must pass. Run a dev copy
   alongside an installed one with `MAJORDOMO_USERDATA=/tmp/dev pnpm start`;
   the renderer exposes `window.__debugSetState(state)` for injecting fixture
   data during visual checks.

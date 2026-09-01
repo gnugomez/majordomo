@@ -3,10 +3,10 @@
 // mounted while collapsed (rows hidden per-row) so typed values survive
 // collapse/expand, state pushes, and re-renders.
 
-import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { AccountConfig, AccountState } from "../../shared/types";
 import type { ProviderDef } from "./SettingsPane";
+import { useEffect, useRef, useState } from "react";
 
 interface ConnectFormProps {
   def: ProviderDef;
@@ -68,12 +68,12 @@ export function ConnectForm({ def, account, busy, open, onConnect }: ConnectForm
     }
     setLocalError(null);
     onConnect(
-      baseUrl !== undefined ? { token: trimmedToken, baseUrl } : { token: trimmedToken }
+      baseUrl !== undefined ? { token: trimmedToken, baseUrl } : { token: trimmedToken },
     );
   };
 
-  const error =
-    busy || account.connected ? "" : localError ?? account.error ?? "";
+  const error
+    = busy || account.connected ? "" : localError ?? account.error ?? "";
 
   return (
     <form className="connect-form" noValidate onSubmit={submit}>

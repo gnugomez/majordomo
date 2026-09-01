@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { AppState, InboxItem } from "../../shared/types";
-import { CheckCircleIcon, InboxIcon } from "../components/Icons";
 import { EmptyState } from "../components/EmptyState";
+import { CheckCircleIcon, InboxIcon } from "../components/Icons";
 import { DisclosureSection } from "./DisclosureSection";
 
 interface InboxPaneProps {

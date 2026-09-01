@@ -6,9 +6,11 @@ import type { AccountConfig, InboxItem } from "../shared/types";
 
 /** What a provider fetches: an InboxItem before local read-state is applied. */
 export type FetchedItem = Omit<InboxItem, "read"> & {
-  /** True when the provider reports the user already handled this upstream
+  /**
+   * True when the provider reports the user already handled this upstream
    * (read notification thread, done todo). Consumed at upsert time to mark
-   * the local item read; never stored. Absent means "unknown/unread". */
+   * the local item read; never stored. Absent means "unknown/unread".
+   */
   upstreamRead?: boolean;
 };
 
@@ -26,16 +28,18 @@ export type FetchedItem = Omit<InboxItem, "read"> & {
 export interface ProviderClient {
   id: InboxItem["provider"];
   /** Checks the credentials; returns the account's username on success. */
-  validate(config: AccountConfig): Promise<{ username: string }>;
+  validate: (config: AccountConfig) => Promise<{ username: string }>;
   /** Returns the account's current inbox. */
-  fetchItems(config: AccountConfig): Promise<FetchResult>;
+  fetchItems: (config: AccountConfig) => Promise<FetchResult>;
 }
 
 /** What fetchItems returns. */
 export interface FetchResult {
   items: FetchedItem[];
-  /** True when no page cap truncated the authoritative list — an item's
+  /**
+   * True when no page cap truncated the authoritative list — an item's
    * absence from a complete fetch proves the user handled it upstream, so
-   * the sync engine marks it read. A capped fetch proves nothing. */
+   * the sync engine marks it read. A capped fetch proves nothing.
+   */
   complete: boolean;
 }

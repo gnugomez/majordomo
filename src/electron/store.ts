@@ -1,8 +1,9 @@
-import { app, safeStorage } from "electron";
+import type { FetchedItem } from "../providers/types";
+import type { AccountConfig, ProviderId } from "../shared/types";
+import { Buffer } from "node:buffer";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { AccountConfig, ProviderId } from "../shared/types";
-import type { FetchedItem } from "../providers/types";
+import { app, safeStorage } from "electron";
 
 // JSON persistence for account metadata, the app's own persistent item
 // collection (upstream disappearance is a read signal, never a delete — see
@@ -14,8 +15,10 @@ const RETAIN_READ_MS = 30 * 24 * 60 * 60 * 1000;
 /** Hard cap on the collection; oldest (read first) beyond it are dropped. */
 const ITEMS_CAP = 500;
 
-/** A FetchedItem the app has adopted into its own collection. The transient
- * upstreamRead signal is consumed at upsert and never persisted. */
+/**
+ * A FetchedItem the app has adopted into its own collection. The transient
+ * upstreamRead signal is consumed at upsert and never persisted.
+ */
 export interface StoredItem extends Omit<FetchedItem, "upstreamRead"> {
   read: boolean;
   /** ISO 8601 — when this item first entered the collection. */
@@ -25,8 +28,10 @@ export interface StoredItem extends Omit<FetchedItem, "upstreamRead"> {
 }
 
 interface StoredAccount {
-  /** Base64 of the safeStorage-encrypted token, or the plaintext token.
-   * Absent when the token lives in the OS keychain instead. */
+  /**
+   * Base64 of the safeStorage-encrypted token, or the plaintext token.
+   * Absent when the token lives in the OS keychain instead.
+   */
   token?: string;
   tokenEncrypted?: boolean;
   baseUrl?: string;
@@ -53,24 +58,28 @@ export interface StoredAccountInfo {
 }
 
 export interface Store {
-  getAccount(provider: ProviderId): StoredAccountInfo | undefined;
-  setAccount(provider: ProviderId, config: AccountConfig, username: string): void;
-  deleteAccount(provider: ProviderId): void;
-  getItems(): StoredItem[];
-  /** Adopts new items (unread) and refreshes known ones (fields updated,
+  getAccount: (provider: ProviderId) => StoredAccountInfo | undefined;
+  setAccount: (provider: ProviderId, config: AccountConfig, username: string) => void;
+  deleteAccount: (provider: ProviderId) => void;
+  getItems: () => StoredItem[];
+  /**
+   * Adopts new items (unread) and refreshes known ones (fields updated,
    * lastSeenUpstreamAt bumped, local read preserved). Returns the ids that
-   * were new to the collection. */
-  upsertItems(items: FetchedItem[]): string[];
-  markRead(ids: string[]): void;
-  markAllRead(): void;
+   * were new to the collection.
+   */
+  upsertItems: (items: FetchedItem[]) => string[];
+  markRead: (ids: string[]) => void;
+  markAllRead: () => void;
   /** Removes a disconnected provider's items immediately. */
-  deleteProviderItems(provider: ProviderId): void;
-  /** Retention: drops read items unseen upstream for 30 days, then enforces
-   * the 500-item cap (oldest by updatedAt go first, read before unread). */
-  prune(): void;
+  deleteProviderItems: (provider: ProviderId) => void;
+  /**
+   * Retention: drops read items unseen upstream for 30 days, then enforces
+   * the 500-item cap (oldest by updatedAt go first, read before unread).
+   */
+  prune: () => void;
   /** undefined when the user never toggled it — use the platform default. */
-  getGlassEnabled(): boolean | undefined;
-  setGlassEnabled(enabled: boolean): void;
+  getGlassEnabled: () => boolean | undefined;
+  setGlassEnabled: (enabled: boolean) => void;
 }
 
 // --- Token storage -------------------------------------------------------
@@ -100,7 +109,7 @@ export function createStore(): Store {
         items[item.id] = { ...item, read: readIds.has(item.id), firstSeenAt: now, lastSeenUpstreamAt: now };
       }
       migrated = true;
-      console.log(`majordomo: migrated ${parsed.cachedItems.length} cached items to the collection`);
+      console.warn(`majordomo: migrated ${parsed.cachedItems.length} cached items to the collection`);
     }
     data = {
       accounts: parsed.accounts && typeof parsed.accounts === "object" ? parsed.accounts : {},
@@ -123,8 +132,10 @@ export function createStore(): Store {
   }
 
   function decodeToken(stored: StoredAccount): string | undefined {
-    if (stored.token === undefined) return undefined;
-    if (!stored.tokenEncrypted) return stored.token;
+    if (stored.token === undefined)
+      return undefined;
+    if (!stored.tokenEncrypted)
+      return stored.token;
     try {
       return safeStorage.decryptString(Buffer.from(stored.token, "base64"));
     } catch {
@@ -138,7 +149,8 @@ export function createStore(): Store {
     stored.tokenEncrypted = encrypt;
   }
 
-  if (migrated) save();
+  if (migrated)
+    save();
 
   // Decoded tokens are memoized so decryption runs once per account per run.
   const tokenCache = new Map<ProviderId, string>();
@@ -146,11 +158,13 @@ export function createStore(): Store {
   return {
     getAccount(provider) {
       const stored = data.accounts[provider];
-      if (!stored) return undefined;
+      if (!stored)
+        return undefined;
       let token = tokenCache.get(provider);
       if (token === undefined) {
         token = decodeToken(stored);
-        if (token === undefined) return undefined;
+        if (token === undefined)
+          return undefined;
         tokenCache.set(provider, token);
       }
       return { config: { token, baseUrl: stored.baseUrl }, username: stored.username };
@@ -175,7 +189,8 @@ export function createStore(): Store {
     },
 
     upsertItems(items) {
-      if (items.length === 0) return [];
+      if (items.length === 0)
+        return [];
       const now = new Date().toISOString();
       const newIds: string[] = [];
       for (const { upstreamRead, ...item } of items) {
@@ -216,7 +231,8 @@ export function createStore(): Store {
           changed = true;
         }
       }
-      if (changed) save();
+      if (changed)
+        save();
     },
 
     markAllRead() {
@@ -227,7 +243,8 @@ export function createStore(): Store {
           changed = true;
         }
       }
-      if (changed) save();
+      if (changed)
+        save();
     },
 
     deleteProviderItems(provider) {
@@ -238,7 +255,8 @@ export function createStore(): Store {
           changed = true;
         }
       }
-      if (changed) save();
+      if (changed)
+        save();
     },
 
     prune() {
@@ -254,13 +272,15 @@ export function createStore(): Store {
       const excess = all.length - ITEMS_CAP;
       if (excess > 0) {
         all.sort((a, b) => {
-          if (a.read !== b.read) return a.read ? -1 : 1;
+          if (a.read !== b.read)
+            return a.read ? -1 : 1;
           return a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0;
         });
         for (const victim of all.slice(0, excess)) delete data.items[victim.id];
         changed = true;
       }
-      if (changed) save();
+      if (changed)
+        save();
     },
 
     getGlassEnabled() {

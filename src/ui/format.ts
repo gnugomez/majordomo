@@ -26,8 +26,8 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
     return `${days}d`;
   }
   const date = new Date(then);
-  const options: Intl.DateTimeFormatOptions =
-    date.getFullYear() === new Date(now).getFullYear()
+  const options: Intl.DateTimeFormatOptions
+    = date.getFullYear() === new Date(now).getFullYear()
       ? { month: "short", day: "numeric" }
       : { month: "short", day: "numeric", year: "numeric" };
   return date.toLocaleDateString(undefined, options);

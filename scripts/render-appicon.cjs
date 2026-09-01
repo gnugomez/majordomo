@@ -1,9 +1,10 @@
 // Run with: electron scripts/render-appicon.cjs
 // Renders assets/appicon.svg to build/appicon-1024.png (with alpha) using an
 // offscreen window, so icon generation needs no image tooling beyond Electron.
-const { app, BrowserWindow } = require("electron");
+const { Buffer } = require("node:buffer");
 const { mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
+const { app, BrowserWindow } = require("electron");
 
 app.disableHardwareAcceleration();
 
@@ -26,7 +27,7 @@ void app.whenReady().then(async () => {
   });
   win.webContents.setFrameRate(10);
 
-  await win.loadURL("data:text/html;base64," + Buffer.from(html).toString("base64"));
+  await win.loadURL(`data:text/html;base64,${Buffer.from(html).toString("base64")}`);
   await new Promise((resolve) => setTimeout(resolve, 800));
 
   const image = lastPaint ?? (await win.webContents.capturePage());

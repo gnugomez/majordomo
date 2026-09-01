@@ -4,8 +4,8 @@
 // connect form expands inline beneath the row as extra rows in the same
 // container, one open at a time.
 
-import { useEffect, useState } from "react";
 import type { AccountConfig, AccountState, AppState, ProviderId } from "../../shared/types";
+import { useEffect, useState } from "react";
 import { GeneralGroup } from "./GeneralGroup";
 import { ProviderRow } from "./ProviderRow";
 

@@ -1,6 +1,6 @@
 import type { InboxItem } from "../../shared/types";
-import { humanizeReason, relativeTime } from "../format";
 import { KindIcon, ProviderIcon } from "../components/Icons";
+import { humanizeReason, relativeTime } from "../format";
 
 interface ItemRowProps {
   item: InboxItem;
@@ -14,8 +14,16 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
   // or unknown state keeps the reason capsule; issues always keep it (their
   // state shows via the icon alone).
   const isPullLike = item.kind === "pull" || item.kind === "merge";
-  const stateCapsule =
-    isPullLike && item.state && item.state !== "open" ? item.state : null;
+  const stateCapsule
+    = isPullLike && item.state && item.state !== "open" ? item.state : null;
+
+  // GitHub renders completed issues purple, not red — only closed PRs/MRs
+  // are red.
+  const kindIconClass = !item.state
+    ? "kind-icon"
+    : item.state === "closed" && item.kind === "issue"
+      ? "kind-icon state-closed-issue"
+      : `kind-icon state-${item.state}`;
 
   return (
     <button
@@ -32,17 +40,7 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
       </span>
       <span className="row-content">
         <span className="row-line1">
-          <span
-            className={
-              item.state
-                ? // GitHub renders completed issues purple, not red — only
-                  // closed PRs/MRs are red.
-                  item.state === "closed" && item.kind === "issue"
-                  ? "kind-icon state-closed-issue"
-                  : `kind-icon state-${item.state}`
-                : "kind-icon"
-            }
-          >
+          <span className={kindIconClass}>
             <KindIcon kind={item.kind} state={item.state} />
           </span>
           <span className="row-title">{item.title}</span>
@@ -59,13 +57,15 @@ export function ItemRow({ item, now, onOpen }: ItemRowProps) {
             <span className="row-sep">·</span>
             <span className="rel-time">{relativeTime(item.updatedAt, now)}</span>
           </span>
-          {stateCapsule ? (
-            <span className={`capsule state-${stateCapsule}`}>{stateCapsule}</span>
-          ) : (
-            <span className={item.isMention ? "capsule mention" : "capsule"}>
-              {humanizeReason(item.reason)}
-            </span>
-          )}
+          {stateCapsule
+            ? (
+                <span className={`capsule state-${stateCapsule}`}>{stateCapsule}</span>
+              )
+            : (
+                <span className={item.isMention ? "capsule mention" : "capsule"}>
+                  {humanizeReason(item.reason)}
+                </span>
+              )}
         </span>
       </span>
     </button>

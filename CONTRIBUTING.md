@@ -15,6 +15,7 @@ with pnpm — `corepack enable pnpm` gives you the version pinned in
 pnpm install
 pnpm start         # build with esbuild, launch Electron
 pnpm typecheck     # strict TypeScript, no emit
+pnpm lint          # ESLint (antfu config); pnpm lint:fix autofixes
 pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
 ```
 
@@ -22,6 +23,12 @@ pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
 `node_modules` into the app bundle and prunes it by walking the tree, which a
 symlinked layout would break. It also lists the two packages allowed to run
 install scripts.
+
+A note on the TypeScript packages: `pnpm typecheck` runs the native
+TypeScript 7 `tsc` (installed as `@typescript/native`), while the
+`typescript` name resolves to Microsoft's `@typescript/typescript6`
+compatibility package — typescript-eslint needs the TS 6 JS API, and this is
+the side-by-side setup the TypeScript 7 announcement documents.
 
 If you have a packaged copy of Majordomo installed and running, point your dev
 build at a scratch profile so both can run side by side:
@@ -99,7 +106,8 @@ every switch that needs the new case.
 
 1. Keep the change focused; match the style of the surrounding code
    (strict TypeScript, double quotes, 2-space indent).
-2. `pnpm typecheck` and `pnpm build` must pass — CI enforces both.
+2. `pnpm typecheck`, `pnpm lint`, and `pnpm build` must pass — CI
+   enforces all three.
 3. Use [conventional commits](https://www.conventionalcommits.org) —
    releases and the changelog are generated from them by release-please.
    `feat:` for user-visible features, `fix:` for bug fixes, `refactor:`/

@@ -1,8 +1,8 @@
 // Renderer entry point: mounts <App/> and installs the two window-level
 // affordances that must exist before (and regardless of) React rendering.
 
-import { createRoot } from "react-dom/client";
 import type { AppState } from "../shared/types";
+import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { debugInjector } from "./debug";
 

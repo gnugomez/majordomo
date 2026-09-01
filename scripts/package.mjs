@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 // Packages the built app (dist/) into release/Majordomo-<platform>-<arch>/.
 // Usage: node scripts/package.mjs [--platform=darwin|win32|linux] [--arch=arm64|x64]
 // Defaults to the host platform/arch. Run via: pnpm package (macOS flow).
-import { execFileSync } from "node:child_process";
+import process from "node:process";
 import { packager } from "@electron/packager";
 
 const args = new Map(
@@ -24,8 +25,8 @@ if (!["arm64", "x64"].includes(arch)) {
 // darwin: .icns rendered by scripts/make-icns.mjs. win32: the committed
 // assets/appicon.ico (scripts/make-ico.mjs regenerates it). linux: the
 // packager takes no icon — the .desktop file of whoever installs it does.
-const icon =
-  platform === "darwin" ? "build/Majordomo.icns" : platform === "win32" ? "assets/appicon.ico" : undefined;
+const icon
+  = platform === "darwin" ? "build/Majordomo.icns" : platform === "win32" ? "assets/appicon.ico" : undefined;
 
 const appPaths = await packager({
   dir: ".",
@@ -82,12 +83,14 @@ if (platform === "darwin") {
   // even self-signed, keeps macOS permissions — notifications, login item —
   // across updates; ad-hoc resets them on every build), else ad-hoc.
   function detectIdentity() {
-    if (process.env.CODESIGN_IDENTITY) return process.env.CODESIGN_IDENTITY;
+    if (process.env.CODESIGN_IDENTITY)
+      return process.env.CODESIGN_IDENTITY;
     try {
       const out = execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], {
         encoding: "utf8",
       });
-      if (out.includes('"Majordomo Dev"')) return "Majordomo Dev";
+      if (out.includes("\"Majordomo Dev\""))
+        return "Majordomo Dev";
     } catch {
       // security not available or no keychain access — fall through to ad-hoc.
     }
