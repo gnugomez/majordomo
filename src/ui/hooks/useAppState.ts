@@ -11,6 +11,16 @@ import { debugInjector } from "../debug";
 // HTML degrades to the empty state instead of throwing.
 const api: MajordomoApi | undefined = window.majordomo;
 
+/** Best-effort host guess for the first paint (platform-specific styling
+ * applies from the very first frame); the real value arrives with the
+ * initial getState(). */
+function guessPlatform(): AppState["platform"] {
+  const ua = navigator.userAgent;
+  if (ua.includes("Windows")) return "win32";
+  if (ua.includes("Linux")) return "linux";
+  return "darwin";
+}
+
 const EMPTY_STATE: AppState = {
   items: [],
   accounts: [],
@@ -18,7 +28,7 @@ const EMPTY_STATE: AppState = {
   syncing: false,
   accentColor: null,
   launchAtLogin: false,
-  platform: "darwin",
+  platform: guessPlatform(),
   glassEnabled: true,
 };
 
