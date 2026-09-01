@@ -232,7 +232,8 @@ export function createSyncEngine(
 
     openItem(id) {
       const item = store.getItems().find((it) => it.id === id);
-      if (item) void shell.openExternal(item.url);
+      if (!item) return;
+      void shell.openExternal(item.url);
       store.markRead([id]);
       emitState();
     },
