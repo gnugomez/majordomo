@@ -40,10 +40,14 @@ interface GitlabTodo {
   id: number;
   action_name: string;
   created_at: string;
+  /** Bumped when GitLab refreshes the todo (re-mention, re-assignment). */
+  updated_at?: string;
   target_type: string;
   target_url: string;
   target?: {
     title?: string;
+    /** Last activity on the issue/MR itself — comments, merges, closes. */
+    updated_at?: string;
     /** "opened" | "merged" | "closed" (also "locked" on some instances). */
     state?: string;
     /** Present on MergeRequest targets; older instances only send work_in_progress. */
@@ -169,7 +173,10 @@ function toFetchedItem(todo: GitlabTodo): FetchedItem {
     url: todo.target_url,
     reason: todo.action_name,
     isMention: MENTION_ACTIONS.has(todo.action_name),
-    updatedAt: todo.created_at,
+    // Last activity on the target, like GitHub's thread.updated_at — the
+    // todo's own dates only move on todo actions, so a plain comment or a
+    // merge would never re-sort the item.
+    updatedAt: todo.target?.updated_at ?? todo.updated_at ?? todo.created_at,
   };
   // Omit (rather than set undefined) when unknown: upsert spreads fetched
   // fields over the stored item, and a missing key keeps the previous state.
