@@ -12,6 +12,11 @@ import type { Store, StoredItem } from "./store";
 
 const SYNC_INTERVAL_MS = 60_000;
 
+/** Notification-title fallback for items without a repo (a GitLab todo may
+ * carry no project). Mirrors the display names in src/ui/components/Banner.tsx
+ * — the renderer never sees this copy. */
+const PROVIDER_NAMES: Record<ProviderId, string> = { github: "GitHub", gitlab: "GitLab" };
+
 export interface SyncEngine {
   getState(): AppState;
   syncNow(): Promise<void>;
@@ -98,7 +103,10 @@ export function createSyncEngine(
 
   function notify(item: FetchedItem): void {
     if (!Notification.isSupported()) return;
-    const notification = new Notification({ title: item.repo, body: item.title });
+    const notification = new Notification({
+      title: item.repo || PROVIDER_NAMES[item.provider],
+      body: item.title,
+    });
     const release = () => liveNotifications.delete(notification);
     notification.on("click", () => {
       void shell.openExternal(item.url);
