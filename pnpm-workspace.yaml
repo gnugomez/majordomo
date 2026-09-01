@@ -1,0 +1,13 @@
+# pnpm's settings live here — pnpm 11 no longer reads them from .npmrc.
+
+# @electron/packager copies node_modules into the app bundle and prunes dev
+# deps by walking it. pnpm's default symlinked layout would leave links
+# pointing outside the bundle, so keep node_modules flat.
+nodeLinker: hoisted
+
+# Install scripts are blocked by default. esbuild stages its platform binary
+# and electron-winstaller its 7-Zip; electron downloads lazily on first run
+# and electron-liquid-glass ships prebuilds, so neither needs one.
+allowBuilds:
+  esbuild: true
+  electron-winstaller: true

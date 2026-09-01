@@ -7,20 +7,27 @@ and MRs into one inbox. Contributions of all sizes are welcome.
 ## Getting set up
 
 You need Node.js 22+ (any OS; the glass material and DMG packaging are
-macOS-specific, everything else is cross-platform).
+macOS-specific, everything else is cross-platform). Dependencies are managed
+with pnpm — `corepack enable pnpm` gives you the version pinned in
+`package.json`.
 
 ```sh
-npm install
-npm start          # build with esbuild, launch Electron
-npm run typecheck  # strict TypeScript, no emit
-npm run package    # produce release/Majordomo-darwin-arm64/Majordomo.app
+pnpm install
+pnpm start         # build with esbuild, launch Electron
+pnpm typecheck     # strict TypeScript, no emit
+pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
 ```
+
+`pnpm-workspace.yaml` sets `nodeLinker: hoisted`: `@electron/packager` copies
+`node_modules` into the app bundle and prunes it by walking the tree, which a
+symlinked layout would break. It also lists the two packages allowed to run
+install scripts.
 
 If you have a packaged copy of Majordomo installed and running, point your dev
 build at a scratch profile so both can run side by side:
 
 ```sh
-MAJORDOMO_USERDATA=/tmp/majordomo-dev npm start
+MAJORDOMO_USERDATA=/tmp/majordomo-dev pnpm start
 ```
 
 ## How the code is laid out
@@ -89,7 +96,7 @@ every switch that needs the new case.
 
 1. Keep the change focused; match the style of the surrounding code
    (strict TypeScript, double quotes, 2-space indent).
-2. `npm run typecheck` and `npm run build` must pass — CI enforces both.
+2. `pnpm typecheck` and `pnpm build` must pass — CI enforces both.
 3. Use [conventional commits](https://www.conventionalcommits.org) —
    releases and the changelog are generated from them by release-please.
    `feat:` for user-visible features, `fix:` for bug fixes, `refactor:`/

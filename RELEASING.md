@@ -17,7 +17,7 @@ there are no release side-files to maintain.
    platform and architecture: `Majordomo-macos-arm64.dmg`,
    `Majordomo-macos-x64.dmg`, `Majordomo-windows-x64-Setup.exe`, and
    `Majordomo-windows-arm64-Setup.exe`. Linux has no prebuilt artifact —
-   it's self-build (`npm run package:linux`).
+   it's self-build (`pnpm package:linux`).
 
 Release cadence is simply: merge the release PR whenever you want to ship.
 
@@ -33,7 +33,7 @@ them the way rotating ad-hoc signatures do.
 - `MACOS_SIGN_P12_PASSWORD` — its password.
 
 If the secrets are absent the build falls back to ad-hoc signing. The same
-identity can be imported into a local keychain so `npm run package` produces
+identity can be imported into a local keychain so `pnpm package` produces
 identically-signed builds on a dev machine (`scripts/package.mjs` picks up a
 "Majordomo Dev" keychain identity automatically, or honors
 `CODESIGN_IDENTITY`).
@@ -53,7 +53,7 @@ Download the zip from the GitHub release, unzip, drag `Majordomo.app` into
 ## Local/manual release build
 
 ```sh
-npm run package
+pnpm package
 # → release/Majordomo-darwin-arm64/Majordomo.app
 ```
 

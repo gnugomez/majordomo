@@ -36,9 +36,9 @@ Sign in from the settings pane by pasting a personal access token:
 ## Build
 
 ```sh
-npm install
-npm start          # run it
-npm run package    # build release/Majordomo-darwin-arm64/Majordomo.app
+pnpm install
+pnpm start         # run it
+pnpm package       # build release/Majordomo-darwin-arm64/Majordomo.app
 ```
 
 Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Releases are described

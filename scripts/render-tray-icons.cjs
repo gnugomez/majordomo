@@ -1,4 +1,4 @@
-// Run with: electron scripts/render-tray-icons.cjs  (or: npm run icons)
+// Run with: electron scripts/render-tray-icons.cjs  (or: pnpm icons)
 // Renders the tray icons (base + unread-dot variant, 1x and 2x) as
 // anti-aliased vectors via an offscreen window.
 // - tray*Template: pure black + alpha; macOS recolors them for light/dark

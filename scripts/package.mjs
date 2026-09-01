@@ -1,6 +1,6 @@
 // Packages the built app (dist/) into release/Majordomo-<platform>-<arch>/.
 // Usage: node scripts/package.mjs [--platform=darwin|win32|linux] [--arch=arm64|x64]
-// Defaults to the host platform/arch. Run via: npm run package (macOS flow).
+// Defaults to the host platform/arch. Run via: pnpm package (macOS flow).
 import { execFileSync } from "node:child_process";
 import { packager } from "@electron/packager";
 
@@ -66,7 +66,11 @@ const appPaths = await packager({
     /^\/tsconfig\.json$/,
     /^\/README\.md$/,
     /^\/LICENSE$/,
-    /^\/package-lock\.json$/,
+    /^\/pnpm-lock\.yaml$/,
+    /^\/pnpm-workspace\.yaml$/,
+    // pnpm's bookkeeping inside node_modules — the pruner leaves it behind
+    // because none of it is a module.
+    /^\/node_modules\/\.(modules\.yaml|package-map\.json|pnpm|pnpm-workspace-state-v1\.json)($|\/)/,
   ],
 });
 
