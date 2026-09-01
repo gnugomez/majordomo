@@ -84,7 +84,14 @@ export function createPopover(): BrowserWindow {
   if (process.platform === "darwin") {
     win.webContents.once("did-finish-load", () => applyGlass(win));
   }
-  void win.loadFile(join(__dirname, "../renderer/index.html"));
+  // pnpm dev serves the renderer from Vite for HMR; otherwise load the
+  // built page from disk.
+  const devServerUrl = process.env.MAJORDOMO_DEV_SERVER_URL;
+  if (devServerUrl) {
+    void win.loadURL(devServerUrl);
+  } else {
+    void win.loadFile(join(__dirname, "../renderer/index.html"));
+  }
   return win;
 }
 

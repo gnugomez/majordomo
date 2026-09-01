@@ -14,6 +14,7 @@ with pnpm — `corepack enable pnpm` gives you the version pinned in
 ```sh
 pnpm install
 pnpm start         # build with esbuild, launch Electron
+pnpm dev           # dev loop: Vite HMR for the UI, auto-relaunch for main
 pnpm typecheck     # strict TypeScript, no emit
 pnpm lint          # ESLint (antfu config); pnpm lint:fix autofixes
 pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
@@ -35,7 +36,7 @@ If you have a packaged copy of Majordomo installed and running, point your dev
 build at a scratch profile so both can run side by side:
 
 ```sh
-MAJORDOMO_USERDATA=/tmp/majordomo-dev pnpm start
+MAJORDOMO_USERDATA=/tmp/majordomo-dev pnpm dev
 ```
 
 ## How the code is laid out

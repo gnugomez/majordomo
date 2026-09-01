@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { build } from "esbuild";
 
 mkdirSync("dist/renderer", { recursive: true });
@@ -30,7 +30,16 @@ await Promise.all([
   }),
 ]);
 
-cpSync("src/ui/index.html", "dist/renderer/index.html");
+// The source HTML points at main.tsx for the Vite dev server (pnpm dev);
+// the shipped page loads the esbuild bundle instead.
+const html = readFileSync("src/ui/index.html", "utf8");
+const shipped = html.replace(
+  "<script type=\"module\" src=\"./main.tsx\"></script>",
+  "<script src=\"./index.js\"></script>",
+);
+if (shipped === html)
+  throw new Error("index.html: renderer script tag not found");
+writeFileSync("dist/renderer/index.html", shipped);
 cpSync("src/ui/styles.css", "dist/renderer/styles.css");
 cpSync("assets", "dist/assets", { recursive: true });
 console.log("build ok");

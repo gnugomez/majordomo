@@ -17,6 +17,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "pnpm build && electron .",
+    "dev": "node scripts/dev.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -40,6 +41,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.0.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-winstaller": "^5.4.4",
@@ -49,6 +51,7 @@
     "eslint-plugin-react-refresh": "^0.5.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vite": "^8.2.2"
   }
 }

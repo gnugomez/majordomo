@@ -50,10 +50,12 @@ function appIsRunning() {
   return spawnSync("pgrep", ["-x", "Majordomo"], { stdio: "ignore" }).status === 0;
 }
 
-/** Quits a running copy and waits until it is gone: the replacement can
+/**
+ * Quits a running copy and waits until it is gone: the replacement can
  * only take over the single-instance lock once the old process has exited —
  * otherwise the fresh launch quits immediately and the (deleted) old build
- * keeps running. Escalates to SIGKILL if a graceful quit stalls. */
+ * keeps running. Escalates to SIGKILL if a graceful quit stalls.
+ */
 async function stopRunningApp() {
   if (platform === "win32") {
     try {

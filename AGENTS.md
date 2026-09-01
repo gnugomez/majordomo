@@ -25,7 +25,8 @@ Details live in CONTRIBUTING.md (layout, adding a provider) and RELEASING.md.
   bump versions or edit CHANGELOG.md by hand.
 - **Checks**: `pnpm typecheck`, `pnpm lint` (ESLint, antfu config;
   `lint:fix` autofixes), and `pnpm build` must pass. Run a dev copy
-  alongside an installed one with `MAJORDOMO_USERDATA=/tmp/dev pnpm start`;
+  alongside an installed one with `MAJORDOMO_USERDATA=/tmp/dev pnpm dev`
+  (Vite HMR for the renderer, Electron relaunch on main/preload changes);
   the renderer exposes `window.__debugSetState(state)` for injecting fixture
   data during visual checks.
 - **Principles**: read-only against providers, local-only (no backend, no
