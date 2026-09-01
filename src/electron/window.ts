@@ -64,7 +64,9 @@ export function createPopover(): BrowserWindow {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // The preload is a single esbuild bundle that only touches the
+      // ipcRenderer/contextBridge subset a sandboxed preload gets.
+      sandbox: true,
     },
   });
   win.setAlwaysOnTop(true, "floating");
