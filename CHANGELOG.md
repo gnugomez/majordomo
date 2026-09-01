@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/gnugomez/majordomo/compare/v0.2.1...v0.3.0) (2026-09-01)
+
+
+### Features
+
+* adopt the Icon Composer app icon on every platform ([148bc53](https://github.com/gnugomez/majordomo/commit/148bc53c087bcac2acfe302c4389aa4829420244))
+
+
+### Bug Fixes
+
+* don't resurrect items when a sync overlaps a disconnect ([409470c](https://github.com/gnugomez/majordomo/commit/409470c8d6a32e5f90dc1b49a7611c53a3409126))
+* keep a failed connect's error visible until the next attempt ([5d6ea71](https://github.com/gnugomez/majordomo/commit/5d6ea71e46beee4fd7f2fcc9b3a3782821eeed54))
+* notification title falls back to the provider name ([5ae97a0](https://github.com/gnugomez/majordomo/commit/5ae97a0b434c6842e77777546001cb842253f756))
+* only trust item absence after a complete, uncapped fetch ([c046515](https://github.com/gnugomez/majordomo/commit/c046515d98b431c9b8c51f8f51ceb4b9b893360d))
+* pre-bridge first paint guesses the host platform ([a207004](https://github.com/gnugomez/majordomo/commit/a207004909c046d4f09cb0f343fec446ab0e5ba8))
+* run the popover renderer sandboxed ([737f9b5](https://github.com/gnugomez/majordomo/commit/737f9b5d2dc558c4da4eb1ab1151f3d1ca462d63))
+
+
+### Refactoring
+
+* openItem ignores unknown item ids ([10aedc2](https://github.com/gnugomez/majordomo/commit/10aedc2309f4b12fba41e52eb7bd185d6a04ca08))
+* share the acrylic-support check ([f7d718b](https://github.com/gnugomez/majordomo/commit/f7d718b3e5001f8f4aaf6b321513fb1257b57e15))
+
 ## [0.2.1](https://github.com/gnugomez/majordomo/compare/v0.2.0...v0.2.1) (2026-08-27)
 
 
