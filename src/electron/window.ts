@@ -24,6 +24,11 @@ function windowsBuild(): number {
   return Number(release().split(".")[2]) || 0;
 }
 
+/** Acrylic needs Windows 11 (build 22000+). */
+function acrylicSupported(): boolean {
+  return process.platform === "win32" && windowsBuild() >= 22000;
+}
+
 /** Whether the translucent background should start enabled on this machine.
  * The toggle itself is renderer-side paint — main only persists the flag. */
 export function defaultGlassEnabled(): boolean {
@@ -31,8 +36,7 @@ export function defaultGlassEnabled(): boolean {
     case "darwin":
       return true;
     case "win32":
-      // Acrylic needs Windows 11 (build 22000+).
-      return windowsBuild() >= 22000;
+      return acrylicSupported();
     default:
       // Linux: transparency is compositor roulette — opaque by default.
       return false;
@@ -41,7 +45,7 @@ export function defaultGlassEnabled(): boolean {
 
 /** Creates the popover window that anchors to the tray icon. */
 export function createPopover(): BrowserWindow {
-  const acrylic = process.platform === "win32" && windowsBuild() >= 22000;
+  const acrylic = acrylicSupported();
   const win = new BrowserWindow({
     width: POPOVER_WIDTH,
     height: POPOVER_HEIGHT,
