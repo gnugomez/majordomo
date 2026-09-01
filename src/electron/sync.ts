@@ -12,13 +12,6 @@ import type { Store, StoredItem } from "./store";
 
 const SYNC_INTERVAL_MS = 60_000;
 
-// The most items one fetch can return, per provider (pages × 50 in
-// src/providers/github.ts and gitlab.ts: github 2 pages, gitlab 2 pending
-// + 1 done). A fetch that hits its cap can't prove an item disappeared
-// upstream — it may just be beyond the cap — so the absence-means-read rule
-// below is skipped for capped fetches.
-const FETCH_CAP: Record<ProviderId, number> = { github: 100, gitlab: 150 };
-
 export interface SyncEngine {
   getState(): AppState;
   syncNow(): Promise<void>;
@@ -132,7 +125,7 @@ export function createSyncEngine(
         if (!stored) return;
         const account = accounts.get(id)!;
         try {
-          const fetched = await providers[id].fetchItems(stored.config);
+          const { items: fetched, complete } = await providers[id].fetchItems(stored.config);
           delete account.error;
 
           // Reconcile, never replace: the collection is the app's own.
@@ -140,8 +133,9 @@ export function createSyncEngine(
 
           // Items upstream stopped returning (GitHub's /notifications only
           // lists unread threads, for one) were handled there: mark them
-          // read locally. Only a successful, uncapped fetch proves absence.
-          if (fetched.length < FETCH_CAP[id]) {
+          // read locally. Only a complete fetch proves absence — a capped
+          // one can't say whether an item is gone or just beyond the cap.
+          if (complete) {
             const fetchedIds = new Set(fetched.map((item) => item.id));
             const absent = store
               .getItems()

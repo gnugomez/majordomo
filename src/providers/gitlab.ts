@@ -4,7 +4,7 @@
 
 import type { Gitlab } from "@gitbeaker/rest";
 import type { AccountConfig, ItemState } from "../shared/types";
-import type { FetchedItem, ProviderClient } from "./types";
+import type { FetchedItem, FetchResult, ProviderClient } from "./types";
 import {
   TIMEOUT_MS,
   invalidJsonMessage,
@@ -201,7 +201,7 @@ export function createGitlabClient(): ProviderClient {
       return { username: user.username };
     },
 
-    async fetchItems(config: AccountConfig): Promise<FetchedItem[]> {
+    async fetchItems(config: AccountConfig): Promise<FetchResult> {
       const baseUrl = resolveBaseUrl(config);
       const api = await createClient(config, baseUrl);
       // Pending todos are the inbox; one page of recently-done todos rides
@@ -212,6 +212,11 @@ export function createGitlabClient(): ProviderClient {
         { state: "done", maxPages: 1, read: true },
       ];
       const items: FetchedItem[] = [];
+      // Only the pending list decides completeness: it is the authoritative
+      // inbox, and a pending item beyond its page cap must not be treated as
+      // absent (see sync.ts). The done list is a bonus feed of items already
+      // handled upstream — truncating it loses nothing.
+      let complete = true;
       for (const list of lists) {
         let body: unknown;
         try {
@@ -225,7 +230,13 @@ export function createGitlabClient(): ProviderClient {
         } catch (error) {
           throw toFriendlyError(error, context(baseUrl));
         }
-        if (!Array.isArray(body)) continue;
+        if (!Array.isArray(body)) {
+          if (list.state === "pending") complete = false;
+          continue;
+        }
+        if (list.state === "pending" && body.length >= list.maxPages * PER_PAGE) {
+          complete = false;
+        }
         for (const raw of body) {
           try {
             items.push({ ...toFetchedItem(raw as GitlabTodo), upstreamRead: list.read });
@@ -234,7 +245,7 @@ export function createGitlabClient(): ProviderClient {
           }
         }
       }
-      return items;
+      return { items, complete };
     },
   };
 }

@@ -28,5 +28,14 @@ export interface ProviderClient {
   /** Checks the credentials; returns the account's username on success. */
   validate(config: AccountConfig): Promise<{ username: string }>;
   /** Returns the account's current inbox. */
-  fetchItems(config: AccountConfig): Promise<FetchedItem[]>;
+  fetchItems(config: AccountConfig): Promise<FetchResult>;
+}
+
+/** What fetchItems returns. */
+export interface FetchResult {
+  items: FetchedItem[];
+  /** True when no page cap truncated the authoritative list — an item's
+   * absence from a complete fetch proves the user handled it upstream, so
+   * the sync engine marks it read. A capped fetch proves nothing. */
+  complete: boolean;
 }

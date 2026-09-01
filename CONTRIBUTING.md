@@ -72,7 +72,10 @@ provider (Gitea, Bitbucket, Jira, …) is a contained change:
 1. **Implement `ProviderClient`** (`src/providers/types.ts` documents the
    rules) in a new `src/providers/<name>.ts`: `validate(config)` checks the
    token and returns the username; `fetchItems(config)` returns the
-   account's current inbox as `FetchedItem`s. Use the provider's official
+   account's current inbox as a `FetchResult` — the `FetchedItem`s plus a
+   `complete` flag (set it `false` whenever a page cap may have truncated
+   the list, so the sync engine never mistakes a capped-out item for a
+   handled one). Use the provider's official
    client library if a maintained one exists, load it lazily (see
    `github.ts`), and map failures to human-readable strings — they render
    verbatim in the Accounts pane (reuse `providers/errors.ts`).

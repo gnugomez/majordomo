@@ -3,7 +3,7 @@
 
 import type { Octokit } from "@octokit/rest";
 import type { AccountConfig, ItemState } from "../shared/types";
-import type { FetchedItem, ProviderClient } from "./types";
+import type { FetchedItem, FetchResult, ProviderClient } from "./types";
 import {
   TIMEOUT_MS,
   statusMessage,
@@ -285,12 +285,15 @@ export function createGithubClient(): ProviderClient {
       return { username: user.login };
     },
 
-    async fetchItems(config: AccountConfig): Promise<FetchedItem[]> {
+    async fetchItems(config: AccountConfig): Promise<FetchResult> {
       const octokit = await createClient(config);
       const entries: Array<{ item: FetchedItem; thread: GithubNotification }> = [];
-      let hasNext = true;
+      // Set once the last page is consumed. Hitting MAX_PAGES with pages
+      // left — or bailing on a 304/malformed body — leaves the fetch
+      // incomplete, so absence proves nothing this round (see sync.ts).
+      let complete = false;
 
-      for (let page = 1; page <= MAX_PAGES && hasNext; page++) {
+      for (let page = 1; page <= MAX_PAGES; page++) {
         let status: number;
         let link: string | undefined;
         let body: unknown;
@@ -323,11 +326,14 @@ export function createGithubClient(): ProviderClient {
             // One malformed thread must not kill the whole fetch.
           }
         }
-        hasNext = hasNextLink(link);
+        if (!hasNextLink(link)) {
+          complete = true;
+          break;
+        }
       }
 
       await enrichStates(octokit, entries, stateCache);
-      return entries.map(({ item }) => item);
+      return { items: entries.map(({ item }) => item), complete };
     },
   };
 }
