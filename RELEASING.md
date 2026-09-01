@@ -55,6 +55,9 @@ Download the DMG from the GitHub release, open it, drag `Majordomo.app` into
 ```sh
 pnpm package
 # → release/Majordomo-darwin-arm64/Majordomo.app
+
+pnpm install:app
+# same build, then installed on this machine (any platform)
 ```
 
 This renders the app icon from `assets/appicon.svg`, bundles with

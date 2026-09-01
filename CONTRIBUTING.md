@@ -17,6 +17,7 @@ pnpm start         # build with esbuild, launch Electron
 pnpm typecheck     # strict TypeScript, no emit
 pnpm lint          # ESLint (antfu config); pnpm lint:fix autofixes
 pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
+pnpm install:app   # build, package, and install on this machine
 ```
 
 `pnpm-workspace.yaml` sets `nodeLinker: hoisted`: `@electron/packager` copies

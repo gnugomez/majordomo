@@ -43,7 +43,12 @@ Service the token falls back to plain text in the app's data directory.
 pnpm install
 pnpm start         # run it
 pnpm package       # build release/Majordomo-darwin-arm64/Majordomo.app
+pnpm install:app   # build, package, and install it on this machine
 ```
+
+`install:app` works on every platform: it installs to `/Applications` on
+macOS, runs the per-user Squirrel installer on Windows, and sets up
+`~/.local/opt/majordomo` plus a launcher entry on Linux.
 
 Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md). Releases are described
 in [RELEASING.md](RELEASING.md). Licensed under [GPL-3.0](LICENSE).
