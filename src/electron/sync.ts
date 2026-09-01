@@ -126,6 +126,10 @@ export function createSyncEngine(
         const account = accounts.get(id)!;
         try {
           const { items: fetched, complete } = await providers[id].fetchItems(stored.config);
+          // Disconnected while the fetch was in flight: upserting now would
+          // resurrect the items deleteProviderItems just removed — as
+          // unread orphans nothing would ever prune.
+          if (!store.getAccount(id)) return;
           delete account.error;
 
           // Reconcile, never replace: the collection is the app's own.
@@ -144,7 +148,9 @@ export function createSyncEngine(
             if (absent.length > 0) store.markRead(absent);
           }
         } catch (err) {
-          // Keep this provider's items untouched; just surface the error.
+          // Keep this provider's items untouched; just surface the error —
+          // unless the account was disconnected mid-fetch.
+          if (!store.getAccount(id)) return;
           account.error = errorMessage(err);
         }
       }),
