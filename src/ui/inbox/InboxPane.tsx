@@ -37,7 +37,7 @@ function categorize(items: InboxItem[]): SectionDef[] {
   const issues = rest.filter((i) => i.kind === "issue");
   const pulls = rest.filter((i) => i.kind === "pull" || i.kind === "merge");
   return [
-    { id: "overview", label: "Overview", items, defaultCollapsed: false },
+    { id: "recent", label: "Recent", items, defaultCollapsed: false },
     { id: "mentions", label: "Mentions", items: mentions, defaultCollapsed: true },
     { id: "reviews", label: "Review requests", items: reviews, defaultCollapsed: true },
     { id: "issues", label: "Issues", items: issues, defaultCollapsed: true },
