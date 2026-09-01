@@ -60,6 +60,10 @@ pnpm install:app
 # same build, then installed on this machine (any platform)
 ```
 
-This renders the app icon from `assets/appicon.svg`, bundles with
-`@electron/packager` (asar, pruned dev deps, `LSUIElement`), and re-signs the
-bundle (stable identity when available, ad-hoc otherwise).
+This bundles with `@electron/packager` (asar, pruned dev deps,
+`LSUIElement`) and re-signs the bundle (stable identity when available,
+ad-hoc otherwise). App icons for every platform are committed and come from
+`assets/majordomo.icon` (the Icon Composer document) — after changing it,
+regenerate them with `pnpm icons:app` (needs macOS 26 + Xcode 26). Packaging
+on a macOS 26 host also embeds the layered Assets.car icon; elsewhere the
+flat `.icns` fallback ships alone.

@@ -32,11 +32,13 @@ jobs:
         id: rp
 
   # When a release was just created: build the signed .app per arch and
-  # attach a DMG for each (the arm64 runner cross-packages x64).
+  # attach a DMG for each (the arm64 runner cross-packages x64). macOS 26
+  # runner: its actool compiles the Icon Composer document into the layered
+  # Assets.car icon (an older host would ship the flat .icns alone).
   build-macos:
     needs: release-please
     if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       matrix:
         arch: [arm64, x64]
@@ -77,7 +79,6 @@ jobs:
       - name: Package
         run: |
           node scripts/build.mjs
-          node scripts/make-icns.mjs
           node scripts/package.mjs --platform=darwin --arch=${{ matrix.arch }}
 
       - name: Attach the DMG to the release

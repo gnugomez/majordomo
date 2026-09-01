@@ -130,7 +130,7 @@ async function installLinux() {
   const optDir = join(home, ".local", "opt", "majordomo");
   const binDir = join(home, ".local", "bin");
   const appsDir = join(home, ".local", "share", "applications");
-  const iconDir = join(home, ".local", "share", "icons", "hicolor", "scalable", "apps");
+  const iconDir = join(home, ".local", "share", "icons", "hicolor", "256x256", "apps");
   const executable = join(optDir, "Majordomo");
 
   await stopRunningApp();
@@ -144,7 +144,7 @@ async function installLinux() {
   symlinkSync(executable, link);
 
   mkdirSync(iconDir, { recursive: true });
-  cpSync("assets/appicon.svg", join(iconDir, "majordomo.svg"));
+  cpSync("assets/appicon-256.png", join(iconDir, "majordomo.png"));
 
   mkdirSync(appsDir, { recursive: true });
   writeFileSync(join(appsDir, "majordomo.desktop"), `[Desktop Entry]
@@ -180,9 +180,6 @@ StartupWMClass=Majordomo
 
 // --- build → package → install, always for the host ----------------------
 run("node", ["scripts/build.mjs"]);
-if (platform === "darwin") {
-  run("node", ["scripts/make-icns.mjs"]);
-}
 run("node", ["scripts/package.mjs", `--platform=${platform}`, `--arch=${arch}`]);
 
 if (platform === "darwin") {

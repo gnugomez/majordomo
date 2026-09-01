@@ -5,6 +5,9 @@ import antfu from "@antfu/eslint-config";
 
 export default antfu({
   react: true,
+  // Icon Composer owns the .icon document (it rewrites icon.json in its
+  // own formatting) — don't lint or reformat it.
+  ignores: ["assets/*.icon"],
   stylistic: {
     indent: 2,
     quotes: "double",

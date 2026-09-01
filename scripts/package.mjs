@@ -1,7 +1,10 @@
-import { execFileSync } from "node:child_process";
 // Packages the built app (dist/) into release/Majordomo-<platform>-<arch>/.
 // Usage: node scripts/package.mjs [--platform=darwin|win32|linux] [--arch=arm64|x64]
 // Defaults to the host platform/arch. Run via: pnpm package (macOS flow).
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { release } from "node:os";
+import { join } from "node:path";
 import process from "node:process";
 import { packager } from "@electron/packager";
 
@@ -22,11 +25,31 @@ if (!["arm64", "x64"].includes(arch)) {
   process.exit(1);
 }
 
-// darwin: .icns rendered by scripts/make-icns.mjs. win32: the committed
-// assets/appicon.ico (scripts/make-ico.mjs regenerates it). linux: the
-// packager takes no icon — the .desktop file of whoever installs it does.
+// All icon artifacts are committed and regenerated from the Icon Composer
+// document by scripts/make-app-icons.mjs. darwin: the flat appicon.icns is
+// the fallback, and on a macOS 26 host with Xcode's actool the .icon
+// document is staged next to it so the packager also compiles the layered
+// Assets.car that macOS 26 renders. win32: the committed assets/appicon.ico.
+// linux: the packager takes no icon — the .desktop file of whoever installs
+// it does (install.mjs writes one).
+function stageDarwinIcon() {
+  const dir = join("build", "icon");
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  cpSync(join("assets", "appicon.icns"), join(dir, "Majordomo.icns"));
+  const canCompileIconDocument
+    = Number(release().split(".")[0]) >= 25
+      && spawnSync("xcrun", ["--find", "actool"], { stdio: "ignore" }).status === 0;
+  if (canCompileIconDocument) {
+    cpSync(join("assets", "majordomo.icon"), join(dir, "Majordomo.icon"), { recursive: true });
+  } else {
+    console.warn("no macOS 26 + actool on this host — packaging the flat .icns without the layered icon");
+  }
+  return join(dir, "Majordomo.icns");
+}
+
 const icon
-  = platform === "darwin" ? "build/Majordomo.icns" : platform === "win32" ? "assets/appicon.ico" : undefined;
+  = platform === "darwin" ? stageDarwinIcon() : platform === "win32" ? "assets/appicon.ico" : undefined;
 
 const appPaths = await packager({
   dir: ".",

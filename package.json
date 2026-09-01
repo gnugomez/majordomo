@@ -21,8 +21,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "icons": "electron scripts/render-tray-icons.cjs",
-    "icons:ico": "node scripts/make-ico.mjs",
-    "package": "pnpm build && node scripts/make-icns.mjs && node scripts/package.mjs",
+    "icons:app": "node scripts/make-app-icons.mjs",
+    "package": "pnpm build && node scripts/package.mjs",
     "package:win": "pnpm build && node scripts/package.mjs --platform=win32 --arch=x64",
     "package:linux": "pnpm build && node scripts/package.mjs --platform=linux",
     "install:app": "node scripts/install.mjs"
