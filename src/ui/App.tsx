@@ -39,11 +39,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // The popover must always reopen on the inbox. The window is never actually
-  // hidden (it fades to opacity 0 so macOS can't play its window-show
-  // animation), so dismissal arrives as an explicit push from the main
-  // process. Resetting on dismiss (rather than on show) avoids any visible
-  // pane flash; form input values are left alone — only the pane switches.
+  // The popover must always reopen on the inbox. Dismissal arrives as an
+  // explicit push from the main process; resetting on dismiss (rather than
+  // on show) means the pane switches while the window is hidden, so it is
+  // never seen. Form input values are left alone — only the pane switches.
   useEffect(
     () =>
       window.majordomo?.onPopoverVisibility((visible) => {
