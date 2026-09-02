@@ -1,6 +1,6 @@
 import { syncedLabel } from "../format";
 import { IconButton } from "./IconButton";
-import { MarkAllReadIcon, RefreshIcon, SpinnerIcon } from "./Icons";
+import { MarkAllReadIcon, RefreshIcon, SettingsIcon, SpinnerIcon } from "./Icons";
 
 interface HeaderProps {
   syncing: boolean;
@@ -46,14 +46,12 @@ export function Header({
         onClick={onMarkAllRead}
       />
       {/* Toggles: pressing it again closes the settings pane. */}
-      <button
-        type="button"
-        className={settingsOpen ? "header-text-btn active" : "header-text-btn"}
-        aria-expanded={settingsOpen}
+      <IconButton
+        icon={<SettingsIcon />}
+        label="Settings"
+        active={settingsOpen}
         onClick={onToggleSettings}
-      >
-        Settings
-      </button>
+      />
     </header>
   );
 }
