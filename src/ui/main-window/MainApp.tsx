@@ -4,20 +4,29 @@
 // focus scrubbing) belong here — this is a normal resizable window.
 
 import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PaneWidth } from "../hooks/usePaneWidth";
 import type { CategoryId } from "../inbox/categories";
 import { useEffect, useRef, useState } from "react";
 import { useAccent } from "../hooks/useAccent";
 import { useAppState } from "../hooks/useAppState";
 import { useNow } from "../hooks/useNow";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import { byNewest, categorize } from "../inbox/categories";
 import { InboxList } from "./InboxList";
 import { MainHeader } from "./MainHeader";
 import { PreviewPane } from "./PreviewPane";
 import { Sidebar } from "./Sidebar";
 
-const MIN_LIST_WIDTH = 240;
-const MAX_LIST_WIDTH = 520;
-const DEFAULT_LIST_WIDTH = 320;
+// Both dividers stop before the preview is squeezed into an unreadable
+// column; the window's own minWidth (main-window.ts) leaves room for all
+// three minimums at once.
+const SIDEBAR = { min: 170, max: 320, default: 200 };
+const LIST = { min: 260, max: 560, default: 340 };
+const MIN_PREVIEW_WIDTH = 360;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
 
 export function MainApp() {
   const { state, actions } = useAppState();
@@ -26,8 +35,9 @@ export function MainApp() {
 
   const [categoryId, setCategoryId] = useState<CategoryId>("recent");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH);
-  const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const sidebar = usePaneWidth("sidebar", SIDEBAR.default);
+  const list = usePaneWidth("list", LIST.default);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const categories = categorize(byNewest(state.items));
   const category = categories.find((c) => c.id === categoryId) ?? categories[0];
@@ -71,28 +81,57 @@ export function MainApp() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Divider drag: pointer capture keeps the events flowing to the divider
-  // even when the pointer outruns its 1px track.
-  const onDividerPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: listWidth,
+  // Divider drags: pointer capture keeps the events flowing to the divider
+  // even when the pointer outruns its 1px track. Each divider caps itself
+  // against the other panes so the preview always keeps its minimum.
+  const dragRef = useRef<
+    { pointerId: number; startX: number; startWidth: number; pane: PaneWidth; max: () => number } | null
+  >(null);
+  const dividerProps = (
+    pane: PaneWidth,
+    bounds: { min: number; max: number },
+    /** The width of the pane on the far side of the preview. */
+    others: () => number,
+  ) => {
+    const maxWidth = (): number => {
+      const total = rootRef.current?.clientWidth;
+      if (total === undefined) {
+        return bounds.max;
+      }
+      // Two 1px dividers sit between the three panes.
+      return Math.min(bounds.max, total - others() - MIN_PREVIEW_WIDTH - 2);
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const onDividerPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-    const width = drag.startWidth + (event.clientX - drag.startX);
-    setListWidth(Math.min(MAX_LIST_WIDTH, Math.max(MIN_LIST_WIDTH, width)));
-  };
-  const onDividerPointerEnd = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null;
-    }
+    const end = (event: ReactPointerEvent<HTMLDivElement>): void => {
+      if (dragRef.current?.pointerId === event.pointerId) {
+        dragRef.current.pane.commit();
+        dragRef.current = null;
+      }
+    };
+    return {
+      "className": "pane-divider",
+      "role": "separator" as const,
+      "aria-orientation": "vertical" as const,
+      "onPointerDown": (event: ReactPointerEvent<HTMLDivElement>): void => {
+        dragRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startWidth: pane.width,
+          pane,
+          max: maxWidth,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      },
+      "onPointerMove": (event: ReactPointerEvent<HTMLDivElement>): void => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) {
+          return;
+        }
+        const next = drag.startWidth + (event.clientX - drag.startX);
+        drag.pane.set(clamp(next, bounds.min, drag.max()));
+      },
+      "onPointerUp": end,
+      "onPointerCancel": end,
+    };
   };
 
   // Same fallback as the popover: without the translucent material the page
@@ -102,8 +141,18 @@ export function MainApp() {
     .join(" ");
 
   return (
-    <div id="main-app" className={appClass}>
-      <Sidebar categories={categories} selectedId={category.id} onSelect={setCategoryId} />
+    <div id="main-app" className={appClass} ref={rootRef}>
+      <Sidebar
+        categories={categories}
+        selectedId={category.id}
+        width={sidebar.width}
+        minWidth={SIDEBAR.min}
+        onSelect={setCategoryId}
+      />
+      <div
+        {...dividerProps(sidebar, SIDEBAR, () => list.width)}
+        aria-label="Resize sidebar"
+      />
       <div className="main-content">
         <MainHeader
           title={category.label}
@@ -116,7 +165,11 @@ export function MainApp() {
           onMarkAllRead={actions.markAllRead}
         />
         <div className="main-body">
-          <section className="list-pane" style={{ width: listWidth }} aria-label="Inbox">
+          <section
+            className="list-pane"
+            style={{ width: list.width, minWidth: LIST.min }}
+            aria-label="Inbox"
+          >
             <InboxList
               items={items}
               categoryId={category.id}
@@ -127,16 +180,14 @@ export function MainApp() {
             />
           </section>
           <div
-            className="pane-divider"
-            role="separator"
-            aria-orientation="vertical"
+            {...dividerProps(list, LIST, () => sidebar.width)}
             aria-label="Resize inbox list"
-            onPointerDown={onDividerPointerDown}
-            onPointerMove={onDividerPointerMove}
-            onPointerUp={onDividerPointerEnd}
-            onPointerCancel={onDividerPointerEnd}
           />
-          <section className="preview-pane" aria-label="Preview">
+          <section
+            className="preview-pane"
+            style={{ minWidth: MIN_PREVIEW_WIDTH }}
+            aria-label="Preview"
+          >
             <PreviewPane item={selected} now={now} onOpen={actions.openItem} />
           </section>
         </div>

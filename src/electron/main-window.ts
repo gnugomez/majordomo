@@ -10,10 +10,12 @@ import process from "node:process";
 import { app, BrowserWindow } from "electron";
 import { acrylicSupported, applyGlass } from "./window";
 
-const DEFAULT_WIDTH = 900;
-const DEFAULT_HEIGHT = 600;
-const MIN_WIDTH = 640;
-const MIN_HEIGHT = 400;
+const DEFAULT_WIDTH = 980;
+const DEFAULT_HEIGHT = 640;
+// The three columns' minimum widths plus their dividers (see MainApp): the
+// window can never be dragged small enough to squeeze the preview.
+const MIN_WIDTH = 800;
+const MIN_HEIGHT = 420;
 
 // The macOS 26 large window radius, much rounder than the popover's 16.
 export const MAIN_GLASS_CORNER_RADIUS = 26;

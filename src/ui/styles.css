@@ -946,8 +946,9 @@ input:disabled {
 /* ---------- Main window: sidebar ---------- */
 
 .sidebar {
-  flex: none;
-  width: 200px;
+  /* Width comes from the divider drag; it may shrink to its own minimum
+     before the preview gives up any of its width. */
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   padding: 0 10px 10px;
@@ -1095,7 +1096,7 @@ input:disabled {
 }
 
 .list-pane {
-  flex: none;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -1103,9 +1104,10 @@ input:disabled {
   padding: 6px 0 10px;
 }
 
+/* Never squeezed into an unreadable column: the panes beside it shrink
+   first, and both dividers stop before it reaches its inline min-width. */
 .preview-pane {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;

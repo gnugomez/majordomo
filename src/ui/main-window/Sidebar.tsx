@@ -26,12 +26,15 @@ const CATEGORY_ICONS: Record<CategoryId, ReactNode> = {
 interface SidebarProps {
   categories: Category[];
   selectedId: CategoryId;
+  /** Driven by the divider drag; the floor keeps it legible while shrinking. */
+  width: number;
+  minWidth: number;
   onSelect: (id: CategoryId) => void;
 }
 
-export function Sidebar({ categories, selectedId, onSelect }: SidebarProps) {
+export function Sidebar({ categories, selectedId, width, minWidth, onSelect }: SidebarProps) {
   return (
-    <nav className="sidebar" aria-label="Categories">
+    <nav className="sidebar" style={{ width, minWidth }} aria-label="Categories">
       <div className="sidebar-top" />
       <ul className="side-rows">
         {categories.map((category) => {
