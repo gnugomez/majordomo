@@ -903,3 +903,231 @@ input:disabled {
     transform: rotate(360deg);
   }
 }
+
+/* ---------- Main window ---------- */
+
+/* The resizable main window (?window=main): same tokens over the same glass
+   material as the popover, arranged as a mail-style split view. */
+
+#main-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Opaque mode: the window is framed, so the fill is full-bleed — no floating
+   rounded panel like the popover's. On macOS the chrome is transparent with
+   the rounded glass view behind it, so the fill keeps the glass radius
+   (MAIN_GLASS_CORNER_RADIUS). */
+#main-app.opaque {
+  background: var(--fallback-bg);
+}
+
+#main-app.platform-darwin.opaque {
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+/* Title bar stand-in: draggable chrome under the hidden system title bar. */
+.main-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 12px 10px 20px;
+  border-bottom: 1px solid var(--hairline);
+  -webkit-app-region: drag;
+}
+
+/* Buttons must stay clickable inside the drag region. */
+.main-header .icon-btn {
+  -webkit-app-region: no-drag;
+}
+
+/* macOS: a fixed-height bar whose content centers on the traffic lights
+   (repositioned in main-window.ts to sit clear of the rounder corner), with
+   room for them on the left plus a clear gap before the title. */
+#main-app.platform-darwin .main-header {
+  height: 52px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 100px;
+}
+
+.main-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.list-pane {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 0 10px;
+}
+
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Unlike the popover, the panes are tall and mouse-scrolled — show a quiet
+   overlay-style thumb instead of hiding the scrollbar entirely. */
+.list-pane::-webkit-scrollbar,
+.preview-pane::-webkit-scrollbar {
+  width: 12px;
+}
+
+.list-pane::-webkit-scrollbar-thumb,
+.preview-pane::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background-color: var(--toggle-off);
+  background-clip: padding-box;
+}
+
+/* The divider draws as a hairline; its hit area is widened by the ::before
+   so it can actually be grabbed. */
+.pane-divider {
+  flex: none;
+  position: relative;
+  width: 1px;
+  background: var(--hairline);
+  cursor: col-resize;
+}
+
+.pane-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+/* Selection in the list: accent-tinted like a focused source list; the inset
+   hairlines around it hide, as they do on hover. */
+.row.selected,
+.row.selected:hover,
+.row.selected:active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.row.selected::before,
+.row.selected + .row::before {
+  opacity: 0;
+}
+
+/* ---------- Main window: preview ---------- */
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 30px 30px;
+  max-width: 680px;
+}
+
+.preview-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.preview-top .kind-icon {
+  margin-top: 3px;
+}
+
+.preview-top .kind-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.preview-title {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.preview-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preview-badges .capsule {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* Unread marker capsule, in the accent like the unread badge on rows. */
+.capsule.unread {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.preview-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 20px;
+  padding: 14px 0;
+  border-top: 1px solid var(--hairline-faint);
+  border-bottom: 1px solid var(--hairline-faint);
+}
+
+.preview-fields dt {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.preview-fields dd {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.preview-provider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.preview-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.preview-open .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.preview-hint {
+  font-size: 11px;
+  color: var(--text-3);
+}

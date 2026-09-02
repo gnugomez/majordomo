@@ -1,10 +1,13 @@
-// Renderer entry point: mounts <App/> and installs the two window-level
-// affordances that must exist before (and regardless of) React rendering.
+// Renderer entry point: mounts the window's component tree and installs the
+// two window-level affordances that must exist before (and regardless of)
+// React rendering. One bundle serves both windows — the popover by default,
+// the resizable main window when loaded with `?window=main`.
 
 import type { AppState } from "../shared/types";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { debugInjector } from "./debug";
+import { MainApp } from "./main-window/MainApp";
 
 // Standalone preview (no preload bridge): there is no vibrancy material
 // behind the transparent page, so opt into the plain fallback background.
@@ -26,4 +29,5 @@ const rootEl = document.getElementById("root");
 if (!rootEl) {
   throw new Error("Renderer shell is missing the #root element");
 }
-createRoot(rootEl).render(<App />);
+const isMainWindow = new URLSearchParams(window.location.search).get("window") === "main";
+createRoot(rootEl).render(isMainWindow ? <MainApp /> : <App />);

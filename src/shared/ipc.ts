@@ -28,6 +28,8 @@ export const IPC = {
   setPopoverHeight: "popover:set-content-height",
   /** main → renderer push, payload boolean — false when the popover is dismissed */
   popoverVisibility: "popover:visibility",
+  /** invoke → void — opens (or focuses) the resizable main window */
+  openMainWindow: "window:open-main",
 } as const;
 
 /** Exposed by the preload script as `window.majordomo`. */
@@ -41,6 +43,7 @@ export interface MajordomoApi {
   setLaunchAtLogin: (enabled: boolean) => Promise<void>;
   setGlassEnabled: (enabled: boolean) => Promise<void>;
   setPopoverHeight: (px: number) => Promise<void>;
+  openMainWindow: () => Promise<void>;
   /** Returns an unsubscribe function. */
   onStateUpdated: (cb: (state: AppState) => void) => () => void;
   /** Returns an unsubscribe function. cb receives false when the popover is dismissed. */

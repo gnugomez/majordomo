@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner } from "./components/Banner";
 import { Header } from "./components/Header";
+import { useAccent } from "./hooks/useAccent";
 import { useAppState } from "./hooks/useAppState";
 import { useNow } from "./hooks/useNow";
 import { InboxPane } from "./inbox/InboxPane";
@@ -17,16 +18,7 @@ export function App() {
   const [pane, setPane] = useState<Pane>("inbox");
   const now = useNow();
 
-  // Follow the macOS system accent; the stylesheet's per-theme blues are the
-  // fallback when the main process couldn't read it. (CSSOM writes are fine
-  // under the CSP; only inline <style> is forbidden.)
-  useEffect(() => {
-    if (state.accentColor) {
-      document.documentElement.style.setProperty("--accent", state.accentColor);
-    } else {
-      document.documentElement.style.removeProperty("--accent");
-    }
-  }, [state.accentColor]);
+  useAccent(state.accentColor);
 
   // Escape closes the settings pane.
   useEffect(() => {
@@ -160,6 +152,7 @@ export function App() {
         onRefresh={actions.refresh}
         onMarkAllRead={actions.markAllRead}
         onToggleSettings={() => setPane(settingsOpen ? "inbox" : "settings")}
+        onOpenMainWindow={() => void window.majordomo?.openMainWindow()}
       />
       <Banner accounts={state.accounts} show={pane === "inbox"} />
       <div className="content">

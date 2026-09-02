@@ -1,15 +1,17 @@
 import type { AccountConfig, AppState, ProviderId } from "../shared/types";
 import type { SyncEngine } from "./sync";
 import process from "node:process";
-import { app, ipcMain, systemPreferences } from "electron";
+import { app, BrowserWindow, ipcMain, systemPreferences } from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 import { IPC } from "../shared/ipc";
+import { openMainWindow } from "./main-window";
 import { createStore } from "./store";
 import { createSyncEngine } from "./sync";
 import { createTray } from "./tray";
 import {
   createPopover,
   defaultGlassEnabled,
+  hidePopover,
   resizePopover,
   showPopover,
   togglePopover,
@@ -158,8 +160,11 @@ if (!app.requestSingleInstanceLock()) {
     });
     engine = createSyncEngine(store, (state: AppState) => {
       tray.setDot(state.items.some((item) => item.isMention && !item.read));
-      if (!win.isDestroyed())
-        win.webContents.send(IPC.stateUpdated, state);
+      // Every live window renders the same pushed state (popover + main).
+      for (const target of BrowserWindow.getAllWindows()) {
+        if (!target.isDestroyed() && !target.webContents.isDestroyed())
+          target.webContents.send(IPC.stateUpdated, state);
+      }
     });
 
     ipcMain.handle(IPC.getState, () => engine.getState());
@@ -184,6 +189,12 @@ if (!app.requestSingleInstanceLock()) {
       if (Number.isFinite(px))
         resizePopover(win, px);
     });
+    ipcMain.handle(IPC.openMainWindow, () => {
+      // Opening a window steals focus (which would blur-hide the popover
+      // anyway), but hide explicitly so dismissal never depends on timing.
+      hidePopover(win);
+      openMainWindow();
+    });
 
     refreshAccent = setupAccent(engine);
     engine.updateChrome({
@@ -193,6 +204,9 @@ if (!app.requestSingleInstanceLock()) {
     refreshAccent("boot");
 
     app.on("second-instance", () => showPopover(win, tray.bounds()));
+    // macOS only: the Dock icon exists exactly while the main window is
+    // open, so activation (Dock click, app switcher) refocuses it.
+    app.on("activate", () => openMainWindow());
 
     engine.start();
   });

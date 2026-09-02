@@ -28,7 +28,7 @@ function windowsBuild(): number {
 }
 
 /** Acrylic needs Windows 11 (build 22000+). */
-function acrylicSupported(): boolean {
+export function acrylicSupported(): boolean {
   return process.platform === "win32" && windowsBuild() >= 22000;
 }
 
@@ -101,7 +101,7 @@ export const GLASS_CORNER_RADIUS = 16;
  * Attach the macOS 26 Liquid Glass material (NSGlassEffectView) behind the
  * page; fall back to the older frosted vibrancy where it's unavailable.
  */
-function applyGlass(win: BrowserWindow): void {
+export function applyGlass(win: BrowserWindow, cornerRadius: number = GLASS_CORNER_RADIUS): void {
   interface LiquidGlassApi {
     addView: (handle: Buffer, options: { cornerRadius?: number; tintColor?: string; opaque?: boolean }) => number;
   }
@@ -110,9 +110,7 @@ function applyGlass(win: BrowserWindow): void {
     // eslint-disable-next-line ts/no-require-imports
     const mod = require("electron-liquid-glass") as LiquidGlassApi & { default?: LiquidGlassApi };
     const liquidGlass = mod.default ?? mod;
-    liquidGlass.addView(win.getNativeWindowHandle(), {
-      cornerRadius: GLASS_CORNER_RADIUS,
-    });
+    liquidGlass.addView(win.getNativeWindowHandle(), { cornerRadius });
   } catch (err) {
     console.error("majordomo: liquid glass unavailable, using vibrancy:", err);
     win.setVibrancy("menu");

@@ -1,38 +1,30 @@
-import { syncedLabel } from "../format";
-import { IconButton } from "./IconButton";
-import {
-  ArrowOutwardIcon,
-  MarkAllReadIcon,
-  RefreshIcon,
-  SettingsIcon,
-  SpinnerIcon,
-} from "./Icons";
+// Main-window title bar: draggable chrome (the frame's title bar is hidden
+// on macOS) carrying the same title, sync status, and quick actions as the
+// popover header — minus the popover-only settings toggle.
 
-interface HeaderProps {
+import { IconButton } from "../components/IconButton";
+import { MarkAllReadIcon, RefreshIcon, SpinnerIcon } from "../components/Icons";
+import { syncedLabel } from "../format";
+
+interface MainHeaderProps {
   syncing: boolean;
   lastSyncAt: string | null;
   now: number;
   anyUnread: boolean;
-  settingsOpen: boolean;
   onRefresh: () => void;
   onMarkAllRead: () => void;
-  onToggleSettings: () => void;
-  onOpenMainWindow: () => void;
 }
 
-export function Header({
+export function MainHeader({
   syncing,
   lastSyncAt,
   now,
   anyUnread,
-  settingsOpen,
   onRefresh,
   onMarkAllRead,
-  onToggleSettings,
-  onOpenMainWindow,
-}: HeaderProps) {
+}: MainHeaderProps) {
   return (
-    <header className="header">
+    <header className="main-header">
       <h1 className="panel-title">Majordomo</h1>
       <div className="sync-status" aria-live="polite">
         {syncing
@@ -53,14 +45,6 @@ export function Header({
         disabled={!anyUnread}
         onClick={onMarkAllRead}
       />
-      {/* Toggles: pressing it again closes the settings pane. */}
-      <IconButton
-        icon={<SettingsIcon />}
-        label="Settings"
-        active={settingsOpen}
-        onClick={onToggleSettings}
-      />
-      <IconButton icon={<ArrowOutwardIcon />} label="Open Majordomo" onClick={onOpenMainWindow} />
     </header>
   );
 }
