@@ -25,6 +25,7 @@ function iconPath(dot: boolean): string {
 export function createTray(opts: {
   onToggle: (bounds: Rectangle) => void;
   onOpen: (bounds: Rectangle) => void;
+  onOpenMain: () => void;
   onRefresh: () => void;
   onQuit: () => void;
 }): TrayHandle {
@@ -35,6 +36,7 @@ export function createTray(opts: {
 
   const menu = Menu.buildFromTemplate([
     { label: "Open Inbox", click: () => opts.onOpen(tray.getBounds()) },
+    { label: "Open Majordomo Window", click: () => opts.onOpenMain() },
     { label: "Refresh now", click: () => opts.onRefresh() },
     { type: "separator" },
     { label: "Quit Majordomo", click: () => opts.onQuit() },

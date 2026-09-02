@@ -157,6 +157,10 @@ if (!app.requestSingleInstanceLock()) {
         refreshAccent();
         showPopover(win, bounds);
       },
+      onOpenMain: () => {
+        hidePopover(win);
+        openMainWindow();
+      },
       onRefresh: () => void engine.syncNow(),
       onQuit: () => app.quit(),
     });

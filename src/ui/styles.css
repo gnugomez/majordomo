@@ -161,6 +161,23 @@ button:focus-visible,
   letter-spacing: 0.01em;
 }
 
+/* The popover's title is also its way into the main window: plain text until
+   pointed at, so the header reads as a heading rather than a control. */
+.title-btn {
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: 6px;
+  letter-spacing: inherit;
+}
+
+.title-btn:hover {
+  background: var(--hover);
+}
+
+.title-btn:active {
+  background: var(--active);
+}
+
 .sync-status {
   display: flex;
   align-items: center;

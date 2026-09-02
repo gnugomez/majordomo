@@ -1,7 +1,6 @@
 import { syncedLabel } from "../format";
 import { IconButton } from "./IconButton";
 import {
-  ArrowOutwardIcon,
   MarkAllReadIcon,
   RefreshIcon,
   SettingsIcon,
@@ -33,7 +32,13 @@ export function Header({
 }: HeaderProps) {
   return (
     <header className="header">
-      <h1 className="panel-title">Majordomo</h1>
+      {/* The app name doubles as the way into the main window — a fourth icon
+          for it crowded a header that is only 380px wide. */}
+      <h1 className="panel-title">
+        <button type="button" className="title-btn" title="Open Majordomo" onClick={onOpenMainWindow}>
+          Majordomo
+        </button>
+      </h1>
       <div className="sync-status" aria-live="polite">
         {syncing
           ? (
@@ -60,7 +65,6 @@ export function Header({
         active={settingsOpen}
         onClick={onToggleSettings}
       />
-      <IconButton icon={<ArrowOutwardIcon />} label="Open Majordomo" onClick={onOpenMainWindow} />
     </header>
   );
 }
