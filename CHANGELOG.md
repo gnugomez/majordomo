@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/gnugomez/majordomo/compare/v0.3.0...v0.3.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* sort GitLab items by target activity instead of todo creation ([c63b9a1](https://github.com/gnugomez/majordomo/commit/c63b9a1c8ff9773054cd2586355cc82f5e684fd7))
+
 ## [0.3.0](https://github.com/gnugomez/majordomo/compare/v0.2.1...v0.3.0) (2026-09-01)
 
 
