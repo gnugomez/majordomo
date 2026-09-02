@@ -5,9 +5,10 @@
 // best-effort transparency on Linux (the renderer's `opaque` class covers
 // the rest).
 
+import type { Store, WindowBounds } from "./store";
 import { join } from "node:path";
 import process from "node:process";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import { acrylicSupported, applyGlass } from "./window";
 
 const DEFAULT_WIDTH = 980;
@@ -27,6 +28,37 @@ export const MAIN_GLASS_CORNER_RADIUS = 26;
 const TRAFFIC_LIGHTS = { x: 20, y: 20 };
 
 let mainWindow: BrowserWindow | null = null;
+let store: Store | null = null;
+
+/** Gives the window module the store it remembers its frame in. */
+export function setMainWindowStore(next: Store): void {
+  store = next;
+}
+
+/**
+ * The remembered frame, if it still lands on a display that exists — a window
+ * saved on a monitor that has since been unplugged would otherwise open
+ * offscreen. Undefined means "use the default size, centred".
+ */
+function restoredBounds(): WindowBounds | undefined {
+  const saved = store?.getMainWindowBounds();
+  if (!saved) {
+    return undefined;
+  }
+  const area = screen.getDisplayMatching(saved).workArea;
+  const visible
+    = saved.x < area.x + area.width
+      && saved.x + saved.width > area.x
+      && saved.y < area.y + area.height
+      && saved.y + saved.height > area.y;
+  return visible
+    ? {
+        ...saved,
+        width: Math.max(MIN_WIDTH, saved.width),
+        height: Math.max(MIN_HEIGHT, saved.height),
+      }
+    : undefined;
+}
 
 /** Opens the main window, or focuses the live one; recreated after close. */
 export function openMainWindow(): void {
@@ -45,9 +77,11 @@ export function openMainWindow(): void {
     void app.dock?.show();
   }
 
+  const saved = restoredBounds();
   const win = new BrowserWindow({
-    width: DEFAULT_WIDTH,
-    height: DEFAULT_HEIGHT,
+    width: saved?.width ?? DEFAULT_WIDTH,
+    height: saved?.height ?? DEFAULT_HEIGHT,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
     show: false,
@@ -68,6 +102,27 @@ export function openMainWindow(): void {
     },
   });
   mainWindow = win;
+
+  // Remember the frame the way a native window does: the normal (unmaximized,
+  // unfullscreened) bounds, written after the user stops dragging.
+  let saveTimer: NodeJS.Timeout | undefined;
+  const rememberBounds = (): void => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (!win.isDestroyed() && !win.isMinimized()) {
+        store?.setMainWindowBounds(win.getNormalBounds());
+      }
+    }, 400);
+  };
+  win.on("resize", rememberBounds);
+  win.on("move", rememberBounds);
+  win.on("close", () => {
+    clearTimeout(saveTimer);
+    if (!win.isMinimized()) {
+      store?.setMainWindowBounds(win.getNormalBounds());
+    }
+  });
+
   win.on("closed", () => {
     if (mainWindow === win) {
       mainWindow = null;

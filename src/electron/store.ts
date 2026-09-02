@@ -44,6 +44,26 @@ interface StoreFile {
   items: Record<string, StoredItem>;
   /** Translucent background preference; absent → platform default. */
   glassEnabled?: boolean;
+  /** Where the main window was last left; absent → centred at the default size. */
+  mainWindowBounds?: WindowBounds;
+}
+
+/** A main-window frame in screen coordinates. */
+export interface WindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function isBounds(value: unknown): value is WindowBounds {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const bounds = value as Record<string, unknown>;
+  return (["x", "y", "width", "height"] as const).every(
+    (key) => typeof bounds[key] === "number" && Number.isFinite(bounds[key]),
+  );
 }
 
 /** Pre-collection format, folded into `items` on first load. */
@@ -81,6 +101,9 @@ export interface Store {
   /** undefined when the user never toggled it — use the platform default. */
   getGlassEnabled: () => boolean | undefined;
   setGlassEnabled: (enabled: boolean) => void;
+  /** undefined until the main window has been opened and moved/resized once. */
+  getMainWindowBounds: () => WindowBounds | undefined;
+  setMainWindowBounds: (bounds: WindowBounds) => void;
 }
 
 // --- Token storage -------------------------------------------------------
@@ -121,6 +144,7 @@ export function createStore(): Store {
       accounts: parsed.accounts && typeof parsed.accounts === "object" ? parsed.accounts : {},
       items,
       glassEnabled: typeof parsed.glassEnabled === "boolean" ? parsed.glassEnabled : undefined,
+      mainWindowBounds: isBounds(parsed.mainWindowBounds) ? parsed.mainWindowBounds : undefined,
     };
   } catch {
     // Missing or corrupt file — start fresh.
@@ -295,6 +319,15 @@ export function createStore(): Store {
 
     setGlassEnabled(enabled) {
       data.glassEnabled = enabled;
+      save();
+    },
+
+    getMainWindowBounds() {
+      return data.mainWindowBounds;
+    },
+
+    setMainWindowBounds(bounds) {
+      data.mainWindowBounds = bounds;
       save();
     },
   };

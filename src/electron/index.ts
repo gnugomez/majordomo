@@ -4,7 +4,7 @@ import process from "node:process";
 import { app, BrowserWindow, ipcMain, systemPreferences } from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 import { IPC } from "../shared/ipc";
-import { openMainWindow } from "./main-window";
+import { openMainWindow, setMainWindowStore } from "./main-window";
 import { createStore } from "./store";
 import { createSyncEngine } from "./sync";
 import { createTray } from "./tray";
@@ -140,6 +140,7 @@ if (!app.requestSingleInstanceLock()) {
     app.dock?.hide();
 
     const store = createStore();
+    setMainWindowStore(store);
     const win = createPopover();
     // The tray menu drives the engine (refresh) and the engine drives the
     // tray (unread dot) — a cycle, so both land in `let` bindings that the
