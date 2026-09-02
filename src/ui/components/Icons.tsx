@@ -229,9 +229,9 @@ export function InboxIcon() {
   );
 }
 
-/* Two sidebar sources have no Octicon counterpart; these are Feather's
-   at-sign and eye (MIT), drawn on their native 24px grid at a stroke weight
-   matching the 16px icons above. */
+/* Three sidebar sources have no Octicon counterpart; these are Feather's
+   at-sign, user-check and eye (MIT), drawn on their native 24px grid at a
+   stroke weight matching the 16px icons above. */
 const stroke24 = {
   fill: "none",
   stroke: "currentColor",
@@ -246,6 +246,17 @@ export function MentionIcon() {
     <Svg viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="4" {...stroke24} />
       <path {...stroke24} d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+    </Svg>
+  );
+}
+
+/** A person with a check — the assigned-to-you source. */
+export function AssignedIcon() {
+  return (
+    <Svg viewBox="0 0 24 24">
+      <path {...stroke24} d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" {...stroke24} />
+      <path {...stroke24} d="m17 11 2 2 4-4" />
     </Svg>
   );
 }

@@ -4,7 +4,7 @@
 
 import type { InboxItem } from "../../shared/types";
 
-export type CategoryId = "recent" | "mentions" | "reviews" | "issues" | "pulls";
+export type CategoryId = "recent" | "assigned" | "mentions" | "reviews" | "issues" | "pulls";
 
 export interface Category {
   id: CategoryId;
@@ -14,6 +14,7 @@ export interface Category {
 
 /** Reasons that get their own category, and so never fall through to a kind. */
 const CLAIMED_REASONS = new Set<InboxItem["reason"]>([
+  "assigned",
   "mentioned",
   "review_requested",
 ]);
@@ -33,6 +34,7 @@ export function categorize(items: InboxItem[]): Category[] {
   );
   return [
     { id: "recent", label: "Recent", items },
+    { id: "assigned", label: "Assigned", items: byReason("assigned") },
     { id: "mentions", label: "Mentions", items: byReason("mentioned") },
     { id: "reviews", label: "Review requests", items: byReason("review_requested") },
     { id: "issues", label: "Issues", items: rest.filter((i) => i.kind === "issue") },

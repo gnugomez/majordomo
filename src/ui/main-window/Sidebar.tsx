@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { Category, CategoryId } from "../inbox/categories";
 import {
+  AssignedIcon,
   GitPullRequestIcon,
   InboxIcon,
   IssueOpenedIcon,
@@ -15,6 +16,7 @@ import {
 
 const CATEGORY_ICONS: Record<CategoryId, ReactNode> = {
   recent: <InboxIcon />,
+  assigned: <AssignedIcon />,
   mentions: <MentionIcon />,
   reviews: <ReviewIcon />,
   issues: <IssueOpenedIcon />,
