@@ -23,6 +23,11 @@
   --warn-dot: #ff9500;
   --ok: #248a3d;
   --fallback-bg: #f4f4f6;
+  /* The platform's own document background — white on macOS, #121212 in dark
+     mode — which Chromium resolves from the system appearance for us. It is a
+     system color rather than a literal so the main window's opaque panes track
+     the OS exactly, the way a native document window does. */
+  --pane-bg: Canvas;
   /* Item states, GitHub's palette. */
   --state-open: #1f883d;
   --state-merged: #8250df;
@@ -68,6 +73,13 @@ body,
 #root {
   height: 100%;
   background: transparent;
+}
+
+/* Both themes are supported, so the system colors (and native form controls
+   and scrollbars) resolve against the current appearance instead of always
+   the light one. */
+:root {
+  color-scheme: light dark;
 }
 
 body {
@@ -906,26 +918,121 @@ input:disabled {
 
 /* ---------- Main window ---------- */
 
-/* The resizable main window (?window=main): same tokens over the same glass
-   material as the popover, arranged as a mail-style split view. */
+/* The resizable main window (?window=main): a mail-style three-column view.
+   Only the sidebar stays frosted — it has no background of its own, so the
+   window's glass material shows through, the way native source lists do. The
+   content beside it is opaque, in the OS's own content color, so the list and
+   preview read like a normal document window. */
 
 #main-app {
   display: flex;
-  flex-direction: column;
   height: 100%;
 }
 
-/* Opaque mode: the window is framed, so the fill is full-bleed — no floating
-   rounded panel like the popover's. On macOS the chrome is transparent with
-   the rounded glass view behind it, so the fill keeps the glass radius
-   (MAIN_GLASS_CORNER_RADIUS). */
+/* The glass view behind the page is rounded (MAIN_GLASS_CORNER_RADIUS), so
+   the opaque content has to be clipped to the same shape or its square
+   corners poke out over the desktop. */
+#main-app.platform-darwin {
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+/* Opaque mode: no material behind the page, so the window paints its own
+   full-bleed fill — the frosted sidebar becomes a plain tinted column. */
 #main-app.opaque {
   background: var(--fallback-bg);
 }
 
-#main-app.platform-darwin.opaque {
-  border-radius: 26px;
+/* ---------- Main window: sidebar ---------- */
+
+.sidebar {
+  flex: none;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Like a native sidebar, its empty space drags the window. */
+  -webkit-app-region: drag;
+}
+
+/* Clears the traffic lights (main-window.ts positions them at y = 20) so the
+   first source starts level with the content below the header. */
+.sidebar-top {
+  flex: none;
+  height: 10px;
+}
+
+#main-app.platform-darwin .sidebar-top {
+  height: 52px;
+}
+
+.side-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.side-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 7px;
+  text-align: left;
+  -webkit-app-region: no-drag;
+}
+
+.side-row:hover {
+  background: var(--hover);
+}
+
+.side-row:active {
+  background: var(--active);
+}
+
+/* Selected source: the quiet neutral capsule macOS puts behind the current
+   item in a source list. The accent stays on the glyphs, where the system
+   keeps it — a filled accent row is a menu selection, not a sidebar one. */
+.side-row.selected,
+.side-row.selected:hover,
+.side-row.selected:active {
+  background: var(--active);
+}
+
+.side-icon {
+  display: flex;
+  flex: none;
+  color: var(--accent);
+}
+
+.side-label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-count {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+/* ---------- Main window: content ---------- */
+
+/* Everything right of the sidebar: opaque, in the system's content color. */
+.main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-bg);
 }
 
 /* Title bar stand-in: draggable chrome under the hidden system title bar. */
@@ -934,9 +1041,16 @@ input:disabled {
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 12px 12px 10px 20px;
+  padding: 12px 12px 10px 16px;
   border-bottom: 1px solid var(--hairline);
   -webkit-app-region: drag;
+}
+
+/* The popover pins the status next to the title; here it belongs with the
+   actions it sits among. */
+.main-header .sync-status {
+  margin-left: 0;
+  margin-right: 6px;
 }
 
 /* Buttons must stay clickable inside the drag region. */
@@ -944,14 +1058,34 @@ input:disabled {
   -webkit-app-region: no-drag;
 }
 
-/* macOS: a fixed-height bar whose content centers on the traffic lights
-   (repositioned in main-window.ts to sit clear of the rounder corner), with
-   room for them on the left plus a clear gap before the title. */
+/* macOS: a fixed-height bar matching the sidebar's top spacer, so the header
+   rule lines up with the first source. The traffic lights sit on the sidebar,
+   so nothing has to be reserved for them here. */
 #main-app.platform-darwin .main-header {
   height: 52px;
   padding-top: 0;
   padding-bottom: 0;
-  padding-left: 100px;
+}
+
+/* Category name over its item count, like a native list header. It takes the
+   slack so the sync status and the actions gather on the trailing edge. */
+.main-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+  gap: 1px;
+}
+
+.main-title .panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-subtitle {
+  font-size: 11px;
+  color: var(--text-3);
 }
 
 .main-body {
@@ -1111,15 +1245,18 @@ input:disabled {
 .preview-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
 .preview-open {
   display: inline-flex;
   align-items: center;
+  flex: none;
   gap: 6px;
   padding: 6px 14px;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .preview-open .icon {

@@ -229,6 +229,37 @@ export function InboxIcon() {
   );
 }
 
+/* Two sidebar sources have no Octicon counterpart; these are Feather's
+   at-sign and eye (MIT), drawn on their native 24px grid at a stroke weight
+   matching the 16px icons above. */
+const stroke24 = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2.25,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+/** "@" — the mentions source. */
+export function MentionIcon() {
+  return (
+    <Svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" {...stroke24} />
+      <path {...stroke24} d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+    </Svg>
+  );
+}
+
+/** An eye — the review-requests source. */
+export function ReviewIcon() {
+  return (
+    <Svg viewBox="0 0 24 24">
+      <path {...stroke24} d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+      <circle cx="12" cy="12" r="3" {...stroke24} />
+    </Svg>
+  );
+}
+
 /** Disclosure chevron: points right; CSS rotates it down when expanded. */
 export function ChevronIcon() {
   return (
