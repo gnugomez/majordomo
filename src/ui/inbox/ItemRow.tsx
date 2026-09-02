@@ -1,6 +1,6 @@
 import type { InboxItem } from "../../shared/types";
 import { KindIcon, ProviderIcon } from "../components/Icons";
-import { humanizeReason, relativeTime } from "../format";
+import { reasonLabel, relativeTime } from "../format";
 import { kindIconClass, stateCapsule } from "./itemVisuals";
 
 interface ItemRowProps {
@@ -56,7 +56,7 @@ export function ItemRow({ item, now, onOpen, selected }: ItemRowProps) {
               )
             : (
                 <span className={item.isMention ? "capsule mention" : "capsule"}>
-                  {humanizeReason(item.reason)}
+                  {reasonLabel(item.reason)}
                 </span>
               )}
         </span>

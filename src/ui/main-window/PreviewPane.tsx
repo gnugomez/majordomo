@@ -5,7 +5,7 @@
 import type { InboxItem, ProviderId } from "../../shared/types";
 import { EmptyState } from "../components/EmptyState";
 import { ArrowOutwardIcon, InboxIcon, KindIcon, ProviderIcon } from "../components/Icons";
-import { humanizeReason, relativeTime } from "../format";
+import { reasonLabel, relativeTime } from "../format";
 import { kindIconClass, stateCapsule } from "../inbox/itemVisuals";
 
 const PROVIDER_NAMES: Record<ProviderId, string> = { github: "GitHub", gitlab: "GitLab" };
@@ -51,7 +51,7 @@ export function PreviewPane({ item, now, onOpen }: PreviewPaneProps) {
       <div className="preview-badges">
         {capsule && <span className={`capsule state-${capsule}`}>{capsule}</span>}
         <span className={item.isMention ? "capsule mention" : "capsule"}>
-          {humanizeReason(item.reason)}
+          {reasonLabel(item.reason)}
         </span>
         {!item.read && <span className="capsule unread">unread</span>}
       </div>

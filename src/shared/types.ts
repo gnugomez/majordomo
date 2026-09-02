@@ -6,6 +6,26 @@ export type ProviderId = "github" | "gitlab";
 export type ItemKind = "issue" | "pull" | "merge";
 
 /**
+ * Why an item is in the inbox, normalized across providers: GitHub's
+ * notification reasons and GitLab's todo actions name the same events
+ * differently ("assign" vs "assigned"), and the app speaks one vocabulary.
+ * Providers map their own strings onto this in src/providers/reasons.ts;
+ * anything without a common equivalent lands on "activity".
+ */
+export const ITEM_REASONS = [
+  "mentioned",
+  "review_requested",
+  "assigned",
+  "approval_required",
+  "author",
+  "commented",
+  "subscribed",
+  "activity",
+] as const;
+
+export type ItemReason = typeof ITEM_REASONS[number];
+
+/**
  * Upstream lifecycle state, when the provider can tell. Issues use
  * open/closed; PRs/MRs add merged and draft.
  */
@@ -22,8 +42,8 @@ export interface InboxItem {
   repo: string;
   /** Web URL opened in the browser when the row is clicked. */
   url: string;
-  /** Provider-native reason, e.g. "mention", "review_requested", "assigned". */
-  reason: string;
+  /** Why it is in the inbox, in the app's own vocabulary. */
+  reason: ItemReason;
   /** True for the "needs you" tier: mentions, direct addresses, review requests. */
   isMention: boolean;
   /** ISO 8601 timestamp of the last activity the provider reported. */

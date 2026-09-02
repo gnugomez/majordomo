@@ -11,6 +11,7 @@ import {
   timeoutMessage,
   unreachableMessage,
 } from "./errors";
+import { githubReason, isMentionReason } from "./reasons";
 
 const MAX_PAGES = 2;
 const PER_PAGE = 50;
@@ -21,8 +22,6 @@ const PER_PAGE = 50;
 // as the cache fills); STATE_CONCURRENCY bounds how many run at once.
 const STATE_BUDGET = 20;
 const STATE_CONCURRENCY = 5;
-
-const MENTION_REASONS = new Set(["mention", "team_mention", "review_requested"]);
 
 const CONTEXT: RequestContext = {
   service: "GitHub",
@@ -155,6 +154,7 @@ function htmlUrl(thread: GithubNotification): string {
 }
 
 function toFetchedItem(thread: GithubNotification): FetchedItem {
+  const reason = githubReason(thread.reason);
   return {
     id: `github:${thread.id}`,
     provider: "github",
@@ -162,8 +162,8 @@ function toFetchedItem(thread: GithubNotification): FetchedItem {
     title: thread.subject.title,
     repo: thread.repository.full_name,
     url: htmlUrl(thread),
-    reason: thread.reason,
-    isMention: MENTION_REASONS.has(thread.reason),
+    reason,
+    isMention: isMentionReason(reason),
     updatedAt: thread.updated_at,
     upstreamRead: thread.unread === false,
   };

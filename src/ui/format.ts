@@ -1,5 +1,7 @@
 // Small formatting helpers for the renderer views.
 
+import type { ItemReason } from "../shared/types";
+
 /**
  * Compact relative time: "now", "5m", "3h", "2d", then a short date
  * ("Aug 12", with the year appended once it differs from the current one).
@@ -33,9 +35,24 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return date.toLocaleDateString(undefined, options);
 }
 
-/** "review_requested" → "review requested". */
-export function humanizeReason(reason: string): string {
-  return reason.replace(/_/g, " ");
+/** How each normalized reason reads in a capsule. */
+const REASON_LABELS: Record<string, string> = {
+  mentioned: "mentioned",
+  review_requested: "review requested",
+  assigned: "assigned",
+  approval_required: "approval required",
+  author: "author",
+  commented: "commented",
+  subscribed: "subscribed",
+  activity: "activity",
+};
+
+/**
+ * Capsule text for an item's reason. The fallback covers items still carrying
+ * a pre-normalization reason from the store; the next sync replaces them.
+ */
+export function reasonLabel(reason: ItemReason): string {
+  return REASON_LABELS[reason] ?? reason.replace(/_/g, " ");
 }
 
 /** Idle sync label for the header; the syncing case is handled by the caller. */

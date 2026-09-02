@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { app, safeStorage } from "electron";
+import { normalizeReason } from "../providers/reasons";
 
 // JSON persistence for account metadata, the app's own persistent item
 // collection (upstream disappearance is a read signal, never a delete — see
@@ -100,6 +101,11 @@ export function createStore(): Store {
     let items: Record<string, StoredItem> = {};
     if (parsed.items && typeof parsed.items === "object") {
       items = parsed.items;
+      // Items stored before reasons were normalized still carry the raw
+      // provider string; map them forward once, here.
+      for (const item of Object.values(items)) {
+        item.reason = normalizeReason(item.provider, item.reason);
+      }
     } else if (Array.isArray(parsed.cachedItems)) {
       // Legacy format: fold cachedItems + readIds into the collection.
       // seenIds is dropped — "new to the collection" replaces it.

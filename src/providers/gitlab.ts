@@ -14,11 +14,10 @@ import {
   timeoutMessage,
   unreachableMessage,
 } from "./errors";
+import { gitlabReason, isMentionReason } from "./reasons";
 
 const MAX_PAGES = 2;
 const PER_PAGE = 50;
-
-const MENTION_ACTIONS = new Set(["mentioned", "directly_addressed", "review_requested"]);
 
 // Loaded lazily at the point of use so the library is never evaluated during
 // startup — createProviders() runs in the main process boot path.
@@ -164,6 +163,7 @@ function toItemState(todo: GitlabTodo): ItemState | undefined {
 }
 
 function toFetchedItem(todo: GitlabTodo): FetchedItem {
+  const reason = gitlabReason(todo.action_name);
   const item: FetchedItem = {
     id: `gitlab:${todo.id}`,
     provider: "gitlab",
@@ -171,8 +171,8 @@ function toFetchedItem(todo: GitlabTodo): FetchedItem {
     title: todo.target?.title ?? todo.body ?? "(untitled)",
     repo: todo.project?.path_with_namespace ?? "",
     url: todo.target_url,
-    reason: todo.action_name,
-    isMention: MENTION_ACTIONS.has(todo.action_name),
+    reason,
+    isMention: isMentionReason(reason),
     // Last activity on the target, like GitHub's thread.updated_at — the
     // todo's own dates only move on todo actions, so a plain comment or a
     // merge would never re-sort the item.
