@@ -1,15 +1,17 @@
 // The resizable "main app" window: a singleton browser-style inbox opened
 // from the popover. Same renderer bundle as the popover — the `?window=main`
-// query selects the main-window component tree — and the same background
-// story: transparent + Liquid Glass on macOS, acrylic on Windows 11,
-// best-effort transparency on Linux (the renderer's `opaque` class covers
-// the rest).
+// query selects the main-window component tree — but a different background:
+// this is a document window, so it takes the classic NSVisualEffectView
+// "sidebar" material on an ordinary macOS frame, with the system's own corner
+// radius and shadow, rather than the popover's Liquid Glass, which belongs to
+// the menu bar. Windows 11 gets acrylic, Linux best-effort transparency; the
+// renderer's `opaque` class covers the rest.
 
 import type { Store, WindowBounds } from "./store";
 import { join } from "node:path";
 import process from "node:process";
 import { app, BrowserWindow, screen } from "electron";
-import { acrylicSupported, applyGlass } from "./window";
+import { acrylicSupported } from "./window";
 
 const DEFAULT_WIDTH = 980;
 const DEFAULT_HEIGHT = 640;
@@ -18,13 +20,8 @@ const DEFAULT_HEIGHT = 640;
 const MIN_WIDTH = 800;
 const MIN_HEIGHT = 420;
 
-// The macOS 26 large window radius, much rounder than the popover's 16.
-export const MAIN_GLASS_CORNER_RADIUS = 26;
-
-// Traffic lights sit lower than the hiddenInset default so they (and the
-// header content, which centers on them) clear the rounder corner. The
-// renderer's .main-header height matches: lights are 12pt tall, so a 52pt
-// header centers them at y = 20.
+// Traffic lights sit lower than the hiddenInset default, centered in the
+// renderer's 52pt .main-header: the lights are 12pt tall, so y = 20.
 const TRAFFIC_LIGHTS = { x: 20, y: 20 };
 
 let mainWindow: BrowserWindow | null = null;
@@ -87,12 +84,21 @@ export function openMainWindow(): void {
     show: false,
     title: "Majordomo",
     // Standard frame, but on macOS the title bar collapses into the page —
-    // the renderer's header centers itself on the repositioned lights.
+    // the renderer's header centers itself on the repositioned lights. The
+    // window stays opaque there: the vibrancy view supplies the translucency,
+    // and an ordinary frame brings the system corner radius and shadow with
+    // it (a transparent window would have to fake both).
     ...(process.platform === "darwin"
-      ? { titleBarStyle: "hidden" as const, trafficLightPosition: TRAFFIC_LIGHTS }
+      ? {
+          titleBarStyle: "hidden" as const,
+          trafficLightPosition: TRAFFIC_LIGHTS,
+          // The material native source lists use; the renderer leaves the
+          // sidebar unpainted so it shows, and paints over it everywhere else.
+          vibrancy: "sidebar" as const,
+          visualEffectState: "followWindow" as const,
+        }
       : {}),
-    // Background approach mirrors createPopover(): see the notes there.
-    transparent: process.platform !== "win32",
+    transparent: process.platform === "linux",
     ...(acrylicSupported() ? { backgroundMaterial: "acrylic" as const } : {}),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
@@ -133,9 +139,6 @@ export function openMainWindow(): void {
     }
   });
 
-  if (process.platform === "darwin") {
-    win.webContents.once("did-finish-load", () => applyGlass(win, MAIN_GLASS_CORNER_RADIUS));
-  }
   win.once("ready-to-show", () => {
     win.show();
     win.focus();

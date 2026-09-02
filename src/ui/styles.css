@@ -929,16 +929,10 @@ input:disabled {
   height: 100%;
 }
 
-/* The glass view behind the page is rounded (MAIN_GLASS_CORNER_RADIUS), so
-   the opaque content has to be clipped to the same shape or its square
-   corners poke out over the desktop. */
-#main-app.platform-darwin {
-  border-radius: 26px;
-  overflow: hidden;
-}
-
-/* Opaque mode: no material behind the page, so the window paints its own
-   full-bleed fill — the frosted sidebar becomes a plain tinted column. */
+/* Nothing to round here: unlike the popover, this window keeps an ordinary
+   macOS frame, so the system clips the page to the window's own corners.
+   Opaque mode still needs a fill — with no material behind the page the
+   window paints its own, and the sidebar becomes a plain tinted column. */
 #main-app.opaque {
   background: var(--fallback-bg);
 }
