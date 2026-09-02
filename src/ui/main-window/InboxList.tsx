@@ -4,6 +4,7 @@
 
 import type { InboxItem } from "../../shared/types";
 import type { CategoryId } from "../inbox/categories";
+import { useEffect, useRef } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { CheckCircleIcon, InboxIcon } from "../components/Icons";
 import { ItemRow } from "../inbox/ItemRow";
@@ -25,6 +26,17 @@ export function InboxList({
   now,
   onSelect,
 }: InboxListProps) {
+  const rowsRef = useRef<HTMLDivElement>(null);
+  // Keyboard navigation moves the selection without touching the scroll
+  // position, so the list has to follow it.
+  useEffect(() => {
+    if (selectedId === null) {
+      return;
+    }
+    const row = rowsRef.current?.querySelector(`[data-item-id="${CSS.escape(selectedId)}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+
   if (!anyConnected) {
     return (
       <EmptyState
@@ -52,7 +64,7 @@ export function InboxList({
         );
   }
   return (
-    <div className="rows">
+    <div className="rows" ref={rowsRef}>
       {items.map((item) => (
         <ItemRow
           key={item.id}

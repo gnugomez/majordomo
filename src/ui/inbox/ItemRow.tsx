@@ -22,6 +22,8 @@ export function ItemRow({ item, now, onOpen, selected }: ItemRowProps) {
     <button
       type="button"
       className={className}
+      // The main window's keyboard navigation scrolls rows into view by id.
+      data-item-id={item.id}
       title={item.title}
       onClick={() => onOpen(item.id)}
     >
