@@ -1161,6 +1161,33 @@ input:disabled {
   opacity: 0;
 }
 
+/* The settings in place of the split view: one readable column centred in
+   the window, like a Preferences window rather than a slide-over. */
+.settings-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px 28px;
+}
+
+.settings-pane > .settings-caption,
+.settings-pane > .settings-group {
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.settings-pane::-webkit-scrollbar {
+  width: 12px;
+}
+
+.settings-pane::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background-color: var(--toggle-off);
+  background-clip: padding-box;
+}
+
 /* ---------- Main window: preview ---------- */
 
 .preview {

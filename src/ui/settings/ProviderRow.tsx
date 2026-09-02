@@ -3,7 +3,7 @@
 // as sibling rows in the same group container (hairline rhythm).
 
 import type { AccountConfig, AccountState } from "../../shared/types";
-import type { ProviderDef } from "./SettingsPane";
+import type { ProviderDef } from "./SettingsContent";
 import { ProviderIcon, WarningIcon } from "../components/Icons";
 import { ConnectForm } from "./ConnectForm";
 

@@ -1,7 +1,8 @@
 // Main-window shell: a mail-style three-column view (frosted source list,
-// inbox, preview) over the same pushed AppState the popover renders. None of
-// the popover's window effects (content-height reporting, visibility reset,
-// focus scrubbing) belong here — this is a normal resizable window.
+// inbox, preview) over the same pushed AppState the popover renders, plus the
+// settings the popover keeps behind its own cog. None of the popover's window
+// effects (content-height reporting, visibility reset, focus scrubbing)
+// belong here — this is a normal resizable window.
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { PaneWidth } from "../hooks/usePaneWidth";
@@ -12,6 +13,7 @@ import { useAppState } from "../hooks/useAppState";
 import { useNow } from "../hooks/useNow";
 import { usePaneWidth } from "../hooks/usePaneWidth";
 import { byNewest, categorize } from "../inbox/categories";
+import { SettingsContent } from "../settings/SettingsContent";
 import { InboxList } from "./InboxList";
 import { MainHeader } from "./MainHeader";
 import { PreviewPane } from "./PreviewPane";
@@ -29,12 +31,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function MainApp() {
-  const { state, actions } = useAppState();
+  const { state, connecting, actions } = useAppState();
   const now = useNow();
   useAccent(state.accentColor);
 
   const [categoryId, setCategoryId] = useState<CategoryId>("recent");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const sidebar = usePaneWidth("sidebar", SIDEBAR.default);
   const list = usePaneWidth("list", LIST.default);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -46,14 +49,19 @@ export function MainApp() {
   // inbox (or the current category) falls back to the empty preview.
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
-  // Up/down walk the visible list wherever focus happens to be, and Enter
-  // opens the selection — the keyboard contract of every mail-style window.
-  // A ref keeps the listener off the re-subscribe treadmill as items change.
+  // Up/down walk the visible list wherever focus happens to be, Enter opens
+  // the selection, Escape leaves settings — the keyboard contract of every
+  // mail-style window. A ref keeps the listener off the re-subscribe
+  // treadmill as items change.
   const navRef = useRef({ items, selectedId, openItem: actions.openItem });
   navRef.current = { items, selectedId, openItem: actions.openItem };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.key === "Escape") {
+        setSettingsOpen(false);
         return;
       }
       const active = document.activeElement;
@@ -147,7 +155,10 @@ export function MainApp() {
         selectedId={category.id}
         width={sidebar.width}
         minWidth={SIDEBAR.min}
-        onSelect={setCategoryId}
+        onSelect={(id) => {
+          setCategoryId(id);
+          setSettingsOpen(false);
+        }}
       />
       <div
         {...dividerProps(sidebar, SIDEBAR, () => list.width)}
@@ -155,42 +166,60 @@ export function MainApp() {
       />
       <div className="main-content">
         <MainHeader
-          title={category.label}
-          subtitle={itemCount(items.length)}
+          title={settingsOpen ? "Settings" : category.label}
+          subtitle={settingsOpen ? "Accounts and preferences" : itemCount(items.length)}
+          showActions={!settingsOpen}
+          settingsOpen={settingsOpen}
           syncing={state.syncing}
           lastSyncAt={state.lastSyncAt}
           now={now}
           anyUnread={state.items.some((item) => !item.read)}
           onRefresh={actions.refresh}
           onMarkAllRead={actions.markAllRead}
+          onToggleSettings={() => setSettingsOpen((open) => !open)}
         />
-        <div className="main-body">
-          <section
-            className="list-pane"
-            style={{ width: list.width, minWidth: LIST.min }}
-            aria-label="Inbox"
-          >
-            <InboxList
-              items={items}
-              categoryId={category.id}
-              anyConnected={state.accounts.some((account) => account.connected)}
-              selectedId={selectedId}
-              now={now}
-              onSelect={setSelectedId}
-            />
-          </section>
-          <div
-            {...dividerProps(list, LIST, () => sidebar.width)}
-            aria-label="Resize inbox list"
-          />
-          <section
-            className="preview-pane"
-            style={{ minWidth: MIN_PREVIEW_WIDTH }}
-            aria-label="Preview"
-          >
-            <PreviewPane item={selected} now={now} onOpen={actions.openItem} />
-          </section>
-        </div>
+        {settingsOpen
+          ? (
+              <div className="settings-pane" aria-label="Settings">
+                <SettingsContent
+                  state={state}
+                  connecting={connecting}
+                  onConnect={actions.connect}
+                  onDisconnect={actions.disconnect}
+                  onToggleLaunchAtLogin={actions.setLaunchAtLogin}
+                  onToggleGlassEnabled={actions.setGlassEnabled}
+                />
+              </div>
+            )
+          : (
+              <div className="main-body">
+                <section
+                  className="list-pane"
+                  style={{ width: list.width, minWidth: LIST.min }}
+                  aria-label="Inbox"
+                >
+                  <InboxList
+                    items={items}
+                    categoryId={category.id}
+                    anyConnected={state.accounts.some((account) => account.connected)}
+                    selectedId={selectedId}
+                    now={now}
+                    onSelect={setSelectedId}
+                  />
+                </section>
+                <div
+                  {...dividerProps(list, LIST, () => sidebar.width)}
+                  aria-label="Resize inbox list"
+                />
+                <section
+                  className="preview-pane"
+                  style={{ minWidth: MIN_PREVIEW_WIDTH }}
+                  aria-label="Preview"
+                >
+                  <PreviewPane item={selected} now={now} onOpen={actions.openItem} />
+                </section>
+              </div>
+            )}
       </div>
     </div>
   );

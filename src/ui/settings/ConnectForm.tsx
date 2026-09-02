@@ -5,7 +5,7 @@
 
 import type { FormEvent } from "react";
 import type { AccountConfig, AccountState } from "../../shared/types";
-import type { ProviderDef } from "./SettingsPane";
+import type { ProviderDef } from "./SettingsContent";
 import { useEffect, useRef, useState } from "react";
 
 interface ConnectFormProps {
