@@ -33,19 +33,27 @@ export function acrylicSupported(): boolean {
 }
 
 /**
- * Whether the translucent background should start enabled on this machine.
- * The toggle itself is renderer-side paint — main only persists the flag.
+ * Whether turning the translucent background off is the user's to decide.
+ * macOS always has a material to draw — Liquid Glass in the popover, the
+ * sidebar vibrancy in the main window — so there is nothing to fall back to
+ * and no setting worth offering. Windows without acrylic and Linux
+ * compositors that won't blur need the escape hatch.
  */
-export function defaultGlassEnabled(): boolean {
-  switch (process.platform) {
-    case "darwin":
-      return true;
-    case "win32":
-      return acrylicSupported();
-    default:
-      // Linux: transparency is compositor roulette — opaque by default.
-      return false;
+export function glassConfigurable(): boolean {
+  return process.platform !== "darwin";
+}
+
+/**
+ * The effective translucent-background setting for this machine. The toggle
+ * itself is renderer-side paint — main only resolves and persists the flag.
+ */
+export function resolveGlassEnabled(stored: boolean | undefined): boolean {
+  if (!glassConfigurable()) {
+    return true;
   }
+  // Windows 11 has acrylic; older builds and Linux are compositor roulette,
+  // so they start opaque unless the user says otherwise.
+  return stored ?? acrylicSupported();
 }
 
 /** Creates the popover window that anchors to the tray icon. */

@@ -10,9 +10,10 @@ import { createSyncEngine } from "./sync";
 import { createTray } from "./tray";
 import {
   createPopover,
-  defaultGlassEnabled,
+  glassConfigurable,
   hidePopover,
   resizePopover,
+  resolveGlassEnabled,
   showPopover,
   togglePopover,
 } from "./window";
@@ -183,6 +184,9 @@ if (!app.requestSingleInstanceLock()) {
       engine.updateChrome({ launchAtLogin: app.getLoginItemSettings().openAtLogin });
     });
     ipcMain.handle(IPC.setGlassEnabled, (_event, enabled: boolean) => {
+      // Platforms without the setting keep whatever they resolve to.
+      if (!glassConfigurable())
+        return;
       store.setGlassEnabled(enabled);
       engine.updateChrome({ glassEnabled: enabled });
     });
@@ -200,7 +204,7 @@ if (!app.requestSingleInstanceLock()) {
     refreshAccent = setupAccent(engine);
     engine.updateChrome({
       launchAtLogin: loginItemSupported && app.getLoginItemSettings().openAtLogin,
-      glassEnabled: store.getGlassEnabled() ?? defaultGlassEnabled(),
+      glassEnabled: resolveGlassEnabled(store.getGlassEnabled()),
     });
     refreshAccent("boot");
 

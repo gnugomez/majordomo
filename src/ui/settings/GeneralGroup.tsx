@@ -29,14 +29,19 @@ export function GeneralGroup({
           />
         </div>
       )}
-      <div className="group-row">
-        <span className="settings-label">Translucent background</span>
-        <Toggle
-          checked={glassEnabled}
-          label="Translucent background"
-          onChange={onToggleGlassEnabled}
-        />
-      </div>
+      {/* macOS always has a material to draw, so there is nothing to turn
+          off; elsewhere the blur may not be available and this is the escape
+          hatch (see glassConfigurable() in electron/window.ts). */}
+      {platform !== "darwin" && (
+        <div className="group-row">
+          <span className="settings-label">Translucent background</span>
+          <Toggle
+            checked={glassEnabled}
+            label="Translucent background"
+            onChange={onToggleGlassEnabled}
+          />
+        </div>
+      )}
     </section>
   );
 }
