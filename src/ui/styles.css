@@ -1142,6 +1142,14 @@ input:disabled {
   right: -3px;
 }
 
+/* Selection fills and the cog's active state already say where you are, and
+   Chromium hands the ring out on window focus — so in this window it only
+   ever reads as a stray dark outline. Form fields keep theirs. */
+#main-app .row:focus-visible,
+#main-app .icon-btn:focus-visible {
+  outline: none;
+}
+
 /* Selection in the list: accent-tinted like a focused source list; the inset
    hairlines around it hide, as they do on hover. */
 .row.selected,
