@@ -40,7 +40,7 @@ export function categorize(items: InboxItem[]): Category[] {
     { id: "issues", label: "Issues", items: rest.filter((i) => i.kind === "issue") },
     {
       id: "pulls",
-      label: "Pull & merge requests",
+      label: "Pulls",
       items: rest.filter((i) => i.kind === "pull" || i.kind === "merge"),
     },
   ];
