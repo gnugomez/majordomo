@@ -49,12 +49,22 @@ MAJORDOMO_USERDATA=/tmp/majordomo-dev pnpm dev
   (notifications API), GitLab uses `@gitbeaker/rest` (todos API); both load
   lazily and normalize to `FetchedItem`. Friendly error strings live in
   `providers/errors.ts` — they surface verbatim in the UI.
-- `src/electron/` — the Electron shell: tray, Liquid Glass popover window,
-  sync loop, encrypted token store, notifications, preload bridge.
-- `src/ui/` — the popover UI in React: `App.tsx` + `hooks/` own state,
-  `inbox/` and `settings/` hold the feature components, `components/` the
+- `src/electron/` — the Electron shell: tray, the Liquid Glass popover
+  window, the vibrant main window, sync loop, encrypted token store,
+  notifications, preload bridge.
+- `src/ui/` — the UI in React, one bundle serving both windows: `App.tsx` is
+  the popover, `main-window/MainApp.tsx` (loaded with `?window=main`) is the
+  resizable three-column window, `hooks/` owns state, `inbox/` and
+  `settings/` hold the feature components shared by both, `components/` the
   shared bits (icons are typed JSX SVGs). Bundled by esbuild — no vite, no
   CSS-in-JS; the design tokens live in `styles.css`.
+
+The two windows deliberately differ in material: the popover is a menu-bar
+extra, so it takes macOS 26's Liquid Glass; the main window is a document
+window, so it takes the classic `sidebar` vibrancy with an ordinary frame
+(system corner radius and shadow). Only its sidebar is left unpainted — the
+list and preview cover the material with the platform's own `Canvas` color,
+which follows light/dark on its own.
 
 ## Design principles
 
@@ -90,15 +100,17 @@ provider (Gitea, Bitbucket, Jira, …) is a contained change:
    verbatim in the Accounts pane (reuse `providers/errors.ts`).
    Key mapping decisions: `id` must be stable across fetches
    (`"<name>:<externalId>"` — it's the dedup and read-state key), and
-   `isMention` marks what deserves a notification and the Mentions group
-   (mentions, direct addresses, review requests).
+   `reason` must be one of the shared `ItemReason` values — add a table for
+   the service in `src/providers/reasons.ts` mapping its own vocabulary onto
+   them, and derive `isMention` with `isMentionReason()` so the notification
+   tier and the Mentions category stay consistent across providers.
 2. **Register it**: add the id to the `ProviderId` union in
    `src/shared/types.ts` and the instance to `createProviders()` in
    `src/providers/index.ts`.
 3. **Teach the UI about it**: a small monochrome glyph in
    `src/ui/components/Icons.tsx`, the display name in
    `src/ui/components/Banner.tsx`, and an entry in the `PROVIDERS` list in
-   `src/ui/settings/SettingsPane.tsx` (set `needsBaseUrl: true` for
+   `src/ui/settings/SettingsContent.tsx` (set `needsBaseUrl: true` for
    self-hosted services so the URL field shows).
 
 The typechecker walks you through the rest — extending `ProviderId` flags
