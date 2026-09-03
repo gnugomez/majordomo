@@ -21,25 +21,13 @@
           "image-name" : "fbeab96a-0888-40a0-8f5e-83acc16c3629.png",
           "name" : "bow tie",
           "position" : {
-            "scale" : 0.33,
+            "scale" : 0.2,
             "translation-in-points" : [
               -4.399999999999977,
               -114.46875
             ]
           }
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
-      }
-    },
-    {
-      "layers" : [
+        },
         {
           "fill-specializations" : [
             {
@@ -54,8 +42,8 @@
                     "y" : 0
                   },
                   "stop" : {
-                    "x" : 1.2679696314408322,
-                    "y" : 0.7073584942385551
+                    "x" : 2.8953783933362898,
+                    "y" : 1.5139218924532047
                   }
                 }
               }
@@ -86,20 +74,199 @@
               }
             }
           ],
+          "hidden" : false,
           "image-name" : "Frame 1.svg",
           "name" : "Frame 1",
           "position" : {
-            "scale" : 1.3,
+            "scale" : 1,
             "translation-in-points" : [
-              -1.1906167732579434,
-              224.0390625
+              -0.49278213327534104,
+              106.53594758251847
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:1.00000,1.00000",
+                  "extended-gray:0.90000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : -1.0597852316602316,
+                    "y" : 0.9751963244818653
+                  },
+                  "stop" : {
+                    "x" : 2.0825289575289574,
+                    "y" : 0.5777809261658031
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:0.55000,1.00000",
+                  "extended-gray:0.45000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : -0.3774827645238597,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1.4667795305581086,
+                    "y" : 0.7039035736530678
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:0.85000,1.00000"
+              }
+            }
+          ],
+          "image-name" : "shirt.svg",
+          "name" : "shirt",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:0.55000,1.00000",
+                  "extended-gray:0.75000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : -0.7139227077773277,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1.2679696314408322,
+                    "y" : 0.7073584942385551
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:0.55000,1.00000",
+                  "extended-gray:0.35000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : -0.3774827645238597,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1.4667795305581086,
+                    "y" : 0.7039035736530678
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:0.60000,1.00000"
+              }
+            }
+          ],
+          "hidden" : true,
+          "image-name" : "lapel-trim.svg",
+          "name" : "lapel trim",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:0.00000,1.00000",
+                  "extended-gray:0.25000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.14019654110228894,
+                    "y" : 0.44125144569225283
+                  },
+                  "stop" : {
+                    "x" : 1.0954726759276425,
+                    "y" : 1.5038583643872727
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:1.00000,1.00000",
+                  "extended-gray:0.75000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : -0.3774827645238597,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1.4667795305581086,
+                    "y" : 0.7039035736530678
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "jacket.svg",
+          "name" : "jacket",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
             ]
           }
         }
       ],
+      "position" : {
+        "scale" : 1,
+        "translation-in-points" : [
+          0,
+          32.890625
+        ]
+      },
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 0.5
+        "opacity" : 0.35
       },
       "translucency" : {
         "enabled" : true,
