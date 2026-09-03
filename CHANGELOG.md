@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0](https://github.com/gnugomez/majordomo/compare/v0.3.1...v0.4.0) (2026-09-03)
+
+
+### Features
+
+* add a resizable main window with inbox list and preview pane ([54a9d92](https://github.com/gnugomez/majordomo/commit/54a9d924d633daa91794f030060853c8563da42d))
+* add an Assigned category for items assigned to you ([40679a2](https://github.com/gnugomez/majordomo/commit/40679a20fe2c69bbdd80c27a0df848249968b01e))
+* browse the main window inbox with the arrow keys ([a121d38](https://github.com/gnugomez/majordomo/commit/a121d38d0047c7d6cab9d632e981937b673f5343))
+* drop the translucent background setting on macOS ([82c2eff](https://github.com/gnugomez/majordomo/commit/82c2eff9288fdc0bfcccd8eecf7200c44ce981a2))
+* give the main window the frosted sidebar material ([2fff0af](https://github.com/gnugomez/majordomo/commit/2fff0af43b9ccd78b1f10bdf655a9741ceea61fd))
+* lay the main window out as sidebar, inbox and preview ([5e903be](https://github.com/gnugomez/majordomo/commit/5e903be66f517ccb323fcbadc57a490b9fa800d4))
+* open settings from the main window ([d9f47cc](https://github.com/gnugomez/majordomo/commit/d9f47cce042ef60e2fa7e0124875f5d99892a63f))
+* open the main window from the popover title instead of a fourth icon ([95e13c3](https://github.com/gnugomez/majordomo/commit/95e13c3f624361f8c2b76b913a04dcf2dff4306b))
+* remember the main window's size and position ([25bd8bd](https://github.com/gnugomez/majordomo/commit/25bd8bd6b924ffe2b737798b3198f79423b5ddf6))
+* resize the main window's sidebar and inbox ([2cd7f2f](https://github.com/gnugomez/majordomo/commit/2cd7f2fc3ef341d1b885065ec4d79b3280ec7557))
+* speak one vocabulary for GitHub and GitLab item reasons ([585918a](https://github.com/gnugomez/majordomo/commit/585918a1ba3b2d6688dcdf2b3824d43547039875))
+* swap the settings text button for a cog and restyle the double check ([81cfd99](https://github.com/gnugomez/majordomo/commit/81cfd9937ce70c52f16131e87f236e1d681d4f5a))
+* updating app icon ([ed2d80f](https://github.com/gnugomez/majordomo/commit/ed2d80fe8b6519adbc15893ec4a311d32a6db151))
+
+
+### Bug Fixes
+
+* remove the stray focus outline in the main window ([1dfbe33](https://github.com/gnugomez/majordomo/commit/1dfbe339301af2865e6816ad18950005900dbf06))
+* updating app icon ([2678854](https://github.com/gnugomez/majordomo/commit/2678854ce8f7a1ef328de69f5ecbffb42ee7682d))
+
 ## [0.3.1](https://github.com/gnugomez/majordomo/compare/v0.3.0...v0.3.1) (2026-09-01)
 
 
