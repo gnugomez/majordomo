@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/gnugomez/majordomo/compare/v0.4.0...v0.5.0) (2026-09-07)
+
+
+### Features
+
+* show unread count on the dock and launcher badge ([7676990](https://github.com/gnugomez/majordomo/commit/7676990b10acca7490292a1fd935c1885e742831))
+
 ## [0.4.0](https://github.com/gnugomez/majordomo/compare/v0.3.1...v0.4.0) (2026-09-03)
 
 
