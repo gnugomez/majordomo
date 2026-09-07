@@ -166,6 +166,14 @@ if (!app.requestSingleInstanceLock()) {
     });
     engine = createSyncEngine(store, (state: AppState) => {
       tray.setDot(state.items.some((item) => item.isMention && !item.read));
+      // Dock badge (macOS) / launcher badge (Linux, Unity only) — the count
+      // sits on the tile itself, so it reads even while the popover is
+      // closed and the main window's Dock icon is hidden. No win32
+      // equivalent: Electron only exposes a per-BrowserWindow taskbar
+      // overlay icon there, not a count badge.
+      if (process.platform === "darwin" || process.platform === "linux") {
+        app.setBadgeCount(state.items.filter((item) => !item.read).length);
+      }
       // Every live window renders the same pushed state (popover + main).
       for (const target of BrowserWindow.getAllWindows()) {
         if (!target.isDestroyed() && !target.webContents.isDestroyed())
