@@ -61,8 +61,8 @@ struct MainWindowView: View {
       InboxListView(model: model, items: scope.category.items, categoryId: scope.category.id)
         .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 560)
         // Declared on the column so it lands in the list's own toolbar
-        // section, Mail-style. The one toolbar button: refresh, over the
-        // inbox column. Marking read is the rows' right-click menu's job.
+        // section, Mail-style: refresh sits over the inbox column, the
+        // selection's actions over the detail column.
         .toolbar {
           ToolbarItem {
             refreshButton
@@ -99,9 +99,10 @@ struct MainWindowView: View {
       }
     }
     .frame(minWidth: 360)
-    // Open lives at the trailing edge and only while something is selected;
-    // the invisible item covers the empty case so the detail section (which
-    // anchors the list column's items) never disappears.
+    // Mark-read and Open live at the trailing edge (Open outermost, it's the
+    // primary action) and only while something is selected; the invisible
+    // item covers the empty case so the detail section (which anchors the
+    // list column's items) never disappears.
     .toolbar {
       if selectedItems.isEmpty {
         ToolbarItem {
@@ -111,10 +112,30 @@ struct MainWindowView: View {
       } else {
         ToolbarSpacer(.flexible)
         ToolbarItem {
+          markReadButton(for: selectedItems)
+        }
+        ToolbarItem {
           openButton(for: selectedItems)
         }
       }
     }
+  }
+
+  private func markReadButton(for selectedItems: [InboxItem]) -> some View {
+    Button {
+      model.markRead(Set(selectedItems.map(\.id)))
+    } label: {
+      HStack(spacing: 3) {
+        Image(systemName: "envelope.open")
+        if selectedItems.count > 1 {
+          Text("+\(selectedItems.count)")
+            .font(.system(size: 11, weight: .semibold))
+        }
+      }
+    }
+    .keyboardShortcut("u", modifiers: [.shift, .command])
+    .disabled(!selectedItems.contains { !$0.read })
+    .help(selectedItems.count > 1 ? "Mark \(selectedItems.count) as read" : "Mark as read")
   }
 
   /// Scroll-backed for the same reason as PreviewView's empty state: plain
@@ -124,7 +145,7 @@ struct MainWindowView: View {
       EmptyStateView(
         symbol: "square.stack",
         title: "\(count) items selected",
-        caption: "Open them all with a double-click, or mark them read from the context menu."
+        caption: "Open them all with a double-click, or mark them read from the toolbar."
       )
       .containerRelativeFrame(.vertical)
     }
