@@ -1,12 +1,6 @@
-node_modules/
+.build/
 dist/
-build/
-release/
 .DS_Store
 
 # Agent worktrees
 .claude/worktrees/
-
-# A stale SourceKit-LSP session may regenerate Swift build caches here
-# until the editor that had the old RN project open is closed.
-macos/
