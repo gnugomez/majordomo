@@ -19,6 +19,7 @@ private struct GLUser: Decodable {
 private struct GLTodo: Decodable {
   struct Target: Decodable {
     let title: String?
+    let description: String?
     /// Last activity on the issue/MR itself — comments, merges, closes.
     let updated_at: String?
     /// "opened" | "merged" | "closed" (also "locked" on some instances).
@@ -110,6 +111,16 @@ private func toItemState(_ todo: GLTodo) -> String? {
   }
 }
 
+/// The todo's `body` carries the comment that triggered a mention — the most
+/// useful preview there is — but assigned/marked todos just repeat the
+/// target's title in it; those fall through to the target's own description.
+private func bodyText(_ todo: GLTodo) -> String? {
+  if let body = todo.body, !body.isEmpty, body != todo.target?.title {
+    return body
+  }
+  return todo.target?.description
+}
+
 private func toFetchedItem(_ todo: GLTodo) -> FetchedItem? {
   // Last activity on the target, like GitHub's thread.updated_at — the
   // todo's own dates only move on todo actions, so a plain comment or a
@@ -130,7 +141,8 @@ private func toFetchedItem(_ todo: GLTodo) -> FetchedItem? {
     isMention: GitForgeVisuals.isMention(reason),
     updatedAt: updatedAt,
     state: toItemState(todo),
-    author: todo.target?.author?.username ?? todo.author?.username
+    author: todo.target?.author?.username ?? todo.author?.username,
+    body: truncatedBody(bodyText(todo))
   )
 }
 

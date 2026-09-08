@@ -22,6 +22,19 @@ struct GitLabSpec: GitForgeSpec {
     nil
   }
 
+  /// Mentions and comments carry the triggering comment itself in the body —
+  /// frame it as the quotation it is. Everything else reads as a plain
+  /// description via the shared helper.
+  func bodyView(for item: InboxItem) -> AnyView? {
+    guard let body = item.body else {
+      return nil
+    }
+    if item.reason == "mentioned" || item.reason == "commented" {
+      return AnyView(QuotedComment(author: item.author, text: body))
+    }
+    return AnyView(MarkdownBody(text: body))
+  }
+
   let categories: [CategorySpec] = [
     CategorySpec(id: "assigned", label: "Assigned", symbol: "person.crop.circle", order: 1) {
       $0.reason == "assigned"
@@ -39,4 +52,28 @@ struct GitLabSpec: GitForgeSpec {
       $0.kind == "merge" && !GitForgeVisuals.claimedReasons.contains($0.reason)
     },
   ]
+}
+
+/// A comment framed as a quotation: accent bar, attribution, then the text —
+/// this provider's own take on its richest content (and proof the bodyView
+/// hook means "any view", not "markdown string").
+private struct QuotedComment: View {
+  let author: String?
+  let text: String
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 8) {
+      RoundedRectangle(cornerRadius: 1.5)
+        .fill(Color.accentColor.opacity(0.6))
+        .frame(width: 3)
+      VStack(alignment: .leading, spacing: 4) {
+        if let author {
+          Text("@\(author) commented")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.tertiary)
+        }
+        MarkdownBody(text: text)
+      }
+    }
+  }
 }

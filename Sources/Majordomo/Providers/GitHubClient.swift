@@ -60,12 +60,14 @@ private struct GHSubject: Decodable {
   let merged_at: String?
   let draft: Bool?
   let user: User?
+  let body: String?
 }
 
 /// What one subject lookup teaches us; cached per thread id + updated_at.
 private struct Enrichment: Sendable {
   var state: String?
   var author: String?
+  var body: String?
 }
 
 /// True when a Link header advertises a rel="next" page.
@@ -221,8 +223,8 @@ actor GitHubClient: ProviderClient {
     return FetchResult(items: items, complete: complete)
   }
 
-  /// Fills in `state`/`author` on the fetched items by looking up each
-  /// thread's subject.url, at most stateBudget uncached lookups per call
+  /// Fills in `state`/`author`/`body` on the fetched items by looking up
+  /// each thread's subject.url, at most stateBudget uncached lookups per call
   /// (newest first). Results — including "couldn't determine" — are cached
   /// per thread id + updated_at, so unchanged items never refetch across the
   /// sync loop and failed lookups don't retry every minute. Lookup failures
@@ -245,6 +247,7 @@ actor GitHubClient: ProviderClient {
           nextCache[key] = known
           item.state = known.state
           item.author = known.author
+          item.body = known.body
         } else {
           pending.append((items.count, thread, key))
         }
@@ -273,6 +276,7 @@ actor GitHubClient: ProviderClient {
                let subject = try? JSONDecoder().decode(GHSubject.self, from: data) {
               known.state = toItemState(subjectType: subjectType, subject: subject)
               known.author = subject.user?.login
+              known.body = truncatedBody(subject.body)
             }
             return (job.index, job.key, known)
           }
@@ -290,6 +294,7 @@ actor GitHubClient: ProviderClient {
       nextCache[lookup.key] = lookup.known
       items[lookup.index].state = lookup.known.state
       items[lookup.index].author = lookup.known.author
+      items[lookup.index].body = lookup.known.body
     }
 
     stateCache = nextCache

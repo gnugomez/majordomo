@@ -28,6 +28,7 @@ struct StoredItem: Codable, Sendable {
   var updatedAt: Date
   var state: String?
   var author: String?
+  var body: String?
   var read: Bool
   /// When this item first entered the collection.
   var firstSeenAt: Date
@@ -38,7 +39,7 @@ struct StoredItem: Codable, Sendable {
     InboxItem(
       id: id, accountId: accountId, provider: provider, kind: kind,
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
-      updatedAt: updatedAt, state: state, author: author, read: read
+      updatedAt: updatedAt, state: state, author: author, body: body, read: read
     )
   }
 }
@@ -278,6 +279,7 @@ final class Store {
         // skipped the lookup — never forget what a prior sync learned.
         state: fetched.state ?? existing?.state,
         author: fetched.author ?? existing?.author,
+        body: fetched.body ?? existing?.body,
         // Local read state only ever moves toward read: the user reading it
         // here or upstream both count, and nothing un-reads an item.
         read: (existing?.read ?? false) || fetched.upstreamRead == true,

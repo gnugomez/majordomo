@@ -63,6 +63,11 @@ struct PreviewView: View {
             }
           }
           .font(.system(size: 12))
+
+          if let bodyView = providerSpec.bodyView(for: item) {
+            Divider()
+            bodyView
+          }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -21,6 +21,9 @@ struct FetchedItem: Sendable {
   var updatedAt: Date
   var state: String?
   var author: String?
+  /// Preview text; the provider decides what a "body" is for it and how its
+  /// spec renders it.
+  var body: String?
   /// True when the provider reports the user already handled this upstream
   /// (read notification thread, done todo). Consumed at upsert time to mark
   /// the local item read; never stored. nil means "unknown/unread".
@@ -59,6 +62,22 @@ protocol ProviderClient: Sendable {
   func validate(_ config: AccountConfig) async throws -> ProviderProfile
   /// Returns the account's current inbox.
   func fetchItems(_ config: AccountConfig) async throws -> FetchResult
+}
+
+/// Caps provider-supplied body text at fetch time — a description can carry
+/// whole build logs, and the store keeps every byte it is given.
+func truncatedBody(_ text: String?, limit: Int = 1200) -> String? {
+  guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+    return nil
+  }
+  guard trimmed.count > limit else {
+    return trimmed
+  }
+  let cut = String(trimmed.prefix(limit))
+  // A cut that lands inside a fenced code block leaves a dangling fence —
+  // close it so the renderer doesn't swallow the ellipsis into code.
+  let fences = cut.components(separatedBy: "```").count - 1
+  return fences % 2 == 1 ? cut + "…\n```" : cut + "…"
 }
 
 /// A provider failure whose message is fit for the UI, verbatim.

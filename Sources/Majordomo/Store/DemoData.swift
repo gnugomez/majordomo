@@ -17,14 +17,14 @@ enum DemoData {
     func item(
       minutesAgo: Double, account: AccountId, provider: ProviderId, kind: String,
       title: String, repo: String, reason: String, mention: Bool = false,
-      state: String? = nil, author: String? = nil, read: Bool = true
+      state: String? = nil, author: String? = nil, body: String? = nil, read: Bool = true
     ) -> StoredItem {
       let date = now.addingTimeInterval(-minutesAgo * 60)
       return StoredItem(
         id: "\(account):\(Int(minutesAgo))", accountId: account, provider: provider,
         kind: kind, title: title, repo: repo, url: "https://example.com",
         reason: reason, isMention: mention, updatedAt: date, state: state,
-        author: author, read: read, firstSeenAt: date, lastSeenUpstreamAt: now
+        author: author, body: body, read: read, firstSeenAt: date, lastSeenUpstreamAt: now
       )
     }
 
@@ -32,27 +32,70 @@ enum DemoData {
       item(
         minutesAgo: 4, account: github, provider: .github, kind: "pull",
         title: "feat: stream uploads straight to object storage", repo: "acme/atlas",
-        reason: "review_requested", mention: true, state: "open", author: "mona", read: false
+        reason: "review_requested", mention: true, state: "open", author: "mona",
+        body: """
+        Uploads no longer buffer to disk — the multipart path is gone and \
+        everything streams through `S3TransferManager` directly.
+
+        @octocat mind taking a look at the **retry semantics** before I \
+        remove the old code path?
+        """,
+        read: false
       ),
       item(
         minutesAgo: 26, account: github, provider: .github, kind: "issue",
         title: "Importer crashes on SVG files over 2 GB", repo: "acme/vector-kit",
-        reason: "mentioned", mention: true, state: "open", author: "hubot", read: false
+        reason: "mentioned", mention: true, state: "open", author: "hubot",
+        body: """
+        Reproduces with the file @octocat shared: `SVGImporter` maps the \
+        whole document up front, so anything over ~2 GB dies in \
+        `Data(contentsOf:)`.
+
+        ```swift
+        let data = try Data(contentsOf: url)   // 💥 whole file in memory
+        let doc = try SVGDocument(data: data)
+        ```
+
+        > Streaming the parse keeps peak memory flat regardless of file size.
+
+        Plan:
+        - swap `Data(contentsOf:)` for `InputStream`
+        - parse incrementally with `XMLParser`
+        """,
+        read: false
       ),
       item(
         minutesAgo: 12, account: gitlab, provider: .gitlab, kind: "merge",
         title: "Draft: refactor: split the billing worker", repo: "acme/billing",
-        reason: "review_requested", mention: true, state: "draft", author: "sasha", read: false
+        reason: "review_requested", mention: true, state: "draft", author: "sasha",
+        body: """
+        Splits `BillingWorker` into two stages:
+
+        - `IngestWorker` consumes the queue and validates events
+        - `SettleWorker` posts the ledger entries
+
+        Migration notes in [the design doc](https://example.com/design). \
+        Still draft while the backfill runs.
+        """,
+        read: false
       ),
       item(
         minutesAgo: 49, account: gitlab, provider: .gitlab, kind: "merge",
         title: "feat: expose usage metrics over /stats", repo: "acme/metrics",
-        reason: "mentioned", mention: true, state: "open", author: "kim", read: false
+        reason: "mentioned", mention: true, state: "open", author: "kim",
+        body: """
+        cc @octocat — counters now export on `/stats` in **Prometheus** \
+        format, one series per provider. Names follow the *rate/errors/duration* \
+        convention.
+        """,
+        read: false
       ),
       item(
         minutesAgo: 65, account: github, provider: .github, kind: "issue",
         title: "Rate-limit the public search endpoint", repo: "acme/atlas",
-        reason: "assigned", state: "open", author: "mona", read: false
+        reason: "assigned", state: "open", author: "mona",
+        body: "Anonymous search should cap at **60 req/min** per IP — the crawler traffic from last week made `search/v2` the top CPU consumer.",
+        read: false
       ),
       item(
         minutesAgo: 3 * 60, account: github, provider: .github, kind: "pull",

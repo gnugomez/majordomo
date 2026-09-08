@@ -46,8 +46,19 @@ protocol ProviderSpec: Sendable {
   func stateCapsule(for item: InboxItem) -> StateCapsule?
   /// Human label for a reason token.
   func reasonLabel(_ reason: String) -> String
+  /// The preview pane's body section for an item, or nil for none. Providers
+  /// build whatever SwiftUI fits their content from the item's data;
+  /// MarkdownBody is available as a rendering helper, and the default uses
+  /// it on the item's body text.
+  func bodyView(for item: InboxItem) -> AnyView?
   /// The sidebar buckets this provider's items sort into.
   var categories: [CategorySpec] { get }
+}
+
+extension ProviderSpec {
+  func bodyView(for item: InboxItem) -> AnyView? {
+    item.body.map { AnyView(MarkdownBody(text: $0)) }
+  }
 }
 
 /// Every provider implementation the app ships. Adding a provider means

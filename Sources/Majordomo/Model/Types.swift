@@ -43,6 +43,10 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   var state: String?
   /// Login of whoever wrote the item, when the provider knows it.
   var author: String?
+  /// Provider-defined preview text — a mention's comment, an item's
+  /// description; opaque to the core. The provider's spec decides how (and
+  /// whether) to render it.
+  var body: String?
   var read: Bool
 }
 
