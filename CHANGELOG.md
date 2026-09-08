@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/gnugomez/majordomo/compare/v1.0.0...v1.0.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* installed builds crashed at launch resolving the tray-icon bundle ([8e92325](https://github.com/gnugomez/majordomo/commit/8e9232538f096d798036ba4a8e11cf5459561a8c))
+
 ## [1.0.0](https://github.com/gnugomez/majordomo/compare/v0.4.0...v1.0.0) (2026-09-08)
 
 
