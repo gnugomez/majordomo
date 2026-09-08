@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/gnugomez/majordomo/compare/v1.0.2...v1.1.0) (2026-09-08)
+
+
+### Features
+
+* mark-read button in the selection toolbar ([f1232b7](https://github.com/gnugomez/majordomo/commit/f1232b73f30c60d2b6d47464527c94fc97c4bbaf))
+* provider body content in the preview ([7dc1fdd](https://github.com/gnugomez/majordomo/commit/7dc1fdd47a5a8fa3d802bcebec753a410eb45dca))
+
 ## [1.0.2](https://github.com/gnugomez/majordomo/compare/v1.0.1...v1.0.2) (2026-09-08)
 
 
