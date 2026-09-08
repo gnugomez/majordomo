@@ -1,4 +1,4 @@
-// Small formatting helpers for the views, ported from src/ui/format.ts.
+// Small formatting helpers for the views.
 
 import Foundation
 

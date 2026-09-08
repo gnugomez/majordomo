@@ -1,8 +1,8 @@
-// One inbox row, ported from src/ui/inbox/ItemRow.tsx: Mail-style unread
-// dot, title line with the kind glyph, meta line with the provider hint and
-// the capsule. Selected rows swap every fixed color for hierarchical styles,
-// which AppKit flips to white on an emphasized (accent) selection and keeps
-// dark on an unfocused gray one — explicit colors would do neither.
+// One inbox row: Mail-style unread dot, title line with the kind glyph,
+// meta line with the provider hint and the capsule. Selected rows swap
+// every fixed color for hierarchical styles, which AppKit flips to white on
+// an emphasized (accent) selection and keeps dark on an unfocused gray one
+// — explicit colors would do neither.
 
 import SwiftUI
 

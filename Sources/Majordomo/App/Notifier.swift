@@ -1,6 +1,5 @@
-// User notifications, ported from the notify() half of src/electron/sync.ts.
-// UNUserNotificationCenter requires a real app bundle — a bare `swift run`
-// executable logs and skips instead of crashing.
+// User notifications. UNUserNotificationCenter requires a real app bundle
+// — a bare `swift run` executable logs and skips instead of crashing.
 
 import Foundation
 import os
@@ -56,7 +55,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sen
     }
   }
 
-  // Clicking the notification opens the item, like the Electron app.
+  // Clicking the notification opens the item.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse

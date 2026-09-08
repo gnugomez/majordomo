@@ -1,5 +1,4 @@
-// Middle pane of the main window, ported from
-// src/ui/main-window/InboxList.tsx: the selected category's items, newest
+// Middle pane of the main window: the selected category's items, newest
 // first — selecting feeds the preview, double-click or ⏎ opens the browser.
 
 import SwiftUI

@@ -1,8 +1,8 @@
-// A small SVG path-data parser, enough to draw the two provider marks lifted
-// verbatim from src/ui/components/Icons.tsx (M/L/H/V/C/S/A/Z, absolute and
-// relative, elliptical arcs converted to cubic Béziers). Not a general SVG
-// engine: adjacent arc flags without separators aren't handled — the two
-// paths in ProviderMark.swift don't use them.
+// A small SVG path-data parser, enough to draw the two provider marks
+// (M/L/H/V/C/S/A/Z, absolute and relative, elliptical arcs converted to
+// cubic Béziers). Not a general SVG engine: adjacent arc flags without
+// separators aren't handled — the two paths in ProviderMark.swift don't
+// use them.
 
 import CoreGraphics
 import Foundation

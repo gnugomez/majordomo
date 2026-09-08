@@ -3,7 +3,7 @@
 // app — never one keychain item per token (per-item ACLs re-prompt on every
 // rebuild of an app without an Apple-issued certificate; see CONTRIBUTING.md).
 // If the Keychain is unavailable the store falls back to plaintext with a
-// logged warning, mirroring Electron safeStorage's Linux fallback.
+// logged warning.
 
 import CryptoKit
 import Foundation

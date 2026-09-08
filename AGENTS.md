@@ -16,6 +16,14 @@ and RELEASING.md.
 - **Style**: strict Swift 6 concurrency, 2-space indent, one type per file
   where sensible; extract well-named helpers over clever one-liners.
   Provider errors are human-readable strings — they render verbatim.
+- **Comments describe the present**: document what the code does now and
+  why, never what it used to be. No lineage ("ported from src/…", "the
+  Swift side of …", "like the Electron app"), no removed alternatives, no
+  "previously/formerly/no longer". Keep the rationale, drop the history —
+  "a real NSMenu, not a hand-positioned popover: it dismisses like every
+  other menu" earns its place; "rather than the Electron port's popover"
+  does not. When a change makes a nearby comment wrong, fix the comment in
+  the same commit. Git and CHANGELOG.md are where history lives.
 - **Checks**: `swift build` must pass with zero warnings.
   `./scripts/bundle.sh` → dist/Majordomo.app (release, ad-hoc signed unless
   `CODESIGN_IDENTITY` is set); `./scripts/install.sh` installs it. For

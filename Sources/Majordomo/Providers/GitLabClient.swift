@@ -1,6 +1,5 @@
-// GitLab provider client for self-hosted instances, ported from
-// src/providers/gitlab.ts. config.baseUrl is the instance origin (e.g.
-// "https://gitlab.example.com") and is required.
+// GitLab provider client for self-hosted instances. config.baseUrl is the
+// instance origin (e.g. "https://gitlab.example.com") and is required.
 
 import Foundation
 

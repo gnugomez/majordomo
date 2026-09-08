@@ -1,7 +1,6 @@
 // The UI-facing state: the latest AppState snapshot the engine pushed, plus
-// view state both windows share, plus the action methods (the Swift
-// equivalent of src/ui/hooks/useAppState.ts — no optimism needed, the engine
-// is in-process and pushes immediately).
+// view state both windows share, plus the action methods. Actions need no
+// optimistic update — the engine is in-process and pushes immediately.
 
 import AppKit
 import Observation

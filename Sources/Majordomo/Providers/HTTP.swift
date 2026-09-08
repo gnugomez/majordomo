@@ -1,7 +1,6 @@
-// Shared HTTP plumbing for the provider clients, ported from
-// src/providers/errors.ts: a 15-second-capped URLSession and the error
-// phrasing helpers. The strings surface directly in the Accounts pane, so
-// they must be helpful.
+// Shared HTTP plumbing for the provider clients: a 15-second-capped
+// URLSession and the error phrasing helpers. The strings surface directly
+// in the Accounts pane, so they must be helpful.
 
 import Foundation
 

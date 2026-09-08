@@ -1,6 +1,5 @@
-// The provider contract, ported from src/providers/types.ts. A provider
-// turns one account's remote inbox into the app's uniform item shape; the
-// sync engine consumes nothing else.
+// The provider contract. A provider turns one account's remote inbox into
+// the app's uniform item shape; the sync engine consumes nothing else.
 
 import Foundation
 

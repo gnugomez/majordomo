@@ -1,8 +1,7 @@
-// The status-bar icons: the same template PNGs the Electron app renders
-// (pure black + alpha; the system recolors them for menu bar state and
-// appearance). 1x and 2x reps are folded into one NSImage by hand — the
-// PNGs live loose in the SPM resource bundle, outside NSImage's automatic
-// @2x pairing.
+// The status-bar icons: template PNGs (pure black + alpha; the system
+// recolors them for menu bar state and appearance). 1x and 2x reps are
+// folded into one NSImage by hand — the PNGs live loose in the SPM resource
+// bundle, outside NSImage's automatic @2x pairing.
 
 import AppKit
 

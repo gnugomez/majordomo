@@ -1,6 +1,5 @@
-// Right pane of the main window, ported from
-// src/ui/main-window/PreviewPane.tsx: everything AppState already knows
-// about the selected item. Deliberately no provider fetches — bodies and
+// Right pane of the main window: everything AppModel already knows about
+// the selected item. Deliberately no provider fetches — bodies and
 // comments need extra token scopes, so the browser is one click away
 // instead.
 

@@ -1,5 +1,4 @@
-// Centered icon + title + caption, ported from
-// src/ui/components/EmptyState.tsx.
+// Centered icon + title + caption.
 
 import SwiftUI
 

@@ -1,8 +1,7 @@
 // App shell: the status item and its tray menu, the main menu (⌘, and the
 // edit shortcuts), and the wiring between the sync engine and the chrome
-// (tray dot, dock badge) — the Swift side of src/electron/index.ts and
-// tray.ts. The inbox opens as a real NSMenu (instant, dismisses like every
-// other menu) rather than the Electron port's hand-positioned popover.
+// (tray dot, dock badge). The inbox opens as a real NSMenu, not a
+// hand-positioned popover: instant, and it dismisses like every other menu.
 
 import AppKit
 import SwiftUI

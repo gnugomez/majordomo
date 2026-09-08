@@ -1,5 +1,5 @@
-// GitHub provider client, ported from src/providers/github.ts. Talks to
-// api.github.com on URLSession + Codable; config.baseUrl is unused.
+// GitHub provider client. Talks to api.github.com on URLSession + Codable;
+// config.baseUrl is unused.
 
 import Foundation
 
