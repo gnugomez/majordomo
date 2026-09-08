@@ -1,134 +1,72 @@
 # Contributing to Majordomo
 
-Thanks for your interest! Majordomo is a menu-bar/tray app for macOS,
-Windows, and Linux that unifies GitHub and self-hosted GitLab issues, PRs,
-and MRs into one inbox. Contributions of all sizes are welcome.
+Thanks for your interest! Majordomo is a native macOS menu-bar app that
+unifies GitHub and self-hosted GitLab notifications into one inbox.
+Contributions of all sizes are welcome.
 
 ## Getting set up
 
-You need Node.js 22+ (any OS; the glass material and DMG packaging are
-macOS-specific, everything else is cross-platform). Dependencies are managed
-with pnpm — `corepack enable pnpm` gives you the version pinned in
-`package.json`.
+You need macOS 26 and Xcode 26 (Swift 6.3+). There are no package
+dependencies — SwiftPM with the SDK only.
 
 ```sh
-pnpm install
-pnpm start         # build with esbuild, launch Electron
-pnpm dev           # dev loop: Vite HMR for the UI, auto-relaunch for main
-pnpm typecheck     # strict TypeScript, no emit
-pnpm lint          # ESLint (antfu config); pnpm lint:fix autofixes
-pnpm package       # produce release/Majordomo-darwin-arm64/Majordomo.app
-pnpm install:app   # build, package, and install on this machine
+swift build              # compile (debug); must stay warning-free
+./scripts/bundle.sh      # release build → dist/Majordomo.app (ad-hoc signed)
+./scripts/install.sh     # same, then installed to /Applications
 ```
 
-`pnpm-workspace.yaml` sets `nodeLinker: hoisted`: `@electron/packager` copies
-`node_modules` into the app bundle and prunes it by walking the tree, which a
-symlinked layout would break. It also lists the two packages allowed to run
-install scripts.
-
-A note on the TypeScript packages: `pnpm typecheck` runs the native
-TypeScript 7 `tsc` (installed as `@typescript/native`), while the
-`typescript` name resolves to Microsoft's `@typescript/typescript6`
-compatibility package — typescript-eslint needs the TS 6 JS API, and this is
-the side-by-side setup the TypeScript 7 announcement documents.
-
-If you have a packaged copy of Majordomo installed and running, point your dev
-build at a scratch profile so both can run side by side:
-
-```sh
-MAJORDOMO_USERDATA=/tmp/majordomo-dev pnpm dev
-```
+A bare `swift run` works for quick iteration, but launch-at-login and
+notifications need a real bundle, so those are disabled outside
+`Majordomo.app` (a warning is logged). For visual checks,
+`MAJORDOMO_OPEN_MAIN=1` opens the main window at launch — no trip through
+the tray menu needed.
 
 ## How the code is laid out
 
-- `src/shared/` — domain types and the IPC contract. Imported by everything,
-  imports nothing. If you change an interface here, everything downstream
-  must follow.
-- `src/providers/` — one client per provider behind the `ProviderClient`
-  contract documented in `providers/types.ts`. GitHub uses `@octokit/rest`
-  (notifications API), GitLab uses `@gitbeaker/rest` (todos API); both load
-  lazily and normalize to `FetchedItem`. Friendly error strings live in
-  `providers/errors.ts` — they surface verbatim in the UI.
-- `src/electron/` — the Electron shell: tray, the Liquid Glass popover
-  window, the vibrant main window, sync loop, encrypted token store,
-  notifications, preload bridge.
-- `src/ui/` — the UI in React, one bundle serving both windows: `App.tsx` is
-  the popover, `main-window/MainApp.tsx` (loaded with `?window=main`) is the
-  resizable three-column window, `hooks/` owns state, `inbox/` and
-  `settings/` hold the feature components shared by both, `components/` the
-  shared bits (icons are typed JSX SVGs). Bundled by esbuild — no vite, no
-  CSS-in-JS; the design tokens live in `styles.css`.
+Layers, lower never importing higher:
 
-The two windows deliberately differ in material: the popover is a menu-bar
-extra, so it takes macOS 26's Liquid Glass; the main window is a document
-window, so it takes the classic `sidebar` vibrancy with an ordinary frame
-(system corner radius and shadow). Only its sidebar is left unpainted — the
-list and preview cover the material with the platform's own `Canvas` color,
-which follows light/dark on its own.
+- `Sources/Majordomo/Model/` — domain types. Imports Foundation only;
+  knows nothing about providers' vocabularies or the UI.
+- `Sources/Majordomo/Providers/` — one `ProviderClient` (API → items) and
+  one `ProviderSpec` (presentation) per provider, registered in
+  `providerSpecs`.
+- `Sources/Majordomo/Store/` — the JSON persistence and token encryption.
+- `Sources/Majordomo/Sync/` — the sync engine (an actor): fetch, reconcile,
+  publish state.
+- `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
+  windows, notifications, main menu.
+- `Sources/Majordomo/UI/` — the SwiftUI views.
+
+## The provider contract
+
+The core is a generic notification manager: an item's `kind`, `state`, and
+`reason` are **opaque tokens** the core never interprets. Everything about
+how a provider's items look and read — glyphs, colors, capsule labels,
+sidebar buckets and their wording — comes from the provider's `ProviderSpec`
+implementation (in code, not from the API). Adding a provider means:
+
+1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
+   tokens (errors as human-readable `ProviderError` strings — they render
+   verbatim in the UI);
+2. a `ProviderSpec` with the presentation for those tokens;
+3. one registration line in `providerSpecs`.
+
+Any number of accounts per provider can be connected; accounts are keyed by
+`AccountId`, never by provider.
+
+## Style
+
+- Strict Swift 6 concurrency: actors for shared mutable state, `Sendable`
+  values across boundaries, `@MainActor` for AppKit/SwiftUI.
+- 2-space indent, one type per file where sensible. Prefer extracting a
+  well-named helper over a clever one-liner — readability wins, even for
+  single-use code.
+- `swift build` must pass with zero warnings.
 
 ## Design principles
 
-- **Lean.** React for the UI and official API clients for the providers, but
-  no state libraries, routers, or speculative abstraction. The only runtime
-  dependency in the shipped bundle's node_modules is `electron-liquid-glass`;
-  everything else is inlined by esbuild.
-- **Native-feeling.** The popover should read as a system menu, not a web
-  page: system font, glass/acrylic material where the OS offers one,
-  alpha-based colors that work over any wallpaper, light and dark.
-- **Read-only.** The app never writes back to the providers. Read state is
-  local.
-- **Local-only.** No backend, no telemetry. Tokens are stored encrypted via
-  Electron's `safeStorage` (key derived from the macOS Keychain, Windows
-  DPAPI, or the Linux Secret Service). Don't move them into per-item OS
-  keychain entries: on macOS those re-prompt for access on every rebuild of
-  a non-Developer-ID-signed app.
-
-## Adding a provider
-
-Everything downstream of a provider only sees `FetchedItem`s, so a new
-provider (Gitea, Bitbucket, Jira, …) is a contained change:
-
-1. **Implement `ProviderClient`** (`src/providers/types.ts` documents the
-   rules) in a new `src/providers/<name>.ts`: `validate(config)` checks the
-   token and returns the username; `fetchItems(config)` returns the
-   account's current inbox as a `FetchResult` — the `FetchedItem`s plus a
-   `complete` flag (set it `false` whenever a page cap may have truncated
-   the list, so the sync engine never mistakes a capped-out item for a
-   handled one). Use the provider's official
-   client library if a maintained one exists, load it lazily (see
-   `github.ts`), and map failures to human-readable strings — they render
-   verbatim in the Accounts pane (reuse `providers/errors.ts`).
-   Key mapping decisions: `id` must be stable across fetches
-   (`"<name>:<externalId>"` — it's the dedup and read-state key), and
-   `reason` must be one of the shared `ItemReason` values — add a table for
-   the service in `src/providers/reasons.ts` mapping its own vocabulary onto
-   them, and derive `isMention` with `isMentionReason()` so the notification
-   tier and the Mentions category stay consistent across providers.
-2. **Register it**: add the id to the `ProviderId` union in
-   `src/shared/types.ts` and the instance to `createProviders()` in
-   `src/providers/index.ts`.
-3. **Teach the UI about it**: a small monochrome glyph in
-   `src/ui/components/Icons.tsx`, the display name in
-   `src/ui/components/Banner.tsx`, and an entry in the `PROVIDERS` list in
-   `src/ui/settings/SettingsContent.tsx` (set `needsBaseUrl: true` for
-   self-hosted services so the URL field shows).
-
-The typechecker walks you through the rest — extending `ProviderId` flags
-every switch that needs the new case.
-
-## Pull requests
-
-1. Keep the change focused; match the style of the surrounding code
-   (strict TypeScript, double quotes, 2-space indent).
-2. `pnpm typecheck`, `pnpm lint`, and `pnpm build` must pass — CI
-   enforces all three.
-3. Use [conventional commits](https://www.conventionalcommits.org) —
-   releases and the changelog are generated from them by release-please.
-   `feat:` for user-visible features, `fix:` for bug fixes, `refactor:`/
-   `chore:`/`docs:` for the rest; add a `BREAKING CHANGE:` footer when
-   behavior breaks. If a PR is squash-merged, its title becomes the commit
-   message, so title PRs conventionally too.
-4. For UI changes, include a screenshot over a busy wallpaper — glass
-   surfaces can hide contrast problems on plain backgrounds.
-
-Releases are cut from `main` by release-please; see [RELEASING.md](RELEASING.md).
+- **Read-only** against providers: fetch and display, never mutate upstream.
+- **Local-only**: no backend, no telemetry.
+- **Tokens at rest** are AES-GCM encrypted in the JSON store; the key is a
+  single Keychain item — never per-item keychain entries (their ACLs pin the
+  exact build hash for unsigned apps and re-prompt on every rebuild).
