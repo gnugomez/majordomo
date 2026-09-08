@@ -10,16 +10,20 @@ You need macOS 26 and Xcode 26 (Swift 6.3+). There are no package
 dependencies — SwiftPM with the SDK only.
 
 ```sh
-swift build              # compile (debug); must stay warning-free
-./scripts/bundle.sh      # release build → dist/Majordomo.app (ad-hoc signed)
-./scripts/install.sh     # same, then installed to /Applications
+make build      # compile (debug); must stay warning-free
+make bundle     # release build → dist/Majordomo.app (ad-hoc signed)
+make install    # same, then installed to /Applications
+make demo       # run on fixture data — no accounts, network, or Keychain
 ```
+
+(`make help` lists everything; the targets are thin wrappers over
+`swift build` and `scripts/`.)
 
 A bare `swift run` works for quick iteration, but launch-at-login and
 notifications need a real bundle, so those are disabled outside
 `Majordomo.app` (a warning is logged). For visual checks,
 `MAJORDOMO_OPEN_MAIN=1` opens the main window at launch — no trip through
-the tray menu needed.
+the tray menu needed; `MAJORDOMO_DEMO=1` is what `make demo` sets.
 
 ## How the code is laid out
 
