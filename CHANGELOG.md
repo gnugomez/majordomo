@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/gnugomez/majordomo/compare/v1.0.1...v1.0.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* enforce the main window's minimum size ([a05cac4](https://github.com/gnugomez/majordomo/commit/a05cac46e13d231f22c0355fa74dff7889761e39))
+
 ## [1.0.1](https://github.com/gnugomez/majordomo/compare/v1.0.0...v1.0.1) (2026-09-08)
 
 
