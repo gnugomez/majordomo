@@ -73,6 +73,9 @@ struct MainWindowView: View {
     }
     .navigationTitle(windowTitle(for: scope))
     .navigationSubtitle(itemCount(scope.category.items.count))
+    // The columns carry their own minimum widths; the window's minimum
+    // height lives here (hosting sizingOptions [.minSize] enforces both).
+    .frame(minHeight: 420)
     .onChange(of: columnVisibility) {
       UserDefaults.standard.set(columnVisibility == .doubleColumn, forKey: "sidebarHidden")
     }

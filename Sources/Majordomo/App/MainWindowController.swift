@@ -18,11 +18,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // SwiftUI installs the window's NSToolbar and title from the view's
     // .toolbar / .navigationTitle modifiers.
     host.sceneBridgingOptions = [.toolbars, .title]
-    // …but never drives the window's size: left at the default, the hosting
-    // controller snaps the frame back to the content's preferred size after
-    // the autosaved frame restores — and then autosaves that, clobbering the
-    // user's size on every launch.
-    host.sizingOptions = []
+    // …and enforces only the content's MINIMUM size. Never include
+    // .preferredContentSize here: the hosting controller then snaps the
+    // frame back to the preferred size after the autosaved frame restores —
+    // and autosaves that, clobbering the user's size on every launch. And
+    // with no option at all, the window can be squeezed to a sliver (the
+    // hosting view discards the manually set contentMinSize on attach).
+    host.sizingOptions = [.minSize]
     let window = NSWindow(contentViewController: host)
     // fullSizeContentView + unified toolbar let the split view's sidebar run
     // the window's full height, with the toolbar split at the sidebar edge —
