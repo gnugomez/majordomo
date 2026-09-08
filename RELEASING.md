@@ -30,7 +30,7 @@ instead of resetting them the way rotating ad-hoc signatures do.
 - `MACOS_SIGN_P12_PASSWORD` — its password.
 
 If the secrets are absent the build falls back to ad-hoc signing. Locally,
-`CODESIGN_IDENTITY="Majordomo Dev" ./scripts/bundle.sh` signs the same way.
+`CODESIGN_IDENTITY="Majordomo Dev" make bundle` signs the same way.
 
 Self-signed still means no notarization: Gatekeeper quarantines downloads
 (right-click → Open the first time, or
@@ -41,8 +41,8 @@ System Settings → Notifications.
 ## Local build
 
 ```sh
-./scripts/bundle.sh    # → dist/Majordomo.app
-./scripts/install.sh   # same build, installed to /Applications
+make bundle    # → dist/Majordomo.app
+make install   # same build, installed to /Applications
 ```
 
 The app icon comes from `assets/majordomo.icon` (the Icon Composer source);

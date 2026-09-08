@@ -24,11 +24,14 @@ and RELEASING.md.
   other menu" earns its place; "rather than the Electron port's popover"
   does not. When a change makes a nearby comment wrong, fix the comment in
   the same commit. Git and CHANGELOG.md are where history lives.
-- **Checks**: `swift build` must pass with zero warnings.
-  `./scripts/bundle.sh` → dist/Majordomo.app (release, ad-hoc signed unless
-  `CODESIGN_IDENTITY` is set); `./scripts/install.sh` installs it. For
-  visual checks launch with `MAJORDOMO_OPEN_MAIN=1` (opens the main window
-  immediately) and screenshot via `screencapture -l<CGWindowID>`.
+- **Checks**: `make build` (`swift build`) must pass with zero warnings.
+  `make bundle` → dist/Majordomo.app (release, ad-hoc signed unless
+  `CODESIGN_IDENTITY` is set — it passes through make); `make install`
+  installs it. `make help` lists the rest; the targets are thin wrappers
+  over SwiftPM and `scripts/`. For visual checks `make demo` is the shortest
+  path — fixture data, no accounts, network, or Keychain prompt, main window
+  open at launch (`MAJORDOMO_DEMO=1` + `MAJORDOMO_OPEN_MAIN=1`); screenshot
+  via `screencapture -l<CGWindowID>`.
 - **Commits**: conventional, single-line, no bodies or attribution.
   `feat:`/`fix:` strictly for user-visible changes (they drive the changelog
   and version); `ci:`/`build:` for pipeline work — never `feat:`; `chore:`/
