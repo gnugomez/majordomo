@@ -36,8 +36,11 @@ System Settings → Privacy & Security instead.
 Or build from source (requires Xcode 26):
 
 ```sh
-./scripts/install.sh   # release build → /Applications/Majordomo.app
+make install   # release build → /Applications/Majordomo.app
 ```
+
+`make help` lists the rest of the shortcuts — `build`, `bundle`, `run`,
+`demo`, `clean`. They're thin wrappers over `swift build` and `scripts/`.
 
 Two one-time papercuts of an unsigned build:
 
