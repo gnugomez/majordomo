@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/gnugomez/majordomo/compare/v0.4.0...v1.0.0) (2026-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* native Swift/SwiftUI rewrite, Electron retired ([#10](https://github.com/gnugomez/majordomo/issues/10))
+
+### Features
+
+* native Swift/SwiftUI rewrite, Electron retired ([#10](https://github.com/gnugomez/majordomo/issues/10)) ([9d377fe](https://github.com/gnugomez/majordomo/commit/9d377fef7c55083557d7dfd5928b0869a2630548))
+* show unread count on the dock and launcher badge ([7676990](https://github.com/gnugomez/majordomo/commit/7676990b10acca7490292a1fd935c1885e742831))
+
 ## [0.4.0](https://github.com/gnugomez/majordomo/compare/v0.3.1...v0.4.0) (2026-09-03)
 
 
