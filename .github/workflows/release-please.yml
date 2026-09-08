@@ -31,30 +31,19 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: rp
 
-  # When a release was just created: build the signed .app per arch and
-  # attach a DMG for each (the arm64 runner cross-packages x64). macOS 26
-  # runner: its actool compiles the Icon Composer document into the layered
-  # Assets.car icon (an older host would ship the flat .icns alone).
+  # When a release was just created: build the signed .app and attach a DMG.
+  # Apple silicon only for now — the SPM build targets the runner's arch.
   build-macos:
     needs: release-please
     if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: macos-26
-    strategy:
-      matrix:
-        arch: [arm64, x64]
     permissions:
       contents: write
     env:
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
       MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: actions/checkout@v5
 
       # A stable signing identity (even self-signed) keeps macOS permissions
       # for the app across releases; without the secret we fall back to
@@ -72,54 +61,19 @@ jobs:
           # Self-signed: codesign only accepts identities the system trusts.
           /usr/bin/openssl pkcs12 -in sign.p12 -passin env:MACOS_SIGN_P12_PASSWORD -nokeys -clcerts -out cert.pem
           sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain cert.pem
-          security find-identity -v -p codesigning build.keychain
+          # Whatever identity the P12 carries — never assume its name.
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain \
+            | sed -n 's/.*"\(.*\)".*/\1/p' | head -1)
+          test -n "$IDENTITY"
           rm sign.p12 cert.pem
-          echo "CODESIGN_IDENTITY=Majordomo Dev" >> "$GITHUB_ENV"
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Package
-        run: |
-          node scripts/build.mjs
-          node scripts/package.mjs --platform=darwin --arch=${{ matrix.arch }}
+        run: ./scripts/bundle.sh
 
       - name: Attach the DMG to the release
         run: |
-          hdiutil create -volname Majordomo -srcfolder "release/Majordomo-darwin-${{ matrix.arch }}/Majordomo.app" -ov -format UDZO "Majordomo-macos-${{ matrix.arch }}.dmg"
-          gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" "Majordomo-macos-${{ matrix.arch }}.dmg"
+          hdiutil create -volname Majordomo -srcfolder dist/Majordomo.app -ov -format UDZO Majordomo-macos-arm64.dmg
+          gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" Majordomo-macos-arm64.dmg
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Windows: package (the committed assets/appicon.ico is used as-is) and
-  # build the Squirrel installer. No Linux artifact — Linux is self-build.
-  build-windows:
-    needs: release-please
-    if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        arch: [x64, arm64]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-
-      - name: Package
-        run: |
-          node scripts/build.mjs
-          node scripts/package.mjs --platform=win32 --arch=${{ matrix.arch }}
-        shell: bash
-
-      - name: Build the installer
-        run: node scripts/make-windows-installer.mjs --arch=${{ matrix.arch }}
-        shell: bash
-
-      - name: Attach the installer to the release
-        run: gh release upload --clobber "${{ needs.release-please.outputs.tag_name || inputs.tag }}" "release/installer/Majordomo-windows-${{ matrix.arch }}-Setup.exe"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash

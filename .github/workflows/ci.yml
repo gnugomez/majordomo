@@ -10,17 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: typecheck & build
-    runs-on: ubuntu-latest
+  build:
+    name: swift build
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm build
+      - uses: actions/checkout@v5
+      - run: swift build
