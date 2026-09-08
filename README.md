@@ -24,13 +24,14 @@ With Homebrew (requires macOS 26, Apple silicon):
 
 ```sh
 brew tap gnugomez/tap && brew trust gnugomez/tap
-brew install --no-quarantine majordomo
+brew install majordomo
+xattr -dr com.apple.quarantine /Applications/Majordomo.app
 ```
 
 `brew trust` because Homebrew only loads third-party taps it has been told
-to trust; `--no-quarantine` because the app is not notarized — without it,
-macOS asks for a one-time approval under System Settings → Privacy &
-Security.
+to trust. The `xattr` line clears Gatekeeper's quarantine — the app is not
+notarized; skip it if you prefer approving the app once under
+System Settings → Privacy & Security instead.
 
 Or build from source (requires Xcode 26):
 
