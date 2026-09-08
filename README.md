@@ -23,11 +23,14 @@ the SDK.
 With Homebrew (requires macOS 26, Apple silicon):
 
 ```sh
-brew install --no-quarantine gnugomez/tap/majordomo
+brew tap gnugomez/tap && brew trust gnugomez/tap
+brew install --no-quarantine majordomo
 ```
 
-`--no-quarantine` because the app is not notarized; without it, macOS asks
-for a one-time approval under System Settings → Privacy & Security.
+`brew trust` because Homebrew only loads third-party taps it has been told
+to trust; `--no-quarantine` because the app is not notarized — without it,
+macOS asks for a one-time approval under System Settings → Privacy &
+Security.
 
 Or build from source (requires Xcode 26):
 
