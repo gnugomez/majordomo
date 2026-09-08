@@ -45,7 +45,7 @@ jobs:
       TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
       RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # A stable signing identity (even self-signed) keeps macOS permissions
       # for the app across releases; without the secret we fall back to
