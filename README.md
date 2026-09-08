@@ -20,7 +20,16 @@ the SDK.
 
 ## Install
 
-Build from source (requires macOS 26 and Xcode 26):
+With Homebrew (requires macOS 26, Apple silicon):
+
+```sh
+brew install --no-quarantine gnugomez/tap/majordomo
+```
+
+`--no-quarantine` because the app is not notarized; without it, macOS asks
+for a one-time approval under System Settings → Privacy & Security.
+
+Or build from source (requires Xcode 26):
 
 ```sh
 ./scripts/install.sh   # release build → /Applications/Majordomo.app
