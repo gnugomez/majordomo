@@ -4,13 +4,16 @@ A native macOS menu bar app that puts your GitHub and GitLab stuff — issues,
 PRs, MRs, mentions — in one inbox. Swift + SwiftUI, no dependencies beyond
 the SDK.
 
-<p align="center">
-  <img src=".github/screenshot-window.png" width="760" alt="The Majordomo window: sidebar with per-account sections, inbox list, and item preview" />
-</p>
-
-<p align="center">
-  <img src=".github/screenshot-tray.png" width="340" alt="The Majordomo menu bar inbox" />
-</p>
+<table>
+  <tr>
+    <td align="center">
+      <img src=".github/screenshot-window.png" width="760" alt="The Majordomo window: sidebar with per-account sections, inbox list, and item preview" />
+    </td>
+    <td align="center">
+      <img src=".github/screenshot-tray.png" width="340" alt="The Majordomo menu bar inbox" />
+    </td>
+  </tr>
+</table>
 
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with per-account sections and configurable
@@ -49,6 +52,16 @@ Two one-time papercuts of an unsigned build:
   build — click **Always Allow**.
 - **Notifications**: macOS shows no permission prompt for ad-hoc-signed
   apps — enable Majordomo once under System Settings → Notifications.
+
+## Roadmap
+The whole objective of this project is to consolidate all the notifications you
+are used to receive from other places in a single place and at the same time
+receive desktop notifications for your awareness.
+
+Right now it's only supporting github and gitlab notifications, but the objective would
+be to implement as many providers as people find useful, people may have systems like
+Jira or any other alternative, this project is a good place to keep notifications in a 
+single place, secure and easy to reach.
 
 ## Tokens
 
