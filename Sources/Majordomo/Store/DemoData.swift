@@ -17,12 +17,13 @@ enum DemoData {
     func item(
       minutesAgo: Double, account: AccountId, provider: ProviderId, kind: String,
       title: String, repo: String, reason: String, mention: Bool = false,
-      state: String? = nil, author: String? = nil, body: String? = nil, read: Bool = true
+      state: String? = nil, author: String? = nil, body: String? = nil, read: Bool = true,
+      url: String = "https://example.com"
     ) -> StoredItem {
       let date = now.addingTimeInterval(-minutesAgo * 60)
       return StoredItem(
         id: "\(account):\(Int(minutesAgo))", accountId: account, provider: provider,
-        kind: kind, title: title, repo: repo, url: "https://example.com",
+        kind: kind, title: title, repo: repo, url: url,
         reason: reason, isMention: mention, updatedAt: date, state: state,
         author: author, body: body, read: read, firstSeenAt: date, lastSeenUpstreamAt: now
       )
@@ -89,6 +90,33 @@ enum DemoData {
         convention.
         """,
         read: false
+      ),
+      // One MR that arrived as three GitLab todos — they thread into a
+      // single row (same target, fragments stripped).
+      item(
+        minutesAgo: 8, account: gitlab, provider: .gitlab, kind: "merge",
+        title: "feat: canary deploys for the edge tier", repo: "acme/deploy",
+        reason: "review_requested", mention: true, state: "open", author: "priya",
+        body: """
+        Rolls out to **5% of edge nodes** first; the gate promotes when error \
+        rate and p99 stay inside the thresholds for 15 minutes.
+        """,
+        read: false,
+        url: "https://gitlab.acme.dev/acme/deploy/-/merge_requests/58"
+      ),
+      item(
+        minutesAgo: 9, account: gitlab, provider: .gitlab, kind: "merge",
+        title: "feat: canary deploys for the edge tier", repo: "acme/deploy",
+        reason: "mentioned", mention: true, state: "open", author: "priya",
+        body: "@octocat the rollout gate config moved to `deploy/gates.yml` — can you sanity-check the thresholds?",
+        read: false,
+        url: "https://gitlab.acme.dev/acme/deploy/-/merge_requests/58#note_881"
+      ),
+      item(
+        minutesAgo: 30, account: gitlab, provider: .gitlab, kind: "merge",
+        title: "feat: canary deploys for the edge tier", repo: "acme/deploy",
+        reason: "assigned", state: "open", author: "priya",
+        url: "https://gitlab.acme.dev/acme/deploy/-/merge_requests/58"
       ),
       item(
         minutesAgo: 65, account: github, provider: .github, kind: "issue",

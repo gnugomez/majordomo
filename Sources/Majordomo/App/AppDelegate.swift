@@ -96,8 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   // MARK: Main menu
 
   /// Invisible for an accessory app, but key equivalents still route through
-  /// it: ⌘, opens settings anywhere, and the Edit items give the settings
-  /// window's token fields their paste/copy shortcuts.
+  /// it: ⌘, opens settings anywhere, ⌘F focuses the inbox search, and the
+  /// Edit items give the settings window's token fields their paste/copy
+  /// shortcuts.
   private func setupMainMenu() {
     let mainMenu = NSMenu()
 
@@ -139,6 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    editMenu.addItem(.separator())
+    let find = NSMenuItem(title: "Find", action: #selector(focusSearch), keyEquivalent: "f")
+    find.target = self
+    editMenu.addItem(find)
 
     NSApp.mainMenu = mainMenu
   }
@@ -182,8 +187,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// The inbox rows: unread mentions first, then the recent tail, capped.
   private func addInboxRows(to menu: NSMenu) {
-    let items = inboxOrder(model.items)
-    guard !items.isEmpty else {
+    let threads = groupIntoThreads(inboxOrder(model.items))
+    guard !threads.isEmpty else {
       let empty = NSMenuItem(
         title: model.hasAccounts ? "You're all caught up" : "No accounts connected",
         action: nil,
@@ -193,19 +198,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(empty)
       return
     }
-    let mentions = items.filter { $0.isMention && !$0.read }.prefix(menuMentionCap)
+    let mentions = threads.filter { thread in
+      thread.items.contains { $0.isMention && !$0.read }
+    }.prefix(menuMentionCap)
     let mentionIds = Set(mentions.map(\.id))
-    let recent = items.filter { !mentionIds.contains($0.id) }.prefix(menuRecentCap)
+    let recent = threads.filter { !mentionIds.contains($0.id) }.prefix(menuRecentCap)
     if !mentions.isEmpty {
       menu.addItem(.sectionHeader(title: "Mentions"))
-      for item in mentions {
-        menu.addItem(trayRow(for: item))
+      for thread in mentions {
+        menu.addItem(trayRow(for: thread))
       }
     }
     if !recent.isEmpty {
       menu.addItem(.sectionHeader(title: "Recent"))
-      for item in recent {
-        menu.addItem(trayRow(for: item))
+      for thread in recent {
+        menu.addItem(trayRow(for: thread))
       }
     }
   }
@@ -241,12 +248,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   /// One inbox row: provider mark, two-line attributed title (title over the
-  /// repo/author/time meta), and an accent dot in the state column when
-  /// unread. Clicking opens in the browser and marks read, like everywhere.
-  private func trayRow(for item: InboxItem) -> NSMenuItem {
+  /// repo/author/time meta), and an accent dot in the state column when the
+  /// thread has anything unread. Clicking opens in the browser and marks the
+  /// whole thread read, like everywhere.
+  private func trayRow(for thread: InboxThread) -> NSMenuItem {
+    let item = thread.lead
     let row = NSMenuItem(title: item.title, action: #selector(trayRowClicked(_:)), keyEquivalent: "")
     row.target = self
-    row.representedObject = item.id
+    row.representedObject = thread.itemIds
 
     let text = NSMutableAttributedString(
       string: truncated(item.title, max: 58),
@@ -264,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ))
     row.attributedTitle = text
     row.image = Self.providerMenuImage(item.provider)
-    if !item.read {
+    if !thread.read {
       row.state = .on
       row.onStateImage = Self.unreadDot
     }
@@ -307,10 +316,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   @objc private func trayRowClicked(_ sender: NSMenuItem) {
-    guard let id = sender.representedObject as? String else {
+    guard let ids = sender.representedObject as? [String] else {
       return
     }
-    model.openItem(id)
+    model.openThread(ids)
   }
 
   @objc private func trayMarkAllRead() {
@@ -323,6 +332,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func trayOpenMain() {
     openMainWindow()
+  }
+
+  /// ⌘F: the main window comes up with the toolbar search field focused.
+  @objc private func focusSearch() {
+    openMainWindow()
+    model.searchPresented = true
   }
 
   // MARK: Windows

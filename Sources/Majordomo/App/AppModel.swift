@@ -43,8 +43,7 @@ final class AppModel {
   private(set) var now = Date()
 
   // Shared view state.
-  /// Which inbox is showing; remembered across launches like Mail's
-  /// selected mailbox.
+  /// Which inbox is showing; remembered across launches.
   var sidebarSelection = AppModel.loadSidebarSelection() {
     didSet {
       UserDefaults.standard.set(sidebarSelection.category, forKey: "sidebarCategory")
@@ -61,8 +60,17 @@ final class AppModel {
   /// "default", "none", or a system alert sound name ("Ping").
   private(set) var notificationSound: String =
     UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
-  /// Selection is by id, so it survives sync updates.
-  var selectedItemIds: Set<String> = []
+  /// Selection is by thread id, so it survives sync updates.
+  var selectedThreadIds: Set<String> = []
+  /// A message picked inside the previewed thread: the toolbar actions
+  /// narrow to it while set. Ignored whenever it doesn't belong to the
+  /// previewed thread.
+  var selectedMemberId: String?
+  /// Live filter over the inbox list; empty shows everything.
+  var searchText = ""
+  /// True while the toolbar search field is active; set it to move focus
+  /// there (⌘F does).
+  var searchPresented = false
 
   @ObservationIgnored var engine: SyncEngine?
   /// Chrome updates after every state push: tray dot, dock badge.
@@ -71,7 +79,9 @@ final class AppModel {
   @ObservationIgnored var openSettings: (@MainActor () -> Void)?
 
   var anyUnread: Bool { items.contains { !$0.read } }
-  var unreadCount: Int { items.count { !$0.read } }
+  /// Unread THREADS — the number of rows needing attention, matching the
+  /// sidebar badges and the dock badge to what the list actually shows.
+  var unreadCount: Int { groupIntoThreads(items).count { !$0.read } }
   var unreadMentionDot: Bool { items.contains { $0.isMention && !$0.read } }
   var hasAccounts: Bool { !accounts.isEmpty }
 
@@ -158,10 +168,10 @@ final class AppModel {
     }
   }
 
-  /// Opens in the browser and marks read.
-  func openItem(_ id: String) {
+  /// Opens the thread's lead item in the browser and marks every member read.
+  func openThread(_ ids: [String]) {
     Task {
-      await engine?.openItem(id: id)
+      await engine?.openThread(ids: ids)
     }
   }
 

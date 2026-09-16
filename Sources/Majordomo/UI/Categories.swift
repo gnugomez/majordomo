@@ -59,6 +59,20 @@ func inboxOrder(_ items: [InboxItem]) -> [InboxItem] {
   }
 }
 
+/// Live search over what the inbox shows: every whitespace-separated term
+/// must match the title, repo, author, or body, case- and diacritic-
+/// insensitively. An empty query passes everything through.
+func matchingSearch(_ items: [InboxItem], _ query: String) -> [InboxItem] {
+  let terms = searchTerms(query)
+  guard !terms.isEmpty else { return items }
+  return items.filter { item in
+    let fields = [item.title, item.repo, item.author ?? "", item.body ?? ""]
+    return terms.allSatisfy { term in
+      fields.contains { $0.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
+  }
+}
+
 /// What the sidebar selects: a category id, optionally scoped to one
 /// account — nil is the aggregated "All Inboxes" section.
 struct SidebarSelection: Hashable, Sendable {

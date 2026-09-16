@@ -11,6 +11,8 @@ import SwiftUI
 struct MarkdownBody: View {
   let text: String
 
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
       ForEach(blocks) { block in
@@ -111,17 +113,18 @@ struct MarkdownBody: View {
 
   @ViewBuilder
   private func blockView(_ block: Block) -> some View {
+    let content = highlighted(block.content, terms: highlightTerms)
     switch block.kind {
     case .paragraph:
-      Text(block.content)
+      Text(content)
         .font(.system(size: 12))
         .foregroundStyle(.secondary)
     case .heading(let level):
-      Text(block.content)
+      Text(content)
         .font(.system(size: level <= 2 ? 13 : 12, weight: .semibold))
         .foregroundStyle(.secondary)
     case .code:
-      Text(block.content)
+      Text(content)
         .font(.system(size: 11, design: .monospaced))
         .foregroundStyle(.secondary)
         .padding(8)
@@ -132,7 +135,7 @@ struct MarkdownBody: View {
         RoundedRectangle(cornerRadius: 1)
           .fill(.quaternary)
           .frame(width: 3)
-        Text(block.content)
+        Text(content)
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
       }
@@ -141,7 +144,7 @@ struct MarkdownBody: View {
         Text(marker)
           .font(.system(size: 12))
           .foregroundStyle(.tertiary)
-        Text(block.content)
+        Text(content)
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
       }

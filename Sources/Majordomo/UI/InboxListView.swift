@@ -1,23 +1,32 @@
-// Middle pane of the main window: the selected category's items, unread
+// Middle pane of the main window: the selected category's threads, unread
 // first — selecting feeds the preview, double-click or ⏎ opens the browser.
 
 import SwiftUI
 
 struct InboxListView: View {
   let model: AppModel
-  let items: [InboxItem]
+  let threads: [InboxThread]
   let categoryId: String
+
+  /// Threads unfolded into their member rows (the count button toggles).
+  @State private var expandedThreadIds: Set<String> = []
 
   var body: some View {
     // Existing items always show, even with no account connected — the
     // collection is the app's own, and it outlives a disconnect (or a token
     // that failed to decrypt on this launch).
-    if items.isEmpty {
+    if threads.isEmpty {
       if !model.hasAccounts {
         EmptyStateView(
           symbol: "tray",
           title: "No accounts connected",
           caption: "Add an account in Settings to see your inbox here."
+        )
+      } else if !model.searchText.isEmpty {
+        EmptyStateView(
+          symbol: "magnifyingglass",
+          title: "No results",
+          caption: "Nothing here matches “\(model.searchText)”."
         )
       } else if categoryId == recentCategory.id {
         EmptyStateView(
@@ -34,44 +43,68 @@ struct InboxListView: View {
       }
     } else {
       List(selection: Binding(
-        get: { model.selectedItemIds },
-        set: { model.selectedItemIds = $0 }
+        get: { model.selectedThreadIds },
+        set: { model.selectedThreadIds = $0 }
       )) {
-        ForEach(items) { item in
-          ItemRowView(item: item, now: model.now, selected: model.selectedItemIds.contains(item.id))
-            .tag(item.id)
+        ForEach(threads) { thread in
+          ItemRowView(
+            thread: thread,
+            now: model.now,
+            selected: model.selectedThreadIds.contains(thread.id),
+            expanded: expandedThreadIds.contains(thread.id)
+          ) {
+            toggleExpanded(thread.id)
+          }
+          .tag(thread.id)
+          // An unfolded thread: its members as their own selectable rows,
+          // right beneath the summary.
+          if expandedThreadIds.contains(thread.id) {
+            ForEach(thread.items) { member in
+              MemberRowView(member: member, now: model.now, selected: model.selectedThreadIds.contains(member.id))
+                .tag(member.id)
+            }
+          }
         }
       }
       .listStyle(.inset)
       // Selection stays the list's own (a tap gesture on row content would
       // swallow the clicks NSTableView needs), so ⇧/⌘-click and ⌘A come for
-      // free; double-click and the Mail-style context menu arrive through
-      // the selection-typed API.
+      // free; double-click and the context menu arrive through the
+      // selection-typed API.
       .contextMenu(forSelectionType: String.self) { ids in
-        Button(ids.count > 1 ? "Open \(ids.count) in Browser" : "Open in Browser") {
-          for id in ids {
-            model.openItem(id)
-          }
+        let picked = resolveSelection(in: threads, ids: ids)
+        Button(picked.count > 1 ? "Open \(picked.count) in Browser" : "Open in Browser") {
+          open(picked)
         }
         Button("Mark as Read") {
-          model.markRead(ids)
+          model.markRead(Set(picked.flatMap(\.itemIds)))
         }
-        .disabled(!items.contains { ids.contains($0.id) && !$0.read })
+        .disabled(!picked.contains { !$0.read })
       } primaryAction: { ids in
-        for id in ids {
-          model.openItem(id)
-        }
+        open(resolveSelection(in: threads, ids: ids))
       }
       .onKeyPress(.return) {
-        let ids = model.selectedItemIds.filter { id in items.contains { $0.id == id } }
-        guard !ids.isEmpty else {
+        let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
+        guard !picked.isEmpty else {
           return .ignored
         }
-        for id in ids {
-          model.openItem(id)
-        }
+        open(picked)
         return .handled
       }
+    }
+  }
+
+  private func open(_ picked: [InboxThread]) {
+    for thread in picked {
+      model.openThread(thread.itemIds)
+    }
+  }
+
+  private func toggleExpanded(_ id: String) {
+    if expandedThreadIds.contains(id) {
+      expandedThreadIds.remove(id)
+    } else {
+      expandedThreadIds.insert(id)
     }
   }
 }

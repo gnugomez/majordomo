@@ -34,9 +34,9 @@ struct SidebarView: View {
       }
     }
     .listStyle(.sidebar)
-    // The sidebar's foot: sync activity while it runs (the way Mail shows
-    // "Downloading Messages"), and the account row — avatars + name, the way
-    // into settings alongside ⌘, and the tray menu.
+    // The sidebar's foot: sync activity while it runs, and the account row
+    // — avatars + name, the way into settings alongside ⌘, and the tray
+    // menu.
     .safeAreaInset(edge: .bottom) {
       VStack(spacing: 0) {
         if model.syncing {
@@ -105,7 +105,9 @@ struct SidebarView: View {
     let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
     ForEach(categorize(items, into: specs).filter { !model.hiddenCategories.contains($0.id) }) { category in
       Label(category.label, systemImage: category.symbol)
-        .badge(category.items.count { !$0.read })
+        // Unread threads, not items — the badge matches the rows the list
+        // will actually show.
+        .badge(groupIntoThreads(category.items).count { !$0.read })
         .tag(SidebarSelection(account: account?.id, category: category.id))
     }
   }

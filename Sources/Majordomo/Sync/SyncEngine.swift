@@ -133,13 +133,15 @@ actor SyncEngine {
 
     if !firstRun, !newIds.isEmpty {
       let byId = Dictionary(uniqueKeysWithValues: store.getItems().map { ($0.id, $0) })
-      for id in newIds {
-        // Items that arrive already handled upstream don't deserve a ping;
-        // which unread ones do is the notification scope setting's call,
-        // applied by the app shell.
-        if let item = byId[id], !item.read {
-          notify(item.inboxItem)
-        }
+      // Items that arrive already handled upstream don't deserve a ping;
+      // which unread ones do is the notification scope setting's call,
+      // applied by the app shell.
+      let fresh = newIds.compactMap { byId[$0] }.filter { !$0.read }.map(\.inboxItem)
+      // One banner per thread: a target arriving as several notifications at
+      // once (a GitLab MR mentioning, assigning, and requesting review) pings
+      // once. The mention member fronts it so the scope setting sees it.
+      for thread in groupIntoThreads(fresh) {
+        notify(thread.items.first { $0.isMention } ?? thread.lead)
       }
     }
 
@@ -192,7 +194,14 @@ actor SyncEngine {
 
   /// Opens the item in the browser and marks it read.
   func openItem(id: String) async {
-    guard let item = store.getItems().first(where: { $0.id == id }) else {
+    await openThread(ids: [id])
+  }
+
+  /// Opens the first item in the browser and marks the whole set read — a
+  /// thread's members are one target, so opening it handles all of them.
+  func openThread(ids: [String]) async {
+    guard let first = ids.first,
+          let item = store.getItems().first(where: { $0.id == first }) else {
       return
     }
     if let url = URL(string: item.url) {
@@ -200,7 +209,7 @@ actor SyncEngine {
         _ = NSWorkspaceOpener.open(url)
       }
     }
-    store.markRead([id])
+    store.markRead(ids)
     emitState()
   }
 

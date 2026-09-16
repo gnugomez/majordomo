@@ -1,5 +1,5 @@
-// Main-window shell: a mail-style three-column NavigationSplitView (source
-// list, inbox, preview). The column dividers, their drag behavior, the
+// Main-window shell: a three-column NavigationSplitView (source list,
+// inbox, preview). The column dividers, their drag behavior, the
 // sidebar material, keyboard navigation, and the toolbar are all the
 // system's. Settings open in their own window.
 
@@ -17,6 +17,8 @@ struct MainWindowView: View {
     /// the selected account was removed (the view falls back to aggregate).
     var account: AccountState?
     var category: Category
+    /// The category's items grouped into threads: one row per target.
+    var threads: [InboxThread]
   }
 
   private func resolveScope() -> Scope {
@@ -26,18 +28,26 @@ struct MainWindowView: View {
       ?? model.items
     let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
     // Hidden inboxes fall back to Recent (always visible, always first).
-    let categories = categorize(inboxOrder(items), into: specs)
+    // The search filter applies to every category alike; the sidebar's
+    // badges stay unfiltered (SidebarView counts on its own).
+    let categories = categorize(inboxOrder(matchingSearch(items, model.searchText)), into: specs)
       .filter { !model.hiddenCategories.contains($0.id) }
     let category = categories.first { $0.id == sidebar.category } ?? categories[0]
-    return Scope(account: account, category: category)
+    return Scope(account: account, category: category, threads: groupIntoThreads(category.items))
   }
 
   var body: some View {
     let scope = resolveScope()
-    // Selection is by id, so it survives sync updates; ids from other
-    // scopes stay in the set but must not count here.
-    let selectedItems = scope.category.items.filter { model.selectedItemIds.contains($0.id) }
-    let selected = selectedItems.count == 1 ? selectedItems.first : nil
+    // Selection survives sync updates (ids from other scopes stay in the
+    // set but must not count here); a selected id is a thread row or an
+    // unfolded member row — resolveSelection tells them apart.
+    let selectedThreads = resolveSelection(in: scope.threads, ids: model.selectedThreadIds)
+    let selected = selectedThreads.count == 1 ? selectedThreads.first : nil
+    // A message card picked inside the preview narrows the toolbar actions
+    // to just that message; a stale pick (another thread's member) counts
+    // for nothing.
+    let pickedMember = selected?.items.first { $0.id == model.selectedMemberId }
+    let actionTargets = pickedMember.map { [InboxThread(id: $0.id, items: [$0])] } ?? selectedThreads
 
     NavigationSplitView(columnVisibility: $columnVisibility) {
       SidebarView(
@@ -49,7 +59,7 @@ struct MainWindowView: View {
       )
       .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 320)
       // The bridged toolbar drops NavigationSplitView's automatic sidebar
-      // toggle, so supply Mail's, with the standard shortcut. Declared on
+      // toggle, so supply one, with the standard shortcut. Declared on
       // the sidebar column but placed .navigation, so it survives (leading)
       // while the sidebar is hidden.
       .toolbar {
@@ -58,21 +68,32 @@ struct MainWindowView: View {
         }
       }
     } content: {
-      InboxListView(model: model, items: scope.category.items, categoryId: scope.category.id)
+      InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id)
         .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 560)
         // Declared on the column so it lands in the list's own toolbar
-        // section, Mail-style: refresh sits over the inbox column, the
-        // selection's actions over the detail column.
+        // section: refresh sits over the inbox column, the selection's
+        // actions over the detail column.
         .toolbar {
           ToolbarItem {
             refreshButton
           }
         }
     } detail: {
-      detailPane(selectedItems: selectedItems, selected: selected)
+      detailPane(selectedThreads: selectedThreads, selected: selected, actionTargets: actionTargets)
     }
     .navigationTitle(windowTitle(for: scope))
-    .navigationSubtitle(itemCount(scope.category.items.count))
+    .navigationSubtitle(itemCount(scope.threads.count))
+    // The search field sits at the toolbar's trailing edge, filtering the
+    // list live. State lives on the model so ⌘F (AppDelegate's Edit menu)
+    // can focus the field from outside the view tree.
+    .searchable(
+      text: Binding(get: { model.searchText }, set: { model.searchText = $0 }),
+      isPresented: Binding(get: { model.searchPresented }, set: { model.searchPresented = $0 }),
+      placement: .toolbar,
+      prompt: "Search"
+    )
+    // Rows, preview, and bodies paint the query's matches from this.
+    .environment(\.searchHighlightTerms, searchTerms(model.searchText))
     // The columns carry their own minimum widths; the window's minimum
     // height lives here (hosting sizingOptions [.minSize] enforces both).
     .frame(minHeight: 420)
@@ -90,52 +111,53 @@ struct MainWindowView: View {
 
   // MARK: Detail column
 
-  private func detailPane(selectedItems: [InboxItem], selected: InboxItem?) -> some View {
+  private func detailPane(
+    selectedThreads: [InboxThread], selected: InboxThread?, actionTargets: [InboxThread]
+  ) -> some View {
     Group {
-      if selectedItems.count > 1 {
-        multiSelectionPlaceholder(count: selectedItems.count)
+      if selectedThreads.count > 1 {
+        multiSelectionPlaceholder(count: selectedThreads.count)
       } else {
-        PreviewView(model: model, item: selected)
+        PreviewView(model: model, thread: selected)
       }
     }
     .frame(minWidth: 360)
-    // Mark-read and Open live at the trailing edge (Open outermost, it's the
-    // primary action) and only while something is selected; the invisible
-    // item covers the empty case so the detail section (which anchors the
-    // list column's items) never disappears.
+    // Mark-read and Open sit at the leading edge of the detail section
+    // (the search field owns the trailing edge) and only while something
+    // is selected; the invisible item covers the empty case so the detail
+    // section (which anchors the list column's items) never disappears.
     .toolbar {
-      if selectedItems.isEmpty {
+      if selectedThreads.isEmpty {
         ToolbarItem {
           Color.clear.frame(width: 1, height: 1)
         }
         .sharedBackgroundVisibility(.hidden)
       } else {
-        ToolbarSpacer(.flexible)
         ToolbarItem {
-          markReadButton(for: selectedItems)
+          markReadButton(for: actionTargets)
         }
         ToolbarItem {
-          openButton(for: selectedItems)
+          openButton(for: actionTargets)
         }
       }
     }
   }
 
-  private func markReadButton(for selectedItems: [InboxItem]) -> some View {
+  private func markReadButton(for selectedThreads: [InboxThread]) -> some View {
     Button {
-      model.markRead(Set(selectedItems.map(\.id)))
+      model.markRead(Set(selectedThreads.flatMap(\.itemIds)))
     } label: {
       HStack(spacing: 3) {
         Image(systemName: "envelope.open")
-        if selectedItems.count > 1 {
-          Text("+\(selectedItems.count)")
+        if selectedThreads.count > 1 {
+          Text("+\(selectedThreads.count)")
             .font(.system(size: 11, weight: .semibold))
         }
       }
     }
     .keyboardShortcut("u", modifiers: [.shift, .command])
-    .disabled(!selectedItems.contains { !$0.read })
-    .help(selectedItems.count > 1 ? "Mark \(selectedItems.count) as read" : "Mark as read")
+    .disabled(!selectedThreads.contains { !$0.read })
+    .help(selectedThreads.count > 1 ? "Mark \(selectedThreads.count) as read" : "Mark as read")
   }
 
   /// Scroll-backed for the same reason as PreviewView's empty state: plain
@@ -176,30 +198,30 @@ struct MainWindowView: View {
     .help("Refresh now")
   }
 
-  private func openButton(for selectedItems: [InboxItem]) -> some View {
+  private func openButton(for selectedThreads: [InboxThread]) -> some View {
     Button {
-      for item in selectedItems {
-        model.openItem(item.id)
+      for thread in selectedThreads {
+        model.openThread(thread.itemIds)
       }
     } label: {
       // The count rides along in the glyph once the action spans more than
-      // one item.
+      // one thread.
       HStack(spacing: 3) {
         Image(systemName: "arrow.up.forward")
-        if selectedItems.count > 1 {
-          Text("+\(selectedItems.count)")
+        if selectedThreads.count > 1 {
+          Text("+\(selectedThreads.count)")
             .font(.system(size: 11, weight: .semibold))
         }
       }
     }
     .keyboardShortcut("o")
-    .help("\(openLabel(selectedItems)) — opens in your browser and marks read")
+    .help("\(openLabel(selectedThreads)) — opens in your browser and marks read")
   }
 
-  private func openLabel(_ items: [InboxItem]) -> String {
-    items.count == 1
-      ? "Open in \(items[0].provider.displayName)"
-      : "Open \(items.count) in Browser"
+  private func openLabel(_ threads: [InboxThread]) -> String {
+    threads.count == 1
+      ? "Open in \(threads[0].lead.provider.displayName)"
+      : "Open \(threads.count) in Browser"
   }
 }
 
