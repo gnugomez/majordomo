@@ -26,7 +26,7 @@ struct MainWindowView: View {
       ?? model.items
     let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
     // Hidden inboxes fall back to Recent (always visible, always first).
-    let categories = categorize(byNewest(items), into: specs)
+    let categories = categorize(inboxOrder(items), into: specs)
       .filter { !model.hiddenCategories.contains($0.id) }
     let category = categories.first { $0.id == sidebar.category } ?? categories[0]
     return Scope(account: account, category: category)

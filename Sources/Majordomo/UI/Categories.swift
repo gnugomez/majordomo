@@ -4,8 +4,8 @@
 
 import Foundation
 
-/// The core's catch-all bucket: everything, newest first. Always present,
-/// always first, never hideable.
+/// The core's catch-all bucket: everything. Always present, always first,
+/// never hideable.
 let recentCategory = CategorySpec(id: "recent", label: "Recent", symbol: "tray.full", order: 0) { _ in
   true
 }
@@ -46,9 +46,17 @@ func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] 
   }
 }
 
-/// Newest activity first — the order every list in the app shows items in.
-func byNewest(_ items: [InboxItem]) -> [InboxItem] {
-  items.sorted { $0.updatedAt > $1.updatedAt }
+/// Unread first, newest activity first within each group — the order every
+/// list in the app shows items in. Recency alone won't do: updatedAt is the
+/// target's last-activity time, so a busy already-read MR would sit above a
+/// fresh unread arrival indefinitely.
+func inboxOrder(_ items: [InboxItem]) -> [InboxItem] {
+  items.sorted { a, b in
+    if a.read != b.read {
+      return !a.read
+    }
+    return a.updatedAt > b.updatedAt
+  }
 }
 
 /// What the sidebar selects: a category id, optionally scoped to one

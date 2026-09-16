@@ -1,4 +1,4 @@
-// Middle pane of the main window: the selected category's items, newest
+// Middle pane of the main window: the selected category's items, unread
 // first — selecting feeds the preview, double-click or ⏎ opens the browser.
 
 import SwiftUI

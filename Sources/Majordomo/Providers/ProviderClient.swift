@@ -51,7 +51,7 @@ struct ProviderProfile: Sendable {
 /// - `validate` and `fetchItems` throw `ProviderError`s with human-readable
 ///   messages — the strings surface verbatim in the UI's Accounts pane.
 /// - One malformed remote entry must never fail the whole fetch: skip it.
-/// - No sorting — ordering is the sync engine's concern.
+/// - No sorting — the UI orders items for display.
 /// - `externalId` is unique and stable within the account across fetches;
 ///   the engine composes the global id as `"\(accountId):\(externalId)"`
 ///   (it is the dedup and read-state key).

@@ -39,13 +39,8 @@ actor SyncEngine {
   }
 
   func getState() -> AppState {
-    var items = store.getItems().map(\.inboxItem)
-    items.sort { a, b in
-      if a.isMention != b.isMention {
-        return a.isMention
-      }
-      return a.updatedAt > b.updatedAt
-    }
+    // Items ship unordered — every list sorts for display via inboxOrder.
+    let items = store.getItems().map(\.inboxItem)
     let accounts = store.accounts().map { stored in
       AccountState(
         id: stored.id,

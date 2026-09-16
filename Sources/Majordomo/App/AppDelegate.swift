@@ -182,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// The inbox rows: unread mentions first, then the recent tail, capped.
   private func addInboxRows(to menu: NSMenu) {
-    let items = byNewest(model.items)
+    let items = inboxOrder(model.items)
     guard !items.isEmpty else {
       let empty = NSMenuItem(
         title: model.hasAccounts ? "You're all caught up" : "No accounts connected",
