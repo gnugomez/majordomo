@@ -7,6 +7,14 @@ import AppKit
 import Foundation
 
 private let syncInterval: Duration = .seconds(60)
+/// The timer syncs at .recent depth; a .full pass — every page — runs on
+/// manual refresh and at least this often, so items beyond the recent
+/// window surface instead of hiding until the window happens to shift.
+private let fullSyncInterval: TimeInterval = 60 * 60
+/// New unread items only post a banner while their activity is this fresh.
+/// A deep sync can surface months-old backlog in one go — that belongs in
+/// the inbox as unread, not in Notification Center as a flood.
+private let notifyFreshnessWindow: TimeInterval = 24 * 60 * 60
 
 actor SyncEngine {
   private let store: Store
@@ -21,6 +29,7 @@ actor SyncEngine {
   /// reads straight from the store.
   private var errors: [AccountId: String] = [:]
   private var lastSyncAt: Date?
+  private var lastFullSyncAt: Date?
   private var syncing = false
   private var inFlight: Task<Void, Never>?
   private var timer: Task<Void, Never>?
@@ -59,12 +68,14 @@ actor SyncEngine {
     emit(getState())
   }
 
-  private func doSync() async {
+  private func doSync(depth: FetchDepth) async {
     syncing = true
     emitState()
 
-    // Very first sync ever (empty collection): seed without notifying.
-    let firstRun = store.getItems().isEmpty
+    // Accounts syncing for the first time seed silently: their entire
+    // backlog is standing state, not news. Only accounts that already have
+    // items can produce notification-worthy arrivals.
+    let seededAccounts = Set(store.getItems().map(\.accountId))
     var newIds: [String] = []
 
     // Fetches run concurrently; results are applied serially on the actor.
@@ -79,7 +90,7 @@ actor SyncEngine {
         let provider = account.provider
         group.addTask {
           do {
-            return (id, provider, .success(try await client.fetchItems(config)))
+            return (id, provider, .success(try await client.fetchItems(config, depth: depth)))
           } catch {
             return (id, provider, .failure(error))
           }
@@ -106,9 +117,10 @@ actor SyncEngine {
         errors[accountId] = nil
 
         // Reconcile, never replace: the collection is the app's own.
-        newIds.append(contentsOf: store.upsertItems(
-          fetch.items, accountId: accountId, provider: provider
-        ))
+        let added = store.upsertItems(fetch.items, accountId: accountId, provider: provider)
+        if seededAccounts.contains(accountId) {
+          newIds.append(contentsOf: added)
+        }
 
         // Items upstream stopped returning (GitHub's /notifications only
         // lists unread threads, for one) were handled there: mark them read
@@ -131,12 +143,16 @@ actor SyncEngine {
       }
     }
 
-    if !firstRun, !newIds.isEmpty {
+    if !newIds.isEmpty {
       let byId = Dictionary(uniqueKeysWithValues: store.getItems().map { ($0.id, $0) })
-      // Items that arrive already handled upstream don't deserve a ping;
-      // which unread ones do is the notification scope setting's call,
-      // applied by the app shell.
-      let fresh = newIds.compactMap { byId[$0] }.filter { !$0.read }.map(\.inboxItem)
+      // Items that arrive already handled upstream don't deserve a ping —
+      // nor does old backlog a deep fetch surfaced (it shows up unread in
+      // the inbox instead). Which fresh unread ones do is the notification
+      // scope setting's call, applied by the app shell.
+      let freshCutoff = Date().addingTimeInterval(-notifyFreshnessWindow)
+      let fresh = newIds.compactMap { byId[$0] }
+        .filter { !$0.read && $0.updatedAt > freshCutoff }
+        .map(\.inboxItem)
       // One banner per thread: a target arriving as several notifications at
       // once (a GitLab MR mentioning, assigning, and requesting review) pings
       // once. The mention member fronts it so the scope setting sees it.
@@ -148,21 +164,33 @@ actor SyncEngine {
     store.prune()
 
     lastSyncAt = Date()
+    if depth == .full {
+      lastFullSyncAt = lastSyncAt
+    }
     syncing = false
     emitState()
   }
 
-  func syncNow() async {
+  func syncNow(depth: FetchDepth) async {
     if let inFlight {
       await inFlight.value
       return
     }
     let task = Task {
-      await self.doSync()
+      await self.doSync(depth: depth)
     }
     inFlight = task
     await task.value
     inFlight = nil
+  }
+
+  /// What the timer owes: .full once fullSyncInterval has elapsed (or never
+  /// ran), .recent otherwise.
+  private func dueDepth() -> FetchDepth {
+    guard let lastFullSyncAt else {
+      return .full
+    }
+    return Date().timeIntervalSince(lastFullSyncAt) >= fullSyncInterval ? .full : .recent
   }
 
   /// Validates and stores a NEW account (multiple per provider are fine).
@@ -176,8 +204,10 @@ actor SyncEngine {
       let id = UUID().uuidString
       store.setAccount(id, provider: provider, config: config, profile: profile)
       emitState()
+      // Deep from the start: the new account seeds its whole backlog (and
+      // silently — see doSync's seeding rule).
       Task {
-        await self.syncNow()
+        await self.syncNow(depth: .full)
       }
       return nil
     } catch {
@@ -233,10 +263,12 @@ actor SyncEngine {
       // Demo mode is fixtures only: never touch the network.
       guard !isDemo else { return }
       await self.refreshProfiles()
-      await self.syncNow()
+      // The first sync is always deep (dueDepth: no full pass yet), then
+      // hourly deep passes ride the 60s timer.
+      await self.syncNow(depth: self.dueDepth())
       while !Task.isCancelled {
         try? await Task.sleep(for: syncInterval)
-        await self.syncNow()
+        await self.syncNow(depth: self.dueDepth())
       }
     }
   }

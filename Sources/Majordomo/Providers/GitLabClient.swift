@@ -3,7 +3,10 @@
 
 import Foundation
 
-private let maxPages = 2
+/// Pending pages per depth: .recent skims the newest todos; .full walks the
+/// whole backlog, bounded by a safety ceiling (20 × 50 = 1,000 todos).
+private let recentPendingPages = 2
+private let fullPendingPages = 20
 private let perPage = 50
 
 // Minimal shapes: only the fields we read, all optional so entries missing
@@ -172,14 +175,16 @@ struct GitLabClient: ProviderClient {
     return ProviderProfile(username: username, name: user.name, avatarUrl: user.avatar_url)
   }
 
-  func fetchItems(_ config: AccountConfig) async throws -> FetchResult {
+  func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult {
     let baseUrl = try resolveBaseUrl(config)
     let ctx = context(baseUrl)
     // Pending todos are the inbox; one page of recently-done todos rides
     // along so items handled on the web while the app was closed still
-    // arrive (as already-read).
+    // arrive (as already-read). Done stays at one page even on a full
+    // fetch — walking the done archive would only import ancient history.
+    let pendingPages = depth == .full ? fullPendingPages : recentPendingPages
     let lists: [(state: String, maxPages: Int, read: Bool)] = [
-      (state: "pending", maxPages: maxPages, read: false),
+      (state: "pending", maxPages: pendingPages, read: false),
       (state: "done", maxPages: 1, read: true),
     ]
     var items: [FetchedItem] = []

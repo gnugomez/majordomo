@@ -3,7 +3,10 @@
 
 import Foundation
 
-private let maxPages = 2
+/// Pages per depth: .recent skims the newest threads; .full follows the
+/// pagination to the end, bounded by a safety ceiling (20 × 50 = 1,000).
+private let recentPages = 2
+private let fullPages = 20
 private let perPage = 50
 
 // The notifications payload carries no issue/PR state, so it is fetched per
@@ -180,13 +183,14 @@ actor GitHubClient: ProviderClient {
     return ProviderProfile(username: login, name: user.name, avatarUrl: user.avatar_url)
   }
 
-  func fetchItems(_ config: AccountConfig) async throws -> FetchResult {
+  func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult {
     var entries: [(item: FetchedItem, thread: GHNotification)] = []
-    // Set once the last page is consumed. Hitting maxPages with pages left —
-    // or bailing on a 304/malformed body — leaves the fetch incomplete, so
-    // absence proves nothing this round (see SyncEngine).
+    // Set once the last page is consumed. Hitting the page cap with pages
+    // left — or bailing on a 304/malformed body — leaves the fetch
+    // incomplete, so absence proves nothing this round (see SyncEngine).
     var complete = false
 
+    let maxPages = depth == .full ? fullPages : recentPages
     for page in 1 ... maxPages {
       var components = URLComponents(string: "https://api.github.com/notifications")!
       components.queryItems = [

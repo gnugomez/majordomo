@@ -38,6 +38,15 @@ struct FetchResult: Sendable {
   var complete: Bool
 }
 
+/// How far a fetch reaches. `.recent` covers the latest pages — the sync
+/// timer's cheap default. `.full` walks every page (up to the client's
+/// safety ceiling) so items beyond the recent window can't hide forever;
+/// the engine asks for it on manual refresh and about once an hour.
+enum FetchDepth: Sendable {
+  case recent
+  case full
+}
+
 /// What validate() learns about the account's owner.
 struct ProviderProfile: Sendable {
   var username: String
@@ -59,8 +68,8 @@ protocol ProviderClient: Sendable {
   var id: ProviderId { get }
   /// Checks the credentials; returns the account owner's profile on success.
   func validate(_ config: AccountConfig) async throws -> ProviderProfile
-  /// Returns the account's current inbox.
-  func fetchItems(_ config: AccountConfig) async throws -> FetchResult
+  /// Returns the account's current inbox, reaching as deep as `depth` asks.
+  func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult
 }
 
 /// Caps provider-supplied body text at fetch time — a description can carry

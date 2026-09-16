@@ -109,11 +109,13 @@ final class AppModel {
 
   // MARK: Actions
 
+  /// Manual refresh digs through every page — the user asked, so look
+  /// everywhere.
   func refresh() {
     // Show the spinner immediately; the pushed state is authoritative.
     syncing = true
     Task {
-      await engine?.syncNow()
+      await engine?.syncNow(depth: .full)
     }
   }
 
