@@ -1,4 +1,4 @@
-// The settings window, Mail-style: toolbar tabs (NSTabViewController's
+// The settings window: toolbar tabs (NSTabViewController's
 // .toolbar style — the canonical preferences window, which also animates the
 // resize between tabs), one tab per category. Opened from ⌘, (main menu),
 // the tray menu, and the sidebar's account row; a singleton that refocuses.

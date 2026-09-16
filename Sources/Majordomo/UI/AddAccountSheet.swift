@@ -1,4 +1,4 @@
-// The Add Account wizard, Mail-style: opened from the Accounts settings
+// The Add Account wizard: opened from the Accounts settings
 // page's "+" button. Pick a provider (any number of accounts per provider),
 // paste the token — plus whatever the provider's spec says it needs —
 // Connect validates and dismisses on success.

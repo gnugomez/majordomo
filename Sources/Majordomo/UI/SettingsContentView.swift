@@ -1,4 +1,4 @@
-// The settings pages, split Mail-style into the categories the tabbed
+// The settings pages, split into the categories the tabbed
 // settings window shows: Accounts (the account list with its add/remove
 // pair), General, Inboxes, and Notifications.
 
@@ -89,7 +89,7 @@ struct AccountsSettingsView: View {
         }
       }
 
-      // Mail's +/− pair: add opens the wizard sheet (any number of accounts
+      // The +/− pair: add opens the wizard sheet (any number of accounts
       // per provider), remove disconnects the selected account.
       ControlGroup {
         Button {
