@@ -33,7 +33,7 @@ struct GitHubSpec: GitForgeSpec {
     CategorySpec(id: "issues", label: "Issues", symbol: "smallcircle.filled.circle", order: 4) {
       $0.kind == "issue" && !GitForgeVisuals.claimedReasons.contains($0.reason)
     },
-    CategorySpec(id: "pulls", label: "Pulls", symbol: "arrow.triangle.branch", order: 5) {
+    CategorySpec(id: "pulls", label: "Pull requests", symbol: "arrow.triangle.branch", order: 5) {
       $0.kind == "pull" && !GitForgeVisuals.claimedReasons.contains($0.reason)
     },
   ]
