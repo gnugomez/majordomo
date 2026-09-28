@@ -147,6 +147,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     appMenu.addItem(settings)
     appMenu.addItem(.separator())
     appMenu.addItem(
+      withTitle: "Hide Majordomo",
+      action: #selector(NSApplication.hide(_:)),
+      keyEquivalent: "h"
+    )
+    let hideOthers = NSMenuItem(
+      title: "Hide Others",
+      action: #selector(NSApplication.hideOtherApplications(_:)),
+      keyEquivalent: "h"
+    )
+    hideOthers.keyEquivalentModifierMask = [.command, .option]
+    appMenu.addItem(hideOthers)
+    appMenu.addItem(
+      withTitle: "Show All",
+      action: #selector(NSApplication.unhideAllApplications(_:)),
+      keyEquivalent: ""
+    )
+    appMenu.addItem(.separator())
+    appMenu.addItem(
       withTitle: "Quit Majordomo",
       action: #selector(NSApplication.terminate(_:)),
       keyEquivalent: "q"
@@ -174,6 +192,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let find = NSMenuItem(title: "Find", action: #selector(focusSearch), keyEquivalent: "f")
     find.target = self
     editMenu.addItem(find)
+
+    // The Window menu: the standard trio, plus the open-windows list and
+    // "Bring All to Front" that AppKit maintains once it owns the menu.
+    // A menu-bar app only shows a menu bar while a window is open (the
+    // activation policy turns regular then), and that is exactly when
+    // these are wanted.
+    let windowItem = NSMenuItem()
+    mainMenu.addItem(windowItem)
+    let windowMenu = NSMenu(title: "Window")
+    windowItem.submenu = windowMenu
+    windowMenu.addItem(
+      withTitle: "Minimize",
+      action: #selector(NSWindow.performMiniaturize(_:)),
+      keyEquivalent: "m"
+    )
+    windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+    windowMenu.addItem(.separator())
+    windowMenu.addItem(
+      withTitle: "Bring All to Front",
+      action: #selector(NSApplication.arrangeInFront(_:)),
+      keyEquivalent: ""
+    )
+    NSApp.windowsMenu = windowMenu
 
     NSApp.mainMenu = mainMenu
   }
