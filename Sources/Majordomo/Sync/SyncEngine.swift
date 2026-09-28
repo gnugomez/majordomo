@@ -59,7 +59,7 @@ actor SyncEngine {
     self.emit = emit
     self.notify = notify
     store = isDemo ? Store(fixture: DemoData.storeFile()) : Store()
-    store.builtinLabelIds = Set(aggregatedBuiltinLabels.map(\.id))
+    store.builtinLabelIds = LabelCatalog.current(user: [], userRules: []).builtinIds
     clients = Dictionary(uniqueKeysWithValues: providerSpecs.map { ($0.id, $0.makeClient()) })
     for account in store.accounts() where account.config == nil {
       errors[account.id] = "The stored token can't be read — remove and re-add the account."
@@ -348,6 +348,12 @@ actor SyncEngine {
 
   // MARK: Labels
 
+  /// Everything that exists right now: the providers' built-ins plus the
+  /// user's, read fresh from the store so a rule or label edit is in it.
+  private func catalog() -> LabelCatalog {
+    .current(user: store.labels(), userRules: store.rules())
+  }
+
   /// Recomputes the rules' assignments for the live items — one account's,
   /// or every account's — and persists only the sets that changed, in one
   /// save. The providers' built-in rules and labels (the sidebar buckets)
@@ -355,10 +361,11 @@ actor SyncEngine {
   /// stay as they were.
   private func sweepLabels(accountId: AccountId? = nil) {
     let stored = store.getItems().filter { accountId == nil || $0.accountId == accountId }
+    let catalog = catalog()
     let assigned = LabelEngine.autoLabels(
       for: stored.map { store.inboxItem($0) },
-      rules: allBuiltinRules + store.rules(),
-      labels: aggregatedBuiltinLabels + store.labels()
+      rules: catalog.rules,
+      labels: catalog.labels
     )
     let updates = stored.compactMap { item -> (id: String, labels: Set<LabelId>)? in
       let labels = assigned[item.id] ?? []
@@ -383,10 +390,10 @@ actor SyncEngine {
   /// standard one on a store that has none), with new labels added and
   /// vanished ones dropped.
   private func sidebarLayout() -> SidebarLayout {
-    let builtins = aggregatedBuiltinLabels.map(\.id)
-    let user = store.labels()
-    let inboxes = user.filter { $0.kind == .inbox }.map(\.id)
-    let labels = user.filter { $0.kind == .label }.map(\.id)
+    let catalog = catalog()
+    let builtins = catalog.builtinLabels.map(\.id)
+    let inboxes = catalog.userInboxes.map(\.id)
+    let labels = catalog.userLabels.map(\.id)
     let stored = store.sidebarLayout()
       ?? .standard(catchAll: catchAllInboxId, builtins: builtins + inboxes, labels: labels)
     return stored.reconciled(catchAll: catchAllInboxId, builtins: builtins, inboxes: inboxes, labels: labels)

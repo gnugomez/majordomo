@@ -106,8 +106,7 @@ struct SidebarView: View {
   @ViewBuilder
   private func categoryRows(account: AccountState?) -> some View {
     let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } } ?? model.items
-    let labels = account.map { accountLabels(for: $0.provider, user: model.labels) }
-      ?? aggregatedLabels(user: model.labels)
+    let labels = model.catalog.sectionLabels(for: account?.provider)
     let rows = sidebarRows(layout: model.sidebarLayout, categories: categorize(items, into: categories(for: labels)))
     ForEach(rows) { row in
       SidebarRowView(row: row, sectionKey: account?.id ?? "all", account: account, model: model)

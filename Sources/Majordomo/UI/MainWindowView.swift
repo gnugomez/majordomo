@@ -27,8 +27,7 @@ struct MainWindowView: View {
     let account = sidebar.account.flatMap { id in model.accounts.first { $0.id == id } }
     let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } }
       ?? model.items
-    let labels = account.map { accountLabels(for: $0.provider, user: model.labels) }
-      ?? aggregatedLabels(user: model.labels)
+    let labels = model.catalog.sectionLabels(for: account?.provider)
     let specs = categories(for: labels)
     // The sidebar layout decides what is selectable: an inbox hidden there
     // or gone from the tree falls back to Recent (always first in specs,

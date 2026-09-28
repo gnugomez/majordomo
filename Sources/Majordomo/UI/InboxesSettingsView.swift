@@ -174,7 +174,7 @@ struct InboxesSettingsView: View {
   /// catch-all and the labels, as the aggregated sidebar names them.
   private func entries(for nodes: [SidebarNode]) -> [SidebarOutlineEntry] {
     let specs = Dictionary(
-      uniqueKeysWithValues: categories(for: aggregatedLabels(user: model.labels)).map { ($0.id, $0) }
+      uniqueKeysWithValues: categories(for: model.catalog.labels).map { ($0.id, $0) }
     )
     let layout = model.sidebarLayout
     return nodes.compactMap { node in

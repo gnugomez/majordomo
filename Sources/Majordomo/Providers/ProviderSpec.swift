@@ -97,6 +97,34 @@ let aggregatedBuiltinLabels: [InboxLabel] = {
 /// Every provider's built-in rules, in registration order.
 let allBuiltinRules: [LabelRule] = providerSpecs.flatMap(\.builtinRules)
 
+extension LabelCatalog {
+  /// The catalog as the app has it: every registered provider's built-ins
+  /// plus the user's own. The one place the full set is assembled — it
+  /// lives here because the provider registry does, and the Model layer
+  /// that defines the catalog must not reach into it.
+  static func current(user: [InboxLabel], userRules: [LabelRule]) -> LabelCatalog {
+    LabelCatalog(
+      builtinLabels: aggregatedBuiltinLabels,
+      builtinRules: allBuiltinRules,
+      user: user,
+      userRules: userRules
+    )
+  }
+
+  /// The labels one sidebar section lists. "All Inboxes" (nil) merges every
+  /// provider's built-ins by id, the first registration's wording winning;
+  /// an account's own section shows that provider's wording instead —
+  /// GitLab calls "Merge requests" what GitHub calls "Pull requests". The
+  /// user's own follow either way, since labels belong to the user and not
+  /// to an account.
+  func sectionLabels(for provider: ProviderId?) -> [InboxLabel] {
+    guard let provider else {
+      return labels
+    }
+    return spec(for: provider).builtinLabels + user
+  }
+}
+
 extension ProviderId {
   /// Convenience for the spec's display name.
   var displayName: String {

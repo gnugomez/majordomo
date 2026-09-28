@@ -176,24 +176,31 @@ final class AppModel {
 
   /// Every label the sidebar can show: the providers' built-ins as "All
   /// Inboxes" merges them, then the user's.
+  /// Everything that exists: the providers' built-ins plus the user's,
+  /// assembled the one way (see LabelCatalog). The views read their label
+  /// lists from here rather than composing unions of their own.
+  var catalog: LabelCatalog {
+    .current(user: labels, userRules: rules)
+  }
+
   var allLabels: [InboxLabel] {
-    aggregatedBuiltinLabels + labels
+    catalog.labels
   }
 
   /// The user's tags: pills on rows, applied by hand, the Labels page.
   var userLabels: [InboxLabel] {
-    labels.filter { $0.kind == .label }
+    catalog.userLabels
   }
 
   /// The user's own inboxes: rule-fed buckets seen only in the sidebar,
   /// made and edited on the Inboxes page.
   var userInboxes: [InboxLabel] {
-    labels.filter { $0.kind == .inbox }
+    catalog.userInboxes
   }
 
   /// Built-in or the user's own.
   func label(_ id: LabelId) -> InboxLabel? {
-    allLabels.first { $0.id == id }
+    catalog.label(id)
   }
 
   func setLabels(_ labels: [InboxLabel]) {

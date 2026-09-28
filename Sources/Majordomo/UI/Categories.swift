@@ -21,19 +21,6 @@ struct Category: Identifiable, Sendable {
   var symbol: String { spec.symbol }
 }
 
-/// The labels "All Inboxes" lists: every provider's built-ins merged by id,
-/// then the user's.
-func aggregatedLabels(user: [InboxLabel]) -> [InboxLabel] {
-  aggregatedBuiltinLabels + user
-}
-
-/// The labels one account's section lists: its provider's built-ins in the
-/// provider's own wording, then the user's — labels are the user's, so
-/// every section shows the same folders after the built-ins.
-func accountLabels(for provider: ProviderId, user: [InboxLabel]) -> [InboxLabel] {
-  spec(for: provider).builtinLabels + user
-}
-
 /// The sidebar's buckets for a label list: the catch-all first, then one
 /// folder per label holding the items that carry it. A folder's id is its
 /// label's id, so the hidden-inbox setting addresses either. The accent

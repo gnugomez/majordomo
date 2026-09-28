@@ -53,7 +53,16 @@ implementation (in code, not from the API). The buckets are built-in labels
 (`builtinLabels`) and the rules that fill them (`builtinRules`), evaluated
 by the same `LabelEngine` as the user's own labels and rules: they show as
 folders, list read-only in the Labels and Rules settings, and can be hidden
-from the Inboxes page. Adding a provider means:
+from the Inboxes page.
+
+The providers' set and the user's are joined in exactly one place,
+`LabelCatalog.current` (`Providers/ProviderSpec.swift`), which hands back a
+`LabelCatalog` (`Model/LabelCatalog.swift`) carrying the full label and rule
+lists, the built-in/user splits, and id lookup. The sync engine, the app
+model, and the settings pages all read it instead of concatenating their
+own, so the built-ins-first ordering is decided once.
+
+Adding a provider means:
 
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
    tokens (errors as human-readable `ProviderError` strings — they render

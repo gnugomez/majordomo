@@ -51,7 +51,7 @@ struct RulesSettingsView: View {
 
       List(selection: $selection) {
         DisclosureGroup(isExpanded: $builtinExpanded) {
-          ForEach(allBuiltinRules) { rule in
+          ForEach(model.catalog.builtinRules) { rule in
             BuiltinRuleRow(rule: rule, provider: providerName(defining: rule), summary: describe(rule))
               .tag(rule.id)
           }
@@ -64,7 +64,7 @@ struct RulesSettingsView: View {
             Text("Built-in")
               .font(.system(size: 13))
             Spacer()
-            Text("\(allBuiltinRules.count) provider rules")
+            Text("\(model.catalog.builtinRules.count) provider rules")
               .font(.system(size: 11))
               .foregroundStyle(.secondary)
           }
@@ -138,7 +138,7 @@ struct RulesSettingsView: View {
   }
 
   private var selectedBuiltin: LabelRule? {
-    allBuiltinRules.first { $0.id == selection }
+    model.catalog.builtinRules.first { $0.id == selection }
   }
 
   /// The provider whose spec defines a built-in rule.
@@ -377,7 +377,7 @@ private struct RuleEditor: View {
       // pills, and a menu of every choice, inboxes first, to toggle them. A
       // user rule feeds the user's inboxes and labels; a built-in one fills
       // a built-in inbox, so the read-only view offers those.
-      let inboxes = readOnly ? aggregatedBuiltinLabels : model.userInboxes
+      let inboxes = readOnly ? model.catalog.builtinLabels : model.userInboxes
       let labels = model.userLabels
       let choices = inboxes + labels
       let applied = choices.filter { rule.labelIds.contains($0.id) }
