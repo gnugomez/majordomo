@@ -66,10 +66,13 @@ and RELEASING.md.
 Each of these fixes a real SwiftUI/AppKit-bridge failure; removing them
 reintroduces the bug:
 
-- The detail column's toolbar holds an invisible `Color.clear` item with
-  `.sharedBackgroundVisibility(.hidden)` (MainWindowView): without a
-  detail-section item the list column's toolbar items drift to the window's
-  far corner; a `ToolbarSpacer` instead draws a stray separator stub.
+- The detail column's mark-read and open items are always present, merely
+  disabled when nothing is selected (MainWindowView): an empty detail
+  section sends the list column's toolbar items to the window's far corner
+  (a `ToolbarSpacer` instead draws a stray separator stub), and a section
+  whose item count changes shifts the date filter a few points relative to
+  the search field, because a real item carries a glass background and a
+  hidden placeholder does not.
 - `NSHostingController.sizingOptions = []` on the main window
   (MainWindowController): otherwise SwiftUI snaps the window back to its
   preferred size after the autosaved frame restores — and autosaves that.

@@ -146,7 +146,12 @@ struct MainWindowView: View {
       }
     }
     .frame(minWidth: 360)
-    // Mark-read and Open sit at the leading edge of the detail section
+    // Mark-read and Open are always present, disabled while nothing is
+    // selected: the toolbar then has one shape, so the date filter keeps
+    // the same distance from the search field either way, and the detail
+    // section is never empty (an empty one sends the list column's items
+    // to the window's far corner).
+    // They sit at the leading edge of the detail section
     // (the search field owns the trailing edge) and only while something
     // is selected; the invisible item covers the empty case so the detail
     // section (which anchors the list column's items) never disappears.
@@ -154,18 +159,11 @@ struct MainWindowView: View {
     // search field; MainWindowController then moves the toolbar's trailing
     // spacer ahead of it, which SwiftUI offers no placement for.
     .toolbar {
-      if selectedThreads.isEmpty {
-        ToolbarItem {
-          Color.clear.frame(width: 1, height: 1)
-        }
-        .sharedBackgroundVisibility(.hidden)
-      } else {
-        ToolbarItem {
-          markReadButton(for: actionTargets)
-        }
-        ToolbarItem {
-          openButton(for: actionTargets)
-        }
+      ToolbarItem {
+        markReadButton(for: actionTargets)
+      }
+      ToolbarItem {
+        openButton(for: actionTargets)
       }
       ToolbarItem {
         activityFilterMenu
@@ -272,13 +270,16 @@ struct MainWindowView: View {
       }
     }
     .keyboardShortcut("o")
+    .disabled(selectedThreads.isEmpty)
     .help("\(openLabel(selectedThreads)) — opens in your browser and marks read")
   }
 
   private func openLabel(_ threads: [InboxThread]) -> String {
-    threads.count == 1
-      ? "Open in \(threads[0].lead.provider.displayName)"
-      : "Open \(threads.count) in Browser"
+    switch threads.count {
+    case 0: "Open"
+    case 1: "Open in \(threads[0].lead.provider.displayName)"
+    default: "Open \(threads.count) in Browser"
+    }
   }
 }
 
