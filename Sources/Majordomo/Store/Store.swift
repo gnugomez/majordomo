@@ -44,6 +44,8 @@ struct StoredItem: Codable, Sendable {
   var lastSeenUpstreamAt: Date
   /// What the rules assigned on the last sweep.
   var autoLabels: Set<LabelId> = []
+  /// Inboxes the rules moved this item out of.
+  var hiddenFrom: Set<LabelId> = []
   /// The user's forced-on/forced-off labels, kept apart from autoLabels so
   /// a sweep never undoes them.
   var labelOverrides: LabelOverrides = [:]
@@ -58,6 +60,7 @@ struct StoredItem: Codable, Sendable {
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
       updatedAt: updatedAt, state: state, author: author, body: body, read: read,
       labels: effectiveLabels(auto: autoLabels, overrides: labelOverrides, existing: existingLabels),
+      hiddenFrom: hiddenFrom,
       upstreamLabels: upstreamLabels ?? []
     )
   }
@@ -85,6 +88,7 @@ extension StoredItem {
     firstSeenAt = try container.decode(Date.self, forKey: .firstSeenAt)
     lastSeenUpstreamAt = try container.decode(Date.self, forKey: .lastSeenUpstreamAt)
     autoLabels = try container.decodeIfPresent(Set<LabelId>.self, forKey: .autoLabels) ?? []
+    hiddenFrom = try container.decodeIfPresent(Set<LabelId>.self, forKey: .hiddenFrom) ?? []
     labelOverrides = try container.decodeIfPresent(LabelOverrides.self, forKey: .labelOverrides) ?? [:]
     upstreamLabels = try container.decodeIfPresent([String].self, forKey: .upstreamLabels)
   }
@@ -425,6 +429,7 @@ final class Store {
         // Assignments are the rules' and the user's, not the fetch's: they
         // ride along untouched (the sweep right after refreshes autoLabels).
         autoLabels: existing?.autoLabels ?? [],
+        hiddenFrom: existing?.hiddenFrom ?? [],
         labelOverrides: existing?.labelOverrides ?? [:],
         upstreamLabels: fetched.upstreamLabels ?? existing?.upstreamLabels
       )
@@ -560,13 +565,15 @@ final class Store {
 
   /// A sweep's worth of rule assignments in a single save — the store
   /// writes the whole file each time. Unchanged sets cost nothing.
-  func applyAutoLabels(_ updates: [(id: String, labels: Set<LabelId>)]) {
+  func applyAutoLabels(_ updates: [(id: String, labels: Set<LabelId>, hiddenFrom: Set<LabelId>)]) {
     var changed = false
     for update in updates {
-      guard let item = data.items[update.id], item.autoLabels != update.labels else {
+      guard let item = data.items[update.id],
+            item.autoLabels != update.labels || item.hiddenFrom != update.hiddenFrom else {
         continue
       }
       data.items[update.id]?.autoLabels = update.labels
+      data.items[update.id]?.hiddenFrom = update.hiddenFrom
       changed = true
     }
     if changed {

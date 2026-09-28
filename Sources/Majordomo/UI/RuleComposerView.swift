@@ -20,7 +20,18 @@ struct RuleComposerView: View {
   /// The drafted rule, waiting on the user.
   @State private var proposal: ValidatedRule?
 
-  private var available: Bool { model.intelligence.isAvailable }
+  /// The composer needs both: a model that can run, and the user's
+  /// switch left on.
+  private var available: Bool { model.intelligenceActive }
+
+  /// Why it is unavailable — the hardware's reason, or the user's own
+  /// choice, which is not a fault to explain at length.
+  private var unavailableReason: String? {
+    if let reason = model.intelligence.reason {
+      return reason
+    }
+    return model.intelligenceEnabled ? nil : "Apple Intelligence is off — turn it on in Settings › Intelligence."
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -45,7 +56,7 @@ struct RuleComposerView: View {
         }
       }
 
-      if let reason = model.intelligence.reason {
+      if let reason = unavailableReason {
         Text(reason)
           .font(.system(size: 11))
           .foregroundStyle(.secondary)

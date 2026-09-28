@@ -239,7 +239,10 @@ enum DemoData {
           RuleCondition(field: .author, op: .contains, value: "[bot]"),
           RuleCondition(field: .mention, negated: true),
         ],
-        labelIds: [laterLabel]
+        labelIds: [laterLabel],
+        // Moving, with nothing chosen: the bot's pull request shows in
+        // Later and nowhere else.
+        movesItems: true
       ),
     ]
 

@@ -43,7 +43,9 @@ final class SettingsWindowController: NSWindowController {
     tabs.canPropagateSelectedChildViewControllerTitle = false
 
     func page(_ content: some View) -> NSHostingController<some View> {
-      let host = NSHostingController(rootView: content.frame(width: 440))
+      // Wide enough that all seven tabs fit the toolbar; any narrower and
+      // the last ones collapse behind an overflow chevron.
+      let host = NSHostingController(rootView: content.frame(width: 560))
       host.sizingOptions = .preferredContentSize
       return host
     }
@@ -72,6 +74,11 @@ final class SettingsWindowController: NSWindowController {
     rules.label = "Rules"
     rules.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Rules")
     tabs.addTabViewItem(rules)
+
+    let intelligence = NSTabViewItem(viewController: page(IntelligenceSettingsView(model: model)))
+    intelligence.label = "Intelligence"
+    intelligence.image = NSImage(systemSymbolName: "apple.intelligence", accessibilityDescription: "Intelligence")
+    tabs.addTabViewItem(intelligence)
 
     let notifications = NSTabViewItem(viewController: page(NotificationsSettingsView(model: model)))
     notifications.label = "Notifications"

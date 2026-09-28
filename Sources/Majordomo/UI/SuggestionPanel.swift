@@ -12,7 +12,7 @@ struct SuggestionPanel: View {
   /// The oldest pending suggestion: one question at a time, answered in
   /// the order they arrived.
   private var suggestion: Suggestion? {
-    guard model.suggestionsEnabled else {
+    guard model.suggestionsActive else {
       return nil
     }
     return model.suggestions.min { $0.createdAt < $1.createdAt }

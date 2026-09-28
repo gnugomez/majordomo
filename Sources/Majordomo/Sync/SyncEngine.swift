@@ -47,6 +47,8 @@ actor SyncEngine {
   /// Whether to look for patterns at all; the user's call, pushed from
   /// settings.
   private var suggestionsEnabled = true
+  /// The master switch over every on-device feature.
+  private var intelligenceEnabled = true
   /// When the last sweep ran, so the next one waits its turn.
   private var lastSuggestionSweepAt: Date?
   private var inFlight: Task<Void, Never>?
@@ -104,6 +106,9 @@ actor SyncEngine {
   /// store. Returns the rule and the target it would create, for the user
   /// to confirm — nothing is saved here.
   func composeRule(from text: String) async -> Result<ValidatedRule, IntelligenceError> {
+    guard intelligenceEnabled else {
+      return .failure(IntelligenceError(message: "Apple Intelligence features are switched off in Settings."))
+    }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
       return .failure(IntelligenceError(message: "Describe the rule you want in a sentence."))
@@ -139,7 +144,7 @@ actor SyncEngine {
   /// strongest few. Mining is deterministic (see Suggestion.swift); the
   /// model only names and judges.
   func sweepSuggestions() async {
-    guard suggestionsEnabled, intelligence.availability().isAvailable, !suggesting else {
+    guard intelligenceEnabled, suggestionsEnabled, intelligence.availability().isAvailable, !suggesting else {
       return
     }
     suggesting = true
@@ -218,6 +223,13 @@ actor SyncEngine {
   /// again and the same patterns stay quiet.
   func setSuggestionsEnabled(_ enabled: Bool) {
     suggestionsEnabled = enabled
+    emitState()
+  }
+
+  /// Turns every on-device feature off or on. Off, nothing is drafted and
+  /// no sweep runs; what was already suggested simply stops being offered.
+  func setIntelligenceEnabled(_ enabled: Bool) {
+    intelligenceEnabled = enabled
     emitState()
   }
 
@@ -362,14 +374,22 @@ actor SyncEngine {
   private func sweepLabels(accountId: AccountId? = nil) {
     let stored = store.getItems().filter { accountId == nil || $0.accountId == accountId }
     let catalog = catalog()
-    let assigned = LabelEngine.autoLabels(
-      for: stored.map { store.inboxItem($0) },
+    // "Hide from everywhere" means every inbox in the sidebar, the
+    // catch-all included — that is what makes a moved item disappear from
+    // Recent as well.
+    let everyInbox = [catchAllInboxId] + catalog.labels.map(\.id)
+    let assigned = LabelEngine.assign(
+      stored.map { store.inboxItem($0) },
       rules: catalog.rules,
-      labels: catalog.labels
+      labels: catalog.labels,
+      everyInbox: everyInbox
     )
-    let updates = stored.compactMap { item -> (id: String, labels: Set<LabelId>)? in
-      let labels = assigned[item.id] ?? []
-      return labels == item.autoLabels ? nil : (id: item.id, labels: labels)
+    let updates = stored.compactMap { item -> (id: String, labels: Set<LabelId>, hiddenFrom: Set<LabelId>)? in
+      let result = assigned[item.id] ?? LabelEngine.Assignment()
+      if result.labels == item.autoLabels, result.hiddenFrom == item.hiddenFrom {
+        return nil
+      }
+      return (id: item.id, labels: result.labels, hiddenFrom: result.hiddenFrom)
     }
     store.applyAutoLabels(updates)
   }

@@ -10,7 +10,7 @@ import SwiftUI
 
 /// The editor's fixed height, shared with its placeholder so the page
 /// never resizes on selection.
-private let editorHeight: CGFloat = 380
+private let editorHeight: CGFloat = 470
 /// The conditions box grows with its rows up to this many, then scrolls —
 /// a built-in rule carries four, and a partly visible fifth row is the
 /// scroll cue.
@@ -20,6 +20,20 @@ private let conditionRowHeight: CGFloat = 28
 private let previewCap = 50
 /// The match preview never shrinks below this, however tall the rule is.
 private let previewMinHeight: CGFloat = 100
+
+/// The catch-all as a target a moving rule can hide from — keeping bot
+/// chores out of Recent is the whole point, and Recent is not a label, so
+/// it needs a stand-in to sit among them.
+private let catchAllAsLabel = InboxLabel(
+  id: catchAllInboxId,
+  name: recentCategory.label,
+  symbol: recentCategory.symbol,
+  tint: .accent,
+  notify: .follow,
+  order: -1,
+  isBuiltin: true,
+  kind: .inbox
+)
 
 struct RulesSettingsView: View {
   let model: AppModel
@@ -38,10 +52,9 @@ struct RulesSettingsView: View {
     VStack(alignment: .leading, spacing: 8) {
       // One thing asking to be judged at a time: a draft waiting on the
       // user takes the place of the suggestion card.
-      if !draftPending, model.suggestionsEnabled {
+      if !draftPending, model.suggestionsActive {
         SuggestionsView(model: model)
       }
-      suggestionsToggle
       RuleComposerView(model: model) { added in
         selection = added.id
         autoSelected = true
@@ -155,33 +168,11 @@ struct RulesSettingsView: View {
       conditions = "any of \(conditions)"
     }
     let names = rule.labelIds.compactMap { model.label($0)?.name }
-    return names.isEmpty ? conditions : "\(conditions) → \(names.joined(separator: ", "))"
-  }
-
-  /// Pattern-watching, off or on. Switching it off stops the sweeps and
-  /// hides what is pending; dismissals are remembered either way, so
-  /// turning it back on doesn't replay what was already refused.
-  private var suggestionsToggle: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "sparkles")
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-      Text("Suggest labels from patterns in your inbox")
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-      Spacer(minLength: 0)
-      Toggle(
-        "Suggest labels",
-        isOn: Binding(
-          get: { model.suggestionsEnabled },
-          set: { model.setSuggestionsEnabled($0) }
-        )
-      )
-      .labelsHidden()
-      .toggleStyle(.switch)
-      .controlSize(.mini)
-      .disabled(!model.intelligence.isAvailable)
+    guard !names.isEmpty else {
+      return conditions
     }
+    let moved = rule.movesItems ? " (moved)" : ""
+    return "\(conditions) → \(names.joined(separator: ", "))\(moved)"
   }
 
   private func replace(_ updated: LabelRule) {
@@ -373,60 +364,61 @@ private struct RuleEditor: View {
       Text("Apply to")
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(.secondary)
-      // One row whatever the count: the applied inboxes and labels as
-      // pills, and a menu of every choice, inboxes first, to toggle them. A
-      // user rule feeds the user's inboxes and labels; a built-in one fills
-      // a built-in inbox, so the read-only view offers those.
+      // A user rule feeds the user's inboxes and labels; a built-in one
+      // fills a built-in inbox, so the read-only view offers those.
       let inboxes = readOnly ? model.catalog.builtinLabels : model.userInboxes
       let labels = model.userLabels
       let choices = inboxes + labels
-      let applied = choices.filter { rule.labelIds.contains($0.id) }
-      HStack(spacing: 6) {
-        if applied.isEmpty {
-          Text(choices.isEmpty ? "Create an inbox or a label first." : "Nothing yet")
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-        } else {
-          ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-              ForEach(applied) { label in
-                LabelCapsule(label: label)
-              }
-            }
-          }
-        }
-        Spacer(minLength: 0)
-        Menu {
-          if !inboxes.isEmpty {
-            Section("Inboxes") {
-              ForEach(inboxes) { inbox in
-                Toggle(isOn: labelBinding(inbox.id)) {
-                  Label(inbox.name, systemImage: inbox.symbol)
-                }
-              }
-            }
-          }
-          if !labels.isEmpty {
-            Section("Labels") {
-              ForEach(labels) { label in
-                Toggle(isOn: labelBinding(label.id)) {
-                  Label(label.name, systemImage: label.symbol)
-                }
-              }
-            }
-          }
-        } label: {
-          Image(systemName: "plus")
-        }
-        .menuIndicator(.hidden)
-        .controlSize(.small)
-        .fixedSize()
-        .disabled(choices.isEmpty)
-        .help("Choose the inboxes and labels this rule applies")
-      }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 6)
-      .settingsCard()
+      RuleTargetRow(
+        pills: choices.filter { rule.labelIds.contains($0.id) },
+        placeholder: choices.isEmpty ? "Create an inbox or a label first." : "Nothing yet",
+        inboxes: inboxes,
+        labels: labels,
+        unavailable: Set(rule.hiddenFrom),
+        help: "Choose the inboxes and labels this rule applies",
+        binding: labelBinding
+      )
+
+      moveControls(inboxes: inboxes, labels: labels)
+    }
+  }
+
+  /// Whether a matching item is moved rather than copied, and where it is
+  /// kept out of. Hiding from Recent is the point of the feature, so the
+  /// catch-all is choosable alongside the real inboxes.
+  @ViewBuilder
+  private func moveControls(inboxes: [InboxLabel], labels: [InboxLabel]) -> some View {
+    Toggle(isOn: movesBinding) {
+      Text("Move matching items here")
+        .font(.system(size: 12))
+    }
+    .toggleStyle(.checkbox)
+    .controlSize(.small)
+    Text("A moved item shows only where this rule applies it, and drops out of the inboxes below.")
+      .font(.system(size: 11))
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+    if rule.movesItems {
+      Text("Hide from")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(.secondary)
+      // Every inbox is fair game to hide from, the providers' own
+      // included — keeping bot chores out of Pull requests is as much the
+      // point as keeping them out of Recent. "Apply to" stays narrower:
+      // a user rule fills the user's targets, not a provider's bucket.
+      let hideInboxes = [catchAllAsLabel] + model.catalog.builtinLabels + model.userInboxes
+      RuleTargetRow(
+        pills: (hideInboxes + labels).filter { rule.hiddenFrom.contains($0.id) },
+        placeholder: "Everywhere else",
+        placeholderIsPill: true,
+        inboxes: hideInboxes,
+        labels: labels,
+        unavailable: Set(rule.labelIds),
+        help: "Choose the inboxes this rule's items drop out of",
+        enabled: !readOnly,
+        binding: hideBinding
+      )
     }
   }
 
@@ -449,7 +441,38 @@ private struct RuleEditor: View {
         updated.labelIds.removeAll { $0 == id }
         if on {
           updated.labelIds.append(id)
+          // A rule cannot both fill an inbox and hide from it; the stored
+          // rule never contradicts itself, whichever side was set last.
+          updated.hiddenFrom.removeAll { $0 == id }
         }
+        onChange(updated)
+      }
+    )
+  }
+
+  private func hideBinding(_ id: LabelId) -> Binding<Bool> {
+    Binding(
+      get: { rule.hiddenFrom.contains(id) },
+      set: { on in
+        var updated = rule
+        updated.hiddenFrom.removeAll { $0 == id }
+        if on {
+          updated.hiddenFrom.append(id)
+          updated.labelIds.removeAll { $0 == id }
+        }
+        onChange(updated)
+      }
+    )
+  }
+
+  /// Turning moving off leaves the chosen inboxes stored, so switching it
+  /// back on restores what was picked rather than resetting to everywhere.
+  private var movesBinding: Binding<Bool> {
+    Binding(
+      get: { rule.movesItems },
+      set: { on in
+        var updated = rule
+        updated.movesItems = on
         onChange(updated)
       }
     )

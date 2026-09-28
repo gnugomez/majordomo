@@ -52,6 +52,9 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// overrides applied (see effectiveLabels). Folders, badges, and banner
   /// policy read only this.
   var labels: Set<LabelId> = []
+  /// Inboxes this item is kept out of, because a rule moved it rather
+  /// than copying it. The catch-all is an inbox like any other here.
+  var hiddenFrom: Set<LabelId> = []
   /// Labels the target carries at the provider (an issue's own labels) —
   /// opaque strings, there for rules to test.
   var upstreamLabels: [String] = []

@@ -39,9 +39,13 @@ func categories(for labels: [InboxLabel]) -> [CategorySpec] {
   }
 }
 
+/// Every list and badge in the app comes through here, so this is where a
+/// moved item is kept out: a rule that moves rather than copies records
+/// the inboxes it hid the item from, and those inboxes skip it — the
+/// catch-all included.
 func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] {
   specs.map { spec in
-    Category(spec: spec, items: items.filter(spec.matches))
+    Category(spec: spec, items: items.filter { spec.matches($0) && !$0.hiddenFrom.contains(spec.id) })
   }
 }
 

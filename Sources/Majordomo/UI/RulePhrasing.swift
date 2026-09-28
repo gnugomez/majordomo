@@ -60,5 +60,6 @@ func describeConditions(_ conditions: [RuleCondition], match: RuleMatch) -> Stri
 
 /// The same for a whole rule.
 func describe(_ rule: LabelRule) -> String {
-  describeConditions(rule.conditions, match: rule.match)
+  let conditions = describeConditions(rule.conditions, match: rule.match)
+  return rule.movesItems ? "\(conditions) · moved" : conditions
 }

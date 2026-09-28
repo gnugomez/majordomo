@@ -42,8 +42,12 @@ final class AppModel {
   /// Labels and rules the on-device model suggests, waiting on the user —
   /// empty while `suggestionsEnabled` is off.
   private(set) var suggestions: [Suggestion] = []
-  /// Whether the model watches for patterns worth a label at all.
+  /// Whether the model watches for patterns worth a label at all; only
+  /// consulted while `intelligenceEnabled` is on.
   private(set) var suggestionsEnabled: Bool = AppModel.loadSuggestionsEnabled()
+  /// The master switch over every on-device feature — the rule composer
+  /// and the suggestions both. Off means nothing is generated at all.
+  private(set) var intelligenceEnabled: Bool = AppModel.loadIntelligenceEnabled()
   /// Whether the on-device model can run here; read once the engine has
   /// installed its provider.
   private(set) var intelligence: IntelligenceAvailability = .unavailable("Checking…")
@@ -107,7 +111,7 @@ final class AppModel {
     labels = state.labels
     rules = state.rules
     sidebarLayout = state.sidebar
-    suggestions = suggestionsEnabled ? state.suggestions : []
+    suggestions = suggestionsActive ? state.suggestions : []
     lastSyncAt = state.lastSyncAt
     syncing = state.syncing
     // A sidebar scope pointing at a removed account would deselect every
@@ -218,6 +222,33 @@ final class AppModel {
   }
 
   // MARK: Intelligence
+
+  /// True when the model can run here AND the user has left it on: what
+  /// every on-device feature checks before offering itself.
+  var intelligenceActive: Bool {
+    intelligenceEnabled && intelligence.isAvailable
+  }
+
+  /// True when pattern-watching should run and its results should show.
+  var suggestionsActive: Bool {
+    intelligenceActive && suggestionsEnabled
+  }
+
+  private static func loadIntelligenceEnabled() -> Bool {
+    UserDefaults.standard.object(forKey: "intelligenceEnabled") as? Bool ?? true
+  }
+
+  /// Turns every on-device feature off or on at once.
+  func setIntelligenceEnabled(_ enabled: Bool) {
+    intelligenceEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: "intelligenceEnabled")
+    if !enabled {
+      suggestions = []
+    }
+    Task {
+      await engine?.setIntelligenceEnabled(enabled)
+    }
+  }
 
   private static func loadSuggestionsEnabled() -> Bool {
     UserDefaults.standard.object(forKey: "suggestionsEnabled") as? Bool ?? true

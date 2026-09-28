@@ -16,15 +16,39 @@ enum LabelEngine {
   static func autoLabels(
     for items: [InboxItem], rules: [LabelRule], labels: [InboxLabel]
   ) -> [String: Set<LabelId>] {
+    assign(items, rules: rules, labels: labels, everyInbox: []).mapValues(\.labels)
+  }
+
+  /// What one item gets from the rules: the labels assigned to it, and
+  /// the inboxes it is kept out of because a rule moved it.
+  struct Assignment: Hashable, Sendable {
+    var labels: Set<LabelId> = []
+    var hiddenFrom: Set<LabelId> = []
+  }
+
+  /// Runs every enabled rule over a batch. `everyInbox` is what "hide
+  /// from everywhere" resolves against — every inbox in the sidebar,
+  /// catch-all included; pass it empty when only labels matter.
+  static func assign(
+    _ items: [InboxItem], rules: [LabelRule], labels: [InboxLabel], everyInbox: [LabelId]
+  ) -> [String: Assignment] {
     let existing = Set(labels.map(\.id))
-    let compiled = rules.filter(\.enabled).map(CompiledRule.init)
-    var assigned: [String: Set<LabelId>] = [:]
+    let enabled = rules.filter(\.enabled)
+    let compiled = enabled.map(CompiledRule.init)
+    // Resolved once per sweep rather than per item.
+    let hidden = enabled.map { $0.hidden(among: everyInbox) }
+    var assigned: [String: Assignment] = [:]
     for item in items {
-      var labels = Set<LabelId>()
-      for rule in compiled where rule.matches(item) {
-        labels.formUnion(rule.labelIds)
+      var result = Assignment()
+      for (index, rule) in compiled.enumerated() where rule.matches(item) {
+        result.labels.formUnion(rule.labelIds)
+        result.hiddenFrom.formUnion(hidden[index])
       }
-      assigned[item.id] = labels.intersection(existing)
+      result.labels.formIntersection(existing)
+      // An inbox this item actually lands in always shows it, whatever
+      // another rule wanted to hide.
+      result.hiddenFrom.subtract(result.labels)
+      assigned[item.id] = result
     }
     return assigned
   }
