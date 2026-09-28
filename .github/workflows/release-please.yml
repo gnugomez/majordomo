@@ -42,6 +42,7 @@ jobs:
     env:
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
       MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+      MACOS_PROVISION_PROFILE_B64: ${{ secrets.MACOS_PROVISION_PROFILE }}
       TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
       RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
     steps:
@@ -69,6 +70,15 @@ jobs:
           test -n "$IDENTITY"
           rm sign.p12 cert.pem
           echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      # The profile is what lets the signature carry the time-sensitive
+      # notification entitlement; without the secret the build stays
+      # unentitled and Urgent banners arrive at the normal level.
+      - name: Stage the provisioning profile
+        if: env.MACOS_PROVISION_PROFILE_B64 != ''
+        run: |
+          echo "$MACOS_PROVISION_PROFILE_B64" | base64 -d > "$RUNNER_TEMP/majordomo.provisionprofile"
+          echo "MACOS_PROVISION_PROFILE=$RUNNER_TEMP/majordomo.provisionprofile" >> "$GITHUB_ENV"
 
       - name: Package
         run: ./scripts/bundle.sh

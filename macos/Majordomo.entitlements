@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Lets a label's "Urgent" policy deliver time-sensitive banners, which
+       break through Focus. Apple restricts this one: the signature must be
+       backed by a provisioning profile that grants it, so bundle.sh only
+       applies it when one is embedded. Signed without that profile, the
+       app is killed at launch. -->
+  <key>com.apple.developer.usernotifications.time-sensitive</key>
+  <true/>
+</dict>
+</plist>

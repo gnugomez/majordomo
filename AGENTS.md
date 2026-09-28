@@ -51,6 +51,12 @@ and RELEASING.md.
   Allow" clears it for that binary.
 - macOS shows no notification permission prompt for ad-hoc-signed apps;
   delivery needs one manual enable in System Settings → Notifications.
+- The time-sensitive notification entitlement is restricted: signed without
+  an Apple-issued provisioning profile that grants it, the app is SIGKILLed
+  at launch (ad-hoc and self-signed alike). `scripts/bundle.sh` therefore
+  applies it only with `MACOS_PROVISION_PROFILE` set — never add it to the
+  plain signing path. Unprofiled builds post Urgent banners at the normal
+  level, which is a downgrade, not a failure. See RELEASING.md.
 
 ## Load-bearing workarounds — do not "clean up"
 

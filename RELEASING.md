@@ -32,6 +32,31 @@ instead of resetting them the way rotating ad-hoc signatures do.
 If the secrets are absent the build falls back to ad-hoc signing. Locally,
 `CODESIGN_IDENTITY="Majordomo Dev" make bundle` signs the same way.
 
+### Time-sensitive notifications
+
+A label's **Urgent** policy asks for a time-sensitive banner, the kind that
+breaks through Focus. Apple restricts that entitlement: it counts only when
+the signature is backed by a provisioning profile that grants it, and an app
+carrying the entitlement *without* such a profile is killed at launch. So
+`scripts/bundle.sh` embeds the entitlement only alongside a profile, and
+every unprofiled build — ad-hoc or self-signed — simply delivers Urgent
+banners at the normal level. Nothing breaks; they just don't pierce Focus.
+
+Turning it on needs an Apple Developer Program membership:
+
+1. In the developer portal, give the App ID `dev.majordomo.app` the
+   **Time Sensitive Notifications** capability.
+2. Create a Developer ID provisioning profile for it and download the
+   `.provisionprofile`.
+3. CI: store its base64 as the `MACOS_PROVISION_PROFILE` secret, and let
+   `MACOS_SIGN_P12` hold the matching Developer ID certificate — a
+   self-signed certificate cannot carry the entitlement.
+4. Locally: `MACOS_PROVISION_PROFILE=~/majordomo.provisionprofile
+   CODESIGN_IDENTITY="Developer ID Application: …" make bundle`.
+
+The profile lands at `Contents/embedded.provisionprofile`, and System
+Settings → Notifications then shows Majordomo's **Time Sensitive** toggle.
+
 Self-signed still means no notarization: Gatekeeper quarantines downloads
 (right-click → Open the first time, or
 `xattr -dr com.apple.quarantine /Applications/Majordomo.app`), and macOS

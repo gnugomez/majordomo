@@ -17,6 +17,8 @@ private let visibleConditionRows = 4
 private let conditionRowHeight: CGFloat = 28
 /// Rows the match preview shows at most; the header carries the true count.
 private let previewCap = 50
+/// The match preview never shrinks below this, however tall the rule is.
+private let previewMinHeight: CGFloat = 120
 
 struct RulesSettingsView: View {
   let model: AppModel
@@ -264,9 +266,12 @@ private struct RuleEditor: View {
         }
       }
       .listStyle(.bordered)
-      .frame(height: 150)
+      // The preview takes whatever the rest of the editor leaves: the
+      // conditions box grows with its rows, and the slack belongs here
+      // rather than as dead space under the page.
+      .frame(minHeight: previewMinHeight, maxHeight: .infinity)
     }
-    .frame(height: editorHeight, alignment: .top)
+    .frame(maxHeight: .infinity, alignment: .top)
   }
 
   /// Name, conditions, and labels — everything a user rule lets you change.
