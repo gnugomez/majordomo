@@ -71,6 +71,12 @@ Any number of accounts per provider can be connected; accounts are keyed by
 
 - **Read-only** against providers: fetch and display, never mutate upstream.
 - **Local-only**: no backend, no telemetry.
+- **Read state is local and precious**: nothing is ever marked read
+  upstream, so the store is the only record of what was read. Removing an
+  account parks its record and items for 90 days (the token goes at once)
+  instead of deleting them, and connecting the same user on the same
+  instance — a new token, or the account added back — lands on the
+  existing record.
 - **Tokens at rest** are AES-GCM encrypted in the JSON store; the key is a
   single Keychain item — never per-item keychain entries (their ACLs pin the
   exact build hash for unsigned apps and re-prompt on every rebuild).

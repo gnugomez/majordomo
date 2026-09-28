@@ -1,6 +1,6 @@
 // The settings pages, split into the categories the tabbed
 // settings window shows: Accounts (the account list with its add/remove
-// pair), General, Inboxes, and Notifications.
+// pair and token update), General, Inboxes, and Notifications.
 
 import AppKit
 import SwiftUI
@@ -53,6 +53,8 @@ struct AccountsSettingsView: View {
 
   @State private var selection: AccountId?
   @State private var addSheetShown = false
+  /// The account whose token is being replaced, while its sheet is up.
+  @State private var updating: AccountState?
   @State private var confirmRemove = false
 
   var body: some View {
@@ -89,29 +91,42 @@ struct AccountsSettingsView: View {
         }
       }
 
-      // The +/− pair: add opens the wizard sheet (any number of accounts
-      // per provider), remove disconnects the selected account.
-      ControlGroup {
-        Button {
-          addSheetShown = true
-        } label: {
-          Image(systemName: "plus")
+      HStack(spacing: 8) {
+        // The +/− pair: add opens the wizard sheet (any number of accounts
+        // per provider), remove disconnects the selected account.
+        ControlGroup {
+          Button {
+            addSheetShown = true
+          } label: {
+            Image(systemName: "plus")
+          }
+          .help("Add an account")
+          Button {
+            confirmRemove = true
+          } label: {
+            Image(systemName: "minus")
+          }
+          .disabled(!hasSelection)
+          .help("Remove the selected account")
         }
-        .help("Add an account")
-        Button {
-          confirmRemove = true
-        } label: {
-          Image(systemName: "minus")
+        .controlSize(.small)
+        .fixedSize()
+        // A new token for the selected account — the remedy when one expires
+        // or is revoked — leaving its items and their read state alone.
+        Button("Update Token…") {
+          updating = model.accounts.first { $0.id == selection }
         }
-        .disabled(selection == nil || !model.accounts.contains { $0.id == selection })
-        .help("Remove the selected account")
+        .controlSize(.small)
+        .disabled(!hasSelection)
+        .help("Replace the selected account's token")
       }
-      .controlSize(.small)
-      .fixedSize()
     }
     .padding(16)
     .sheet(isPresented: $addSheetShown) {
       AddAccountSheet(model: model)
+    }
+    .sheet(item: $updating) { account in
+      AddAccountSheet(model: model, updating: account)
     }
     .confirmationDialog(
       "Remove this account?",
@@ -124,22 +139,16 @@ struct AccountsSettingsView: View {
         }
       }
     } message: {
-      Text("Its items leave the inbox and the token is forgotten.")
+      Text("Its items leave the inbox and the token is forgotten. Add the same account back within 90 days and they return, read state and all.")
     }
   }
 
+  private var hasSelection: Bool {
+    selection != nil && model.accounts.contains { $0.id == selection }
+  }
+
   private func subtitle(_ account: AccountState) -> String {
-    if let error = account.error {
-      return error
-    }
-    var parts = [account.provider.displayName]
-    if let username = account.username {
-      parts.append("@\(username)")
-    }
-    if let baseUrl = account.baseUrl, let host = URL(string: baseUrl)?.host() {
-      parts.append(host)
-    }
-    return parts.joined(separator: " · ")
+    account.error ?? accountDescriptor(account)
   }
 }
 

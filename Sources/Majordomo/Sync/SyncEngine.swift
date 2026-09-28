@@ -106,9 +106,9 @@ actor SyncEngine {
     }
 
     for (accountId, provider, result) in results {
-      // Removed while the fetch was in flight: upserting now would
-      // resurrect the items deleteAccountItems just removed — as unread
-      // orphans nothing would ever prune.
+      // Removed while the fetch was in flight: the account is parked now,
+      // and a stale fetch has no business adding to (or bumping) what it
+      // parked.
       guard store.getAccount(accountId) != nil else {
         continue
       }
@@ -193,19 +193,26 @@ actor SyncEngine {
     return Date().timeIntervalSince(lastFullSyncAt) >= fullSyncInterval ? .full : .recent
   }
 
-  /// Validates and stores a NEW account (multiple per provider are fine).
-  /// Returns nil on success, or the human-readable failure.
+  /// Validates and stores an account (any number per provider). Returns
+  /// nil on success, or the human-readable failure. The same user on the
+  /// same instance is the same account: connecting one already connected
+  /// swaps in the new token, and connecting one removed earlier revives its
+  /// record — items and read state included — instead of starting a
+  /// duplicate.
   func connectAccount(_ provider: ProviderId, config: AccountConfig) async -> String? {
     guard let client = clients[provider] else {
       return "Unknown provider."
     }
     do {
       let profile = try await client.validate(config)
-      let id = UUID().uuidString
+      let identity = AccountIdentity(provider: provider, baseUrl: config.baseUrl, username: profile.username)
+      let id = store.findAccount(identity) ?? UUID().uuidString
       store.setAccount(id, provider: provider, config: config, profile: profile)
+      errors[id] = nil
       emitState()
-      // Deep from the start: the new account seeds its whole backlog (and
-      // silently — see doSync's seeding rule).
+      // Deep from the start: a new account seeds its whole backlog (and
+      // silently — see doSync's seeding rule); a revived one catches up on
+      // whatever arrived while it was away.
       Task {
         await self.syncNow(depth: .full)
       }
@@ -215,9 +222,43 @@ actor SyncEngine {
     }
   }
 
+  /// Swaps a connected account's token — the remedy for one that expired
+  /// or was revoked. The new token must belong to the same user; the
+  /// account's id, items, and read state are untouched. Returns nil on
+  /// success, or the human-readable failure.
+  func updateToken(_ id: AccountId, token: String) async -> String? {
+    guard let account = store.getAccount(id), let client = clients[account.provider] else {
+      return "That account is no longer connected."
+    }
+    let config = AccountConfig(token: token, baseUrl: account.baseUrl)
+    do {
+      let profile = try await client.validate(config)
+      let stored = account.username.map {
+        AccountIdentity(provider: account.provider, baseUrl: account.baseUrl, username: $0)
+      }
+      let offered = AccountIdentity(provider: account.provider, baseUrl: account.baseUrl, username: profile.username)
+      if let stored, stored != offered {
+        return "That token belongs to @\(profile.username), not @\(account.username ?? "")."
+      }
+      store.setAccount(id, provider: account.provider, config: config, profile: profile)
+      errors[id] = nil
+      emitState()
+      // A dead token may have kept this account from syncing for days:
+      // catch up everywhere, not just the recent pages.
+      Task {
+        await self.syncNow(depth: .full)
+      }
+      return nil
+    } catch {
+      return errorMessage(error)
+    }
+  }
+
+  /// Removes an account from the app: the token is forgotten now; the
+  /// record and its items park in the store (see Store.removeAccount) in
+  /// case the same account is added back.
   func disconnectAccount(_ id: AccountId) {
-    store.deleteAccount(id)
-    store.deleteAccountItems(id)
+    store.removeAccount(id)
     errors[id] = nil
     emitState()
   }

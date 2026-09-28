@@ -12,9 +12,9 @@ struct InboxListView: View {
   @State private var expandedThreadIds: Set<String> = []
 
   var body: some View {
-    // Existing items always show, even with no account connected — the
-    // collection is the app's own, and it outlives a disconnect (or a token
-    // that failed to decrypt on this launch).
+    // Items keep showing while their account is connected, even when it
+    // can't sync right now (a token that failed to decrypt on this launch)
+    // — the collection is the app's own, not a mirror of the last fetch.
     if threads.isEmpty {
       if !model.hasAccounts {
         EmptyStateView(

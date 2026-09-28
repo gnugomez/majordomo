@@ -63,3 +63,16 @@ func metaLine(for item: InboxItem, now: Date) -> String {
   parts.append(relativeTime(item.updatedAt, now: now))
   return parts.joined(separator: " · ")
 }
+
+/// `GitLab · @username · gitlab.example.com` — the account's who-and-where
+/// line, shared by the Accounts list and the token sheet.
+func accountDescriptor(_ account: AccountState) -> String {
+  var parts = [account.provider.displayName]
+  if let username = account.username {
+    parts.append("@\(username)")
+  }
+  if let baseUrl = account.baseUrl, let host = URL(string: baseUrl)?.host() {
+    parts.append(host)
+  }
+  return parts.joined(separator: " · ")
+}

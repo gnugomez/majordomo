@@ -189,6 +189,20 @@ final class AppModel {
     }
   }
 
+  /// Replaces a connected account's token; the sheet reads the outcome
+  /// through the same `connecting`/`connectError` pair as connect.
+  func updateToken(_ id: AccountId, token: String) {
+    guard !connecting else {
+      return
+    }
+    connecting = true
+    connectError = nil
+    Task {
+      connectError = await engine?.updateToken(id, token: token)
+      connecting = false
+    }
+  }
+
   func disconnect(_ id: AccountId) {
     Task {
       await engine?.disconnectAccount(id)

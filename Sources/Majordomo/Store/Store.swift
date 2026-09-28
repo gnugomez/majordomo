@@ -1,7 +1,10 @@
 // JSON persistence for accounts and the app's own persistent item collection
 // (upstream disappearance is a read signal, never a delete — see SyncEngine).
 // Tokens are stored in the JSON too, AES-GCM-encrypted (see TokenCipher).
-// Accounts are keyed by AccountId, any number per provider.
+// Accounts are keyed by AccountId, any number per provider. A removed
+// account is parked, not erased: its token goes at once, but its record and
+// items linger for a while so adding the same account back resumes with the
+// read state intact — nothing upstream holds a copy of that.
 
 import Foundation
 import os
@@ -12,6 +15,9 @@ private let log = Logger(subsystem: "dev.majordomo.app", category: "store")
 private let retainReadSeconds: TimeInterval = 30 * 24 * 60 * 60
 /// Hard cap on the collection; oldest (read first) beyond it are dropped.
 private let itemsCap = 500
+/// A removed account's record and items stay parked this long, so adding
+/// it back resumes where it left off; past it, everything of its is dropped.
+private let retainRemovedSeconds: TimeInterval = 90 * 24 * 60 * 60
 
 /// A FetchedItem the app has adopted into its own collection. The transient
 /// upstreamRead signal is consumed at upsert and never persisted.
@@ -55,6 +61,10 @@ struct StoredAccount: Codable {
   var avatarUrl: String?
   /// Orders the accounts list.
   var createdAt: Date?
+  /// Set when the user removed the account. The token is gone and nothing
+  /// syncs, but the record and its items stay parked until
+  /// retainRemovedSeconds pass, in case the same account comes back.
+  var removedAt: Date?
 }
 
 struct StoreFile: Codable {
@@ -183,9 +193,11 @@ final class Store {
     )
   }
 
-  /// Every stored account, oldest first.
+  /// Every connected account, oldest first. Parked (removed) accounts are
+  /// nobody's business until they are added back.
   func accounts() -> [StoredAccountInfo] {
     data.accounts
+      .filter { $0.value.removedAt == nil }
       .sorted { a, b in
         let left = a.value.createdAt ?? .distantPast
         let right = b.value.createdAt ?? .distantPast
@@ -197,11 +209,41 @@ final class Store {
       .map { info(id: $0.key, $0.value) }
   }
 
+  /// A connected account by id; nil for unknown and parked ones alike.
   func getAccount(_ id: AccountId) -> StoredAccountInfo? {
-    guard let stored = data.accounts[id] else { return nil }
+    guard let stored = data.accounts[id], stored.removedAt == nil else { return nil }
     return info(id: id, stored)
   }
 
+  /// The record for an identity — connected, or removed and still parked —
+  /// so a reconnect lands on it instead of starting over. A connected match
+  /// wins over a parked one.
+  func findAccount(_ identity: AccountIdentity) -> AccountId? {
+    let matches = data.accounts.filter { entry in
+      guard let username = entry.value.username else {
+        return false
+      }
+      return AccountIdentity(provider: entry.value.provider, baseUrl: entry.value.baseUrl, username: username)
+        == identity
+    }
+    if let connected = matches.first(where: { $0.value.removedAt == nil }) {
+      return connected.key
+    }
+    return matches.max { a, b in
+      (a.value.removedAt ?? .distantPast) < (b.value.removedAt ?? .distantPast)
+    }?.key
+  }
+
+  private func isConnected(_ id: AccountId) -> Bool {
+    guard let account = data.accounts[id] else {
+      return false
+    }
+    return account.removedAt == nil
+  }
+
+  /// Stores an account's credentials and profile under the id — a new
+  /// record, a token swap on a connected one, or the revival of a parked
+  /// one (removedAt clears; createdAt and the items carry over).
   func setAccount(
     _ id: AccountId, provider: ProviderId, config: AccountConfig, profile: ProviderProfile
   ) {
@@ -237,16 +279,29 @@ final class Store {
     save()
   }
 
-  func deleteAccount(_ id: AccountId) {
+  /// Parks a removed account: the token is forgotten on the spot and it
+  /// stops syncing, but the record and its items stay for
+  /// retainRemovedSeconds. Read state lives only here — upstream never
+  /// learns what was read in the app — so adding the same account back must
+  /// find it rather than re-import a year of backlog as unread.
+  func removeAccount(_ id: AccountId) {
     tokenCache.removeValue(forKey: id)
-    data.accounts.removeValue(forKey: id)
+    guard var account = data.accounts[id] else {
+      return
+    }
+    account.token = nil
+    account.tokenEncrypted = nil
+    account.removedAt = Date()
+    data.accounts[id] = account
     save()
   }
 
   // MARK: Items
 
+  /// The live collection: items of connected accounts. A parked account's
+  /// items stay in the file but out of sight.
   func getItems() -> [StoredItem] {
-    Array(data.items.values)
+    data.items.values.filter { isConnected($0.accountId) }
   }
 
   /// Adopts new items (unread) and refreshes known ones (fields updated,
@@ -306,7 +361,7 @@ final class Store {
 
   func markAllRead() {
     var changed = false
-    for (id, item) in data.items where !item.read {
+    for (id, item) in data.items where !item.read && isConnected(item.accountId) {
       data.items[id]?.read = true
       changed = true
     }
@@ -315,27 +370,36 @@ final class Store {
     }
   }
 
-  /// Removes a disconnected account's items immediately.
-  func deleteAccountItems(_ accountId: AccountId) {
-    let before = data.items.count
-    data.items = data.items.filter { $0.value.accountId != accountId }
-    if data.items.count != before {
-      save()
-    }
-  }
-
-  /// Retention: drops read items unseen upstream for 30 days, then enforces
-  /// the 500-item cap (oldest by updatedAt go first, read before unread).
+  /// Retention, in three passes. Parked accounts past retainRemovedSeconds
+  /// go with everything of theirs (as do items whose account record is
+  /// gone). Read live items go 30 days after upstream last mentioned them.
+  /// Then the cap trims the live collection (oldest by updatedAt first, read
+  /// before unread). Parked items sit out the last two passes — they are
+  /// being kept precisely for their read state.
   func prune() {
     var changed = false
-    let cutoff = Date().addingTimeInterval(-retainReadSeconds)
-    for (id, item) in data.items where item.read && item.lastSeenUpstreamAt < cutoff {
+    let now = Date()
+    let removedCutoff = now.addingTimeInterval(-retainRemovedSeconds)
+    for (id, account) in data.accounts {
+      if let removedAt = account.removedAt, removedAt < removedCutoff {
+        data.accounts.removeValue(forKey: id)
+        changed = true
+      }
+    }
+    for (id, item) in data.items where data.accounts[item.accountId] == nil {
       data.items.removeValue(forKey: id)
       changed = true
     }
-    let excess = data.items.count - itemsCap
+    let readCutoff = now.addingTimeInterval(-retainReadSeconds)
+    for (id, item) in data.items
+    where isConnected(item.accountId) && item.read && item.lastSeenUpstreamAt < readCutoff {
+      data.items.removeValue(forKey: id)
+      changed = true
+    }
+    let live = getItems()
+    let excess = live.count - itemsCap
     if excess > 0 {
-      let victims = data.items.values
+      let victims = live
         .sorted { a, b in
           if a.read != b.read {
             return a.read
