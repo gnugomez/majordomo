@@ -10,7 +10,7 @@ import SwiftUI
 
 /// The editor's fixed height, shared with its placeholder so the page
 /// never resizes on selection.
-private let editorHeight: CGFloat = 470
+private let editorHeight: CGFloat = 430
 /// The conditions box grows with its rows up to this many, then scrolls —
 /// a built-in rule carries four, and a partly visible fifth row is the
 /// scroll cue.
@@ -20,20 +20,6 @@ private let conditionRowHeight: CGFloat = 28
 private let previewCap = 50
 /// The match preview never shrinks below this, however tall the rule is.
 private let previewMinHeight: CGFloat = 100
-
-/// The catch-all as a target a moving rule can hide from — keeping bot
-/// chores out of Recent is the whole point, and Recent is not a label, so
-/// it needs a stand-in to sit among them.
-private let catchAllAsLabel = InboxLabel(
-  id: catchAllInboxId,
-  name: recentCategory.label,
-  symbol: recentCategory.symbol,
-  tint: .accent,
-  notify: .follow,
-  order: -1,
-  isBuiltin: true,
-  kind: .inbox
-)
 
 struct RulesSettingsView: View {
   let model: AppModel
@@ -374,51 +360,29 @@ private struct RuleEditor: View {
         placeholder: choices.isEmpty ? "Create an inbox or a label first." : "Nothing yet",
         inboxes: inboxes,
         labels: labels,
-        unavailable: Set(rule.hiddenFrom),
         help: "Choose the inboxes and labels this rule applies",
         binding: labelBinding
       )
 
-      moveControls(inboxes: inboxes, labels: labels)
+      moveControl
     }
   }
 
-  /// Whether a matching item is moved rather than copied, and where it is
-  /// kept out of. Hiding from Recent is the point of the feature, so the
-  /// catch-all is choosable alongside the real inboxes.
-  @ViewBuilder
-  private func moveControls(inboxes: [InboxLabel], labels: [InboxLabel]) -> some View {
-    Toggle(isOn: movesBinding) {
-      Text("Move matching items here")
-        .font(.system(size: 12))
-    }
-    .toggleStyle(.checkbox)
-    .controlSize(.small)
-    Text("A moved item shows only where this rule applies it, and drops out of the inboxes below.")
-      .font(.system(size: 11))
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
-
-    if rule.movesItems {
-      Text("Hide from")
-        .font(.system(size: 11, weight: .medium))
+  /// Whether a matching item is moved rather than copied. Moved means it
+  /// shows where this rule applies it and nowhere else — no further
+  /// choice to make.
+  private var moveControl: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Toggle(isOn: movesBinding) {
+        Text("Show only here")
+          .font(.system(size: 12))
+      }
+      .toggleStyle(.checkbox)
+      .controlSize(.small)
+      Text("Matching items move into the inboxes above and drop out of every other one, Recent included.")
+        .font(.system(size: 11))
         .foregroundStyle(.secondary)
-      // Every inbox is fair game to hide from, the providers' own
-      // included — keeping bot chores out of Pull requests is as much the
-      // point as keeping them out of Recent. "Apply to" stays narrower:
-      // a user rule fills the user's targets, not a provider's bucket.
-      let hideInboxes = [catchAllAsLabel] + model.catalog.builtinLabels + model.userInboxes
-      RuleTargetRow(
-        pills: (hideInboxes + labels).filter { rule.hiddenFrom.contains($0.id) },
-        placeholder: "Everywhere else",
-        placeholderIsPill: true,
-        inboxes: hideInboxes,
-        labels: labels,
-        unavailable: Set(rule.labelIds),
-        help: "Choose the inboxes this rule's items drop out of",
-        enabled: !readOnly,
-        binding: hideBinding
-      )
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -441,32 +405,13 @@ private struct RuleEditor: View {
         updated.labelIds.removeAll { $0 == id }
         if on {
           updated.labelIds.append(id)
-          // A rule cannot both fill an inbox and hide from it; the stored
-          // rule never contradicts itself, whichever side was set last.
-          updated.hiddenFrom.removeAll { $0 == id }
         }
         onChange(updated)
       }
     )
   }
 
-  private func hideBinding(_ id: LabelId) -> Binding<Bool> {
-    Binding(
-      get: { rule.hiddenFrom.contains(id) },
-      set: { on in
-        var updated = rule
-        updated.hiddenFrom.removeAll { $0 == id }
-        if on {
-          updated.hiddenFrom.append(id)
-          updated.labelIds.removeAll { $0 == id }
-        }
-        onChange(updated)
-      }
-    )
-  }
-
-  /// Turning moving off leaves the chosen inboxes stored, so switching it
-  /// back on restores what was picked rather than resetting to everywhere.
+  /// The move switch.
   private var movesBinding: Binding<Bool> {
     Binding(
       get: { rule.movesItems },

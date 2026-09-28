@@ -157,20 +157,15 @@ struct LabelRule: Identifiable, Codable, Hashable, Sendable {
   var match: RuleMatch = .all
   var conditions: [RuleCondition]
   var labelIds: [LabelId]
-  /// Whether a matching item is MOVED rather than copied: it shows in
-  /// what this rule applies, and is kept out of the inboxes named by
-  /// `hiddenFrom` — or out of every other inbox when that is empty.
+  /// Whether a matching item is MOVED rather than copied: it shows only
+  /// in what this rule applies, and nowhere else — the catch-all
+  /// included.
   var movesItems: Bool = false
-  /// The inboxes a moved item is kept out of. Empty with `movesItems` on
-  /// means everywhere but this rule's own targets. An id that also
-  /// appears in `labelIds` is ignored: a rule cannot both fill an inbox
-  /// and hide from it.
-  var hiddenFrom: [LabelId] = []
 }
 
 extension LabelRule {
   private enum CodingKeys: String, CodingKey {
-    case id, name, enabled, match, conditions, labelIds, movesItems, hiddenFrom
+    case id, name, enabled, match, conditions, labelIds, movesItems
   }
 
   /// Rules stored before `match` or the move fields existed require every
@@ -184,18 +179,15 @@ extension LabelRule {
     conditions = try container.decode([RuleCondition].self, forKey: .conditions)
     labelIds = try container.decode([LabelId].self, forKey: .labelIds)
     movesItems = try container.decodeIfPresent(Bool.self, forKey: .movesItems) ?? false
-    hiddenFrom = try container.decodeIfPresent([LabelId].self, forKey: .hiddenFrom) ?? []
   }
 
-  /// The inboxes this rule would hide a matching item from, given every
-  /// inbox that exists. Its own targets are never among them.
+  /// The inboxes this rule hides a matching item from, given every inbox
+  /// that exists: all of them but the ones it fills.
   func hidden(among everyInbox: [LabelId]) -> Set<LabelId> {
     guard movesItems else {
       return []
     }
-    let applied = Set(labelIds)
-    let chosen = hiddenFrom.isEmpty ? everyInbox : hiddenFrom
-    return Set(chosen).subtracting(applied)
+    return Set(everyInbox).subtracting(labelIds)
   }
 }
 
