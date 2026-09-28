@@ -49,9 +49,11 @@ struct SidebarOutlineView: NSViewRepresentable {
     outline.addTableColumn(column)
     outline.outlineTableColumn = column
     outline.headerView = nil
-    outline.rowHeight = 30
+    outline.rowHeight = 24
+    // .inset would add a wide margin of its own; .plain plus a modest
+    // indent keeps a row's glyph near the card's edge.
     outline.style = .plain
-    outline.indentationPerLevel = 18
+    outline.indentationPerLevel = 10
     outline.allowsEmptySelection = true
     outline.allowsMultipleSelection = false
     // The outline follows the clip view's width and its one column follows
@@ -68,8 +70,15 @@ struct SidebarOutlineView: NSViewRepresentable {
     let scroll = NSScrollView()
     scroll.documentView = outline
     scroll.hasVerticalScroller = true
+    // An overlay scroller floats over the rows instead of reserving a
+    // column of its own, so the switches sit near the card's edge.
+    scroll.scrollerStyle = .overlay
     scroll.borderType = .bezelBorder
     scroll.drawsBackground = true
+    // No automatic margin: the rows carry their own, so the list starts
+    // where the card does.
+    scroll.automaticallyAdjustsContentInsets = false
+    scroll.contentInsets = NSEdgeInsetsZero
     return scroll
   }
 
@@ -305,12 +314,12 @@ private struct SidebarOutlineRow: View {
   @FocusState private var editing: Bool
 
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: 7) {
       if entry.kind == .folder {
         Image(systemName: entry.symbol)
-          .font(.system(size: 14))
+          .font(.system(size: 12))
           .foregroundStyle(.secondary)
-          .frame(width: 24)
+          .frame(width: 18)
         CommitTextField("Folder name", text: entry.name) { name in
           onRename(name.isEmpty ? "Folder" : name)
         }
@@ -323,7 +332,7 @@ private struct SidebarOutlineRow: View {
           }
         }
       } else {
-        LabelGlyph(symbol: entry.symbol, tint: entry.tint)
+        LabelGlyph(symbol: entry.symbol, tint: entry.tint, size: 18)
         Text(entry.name)
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(entry.hidden ? .secondary : .primary)
@@ -336,9 +345,9 @@ private struct SidebarOutlineRow: View {
           .help(entry.isCatchAll ? "Recent is the catch-all and always shows" : "Show in the sidebar")
       }
     }
-    .padding(.leading, 6)
-    // Clear of the scroll view's scroller, which overlays the trailing edge.
-    .padding(.trailing, 18)
-    .frame(height: 30)
+    .padding(.leading, 2)
+    // Enough that an overlay scroller never lands on the switch.
+    .padding(.trailing, 4)
+    .frame(height: 24)
   }
 }

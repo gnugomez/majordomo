@@ -170,7 +170,9 @@ struct IconPickerSheet: View {
 struct LabelGlyph: View {
   let symbol: String
   let tint: LabelTint
-  var size: CGFloat = 24
+  /// The list-row size every settings page and the outline share; inline
+  /// uses inside a card pass something smaller.
+  var size: CGFloat = 18
 
   var body: some View {
     Circle()

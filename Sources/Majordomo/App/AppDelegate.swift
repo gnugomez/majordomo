@@ -96,6 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     let engine = engine!
     Task {
+      // The on-device model touches no network, so a demo run uses it
+      // too — the composer is the point of the Rules page and has to be
+      // usable there. Demo fixtures still ship their own suggestions.
+      await engine.setIntelligence(AppleIntelligence())
+      await MainActor.run {
+        model.refreshIntelligence()
+      }
       await engine.start()
     }
   }

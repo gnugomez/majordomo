@@ -75,6 +75,11 @@ struct MainWindowView: View {
       }
     } content: {
       InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id)
+        // The suggestion panel floats over the foot of the list, and only
+        // while the model has something to offer.
+        .overlay(alignment: .bottom) {
+          SuggestionPanel(model: model)
+        }
         .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 560)
         // Declared on the column so it lands in the list's own toolbar
         // section: refresh sits over the inbox column, the selection's

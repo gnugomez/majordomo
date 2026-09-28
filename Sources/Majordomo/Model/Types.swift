@@ -91,4 +91,6 @@ struct AppState: Sendable {
   /// The sidebar's tree of inboxes and folders, reconciled with the labels
   /// that exist.
   var sidebar: SidebarLayout = SidebarLayout()
+  /// Suggested labels and rules the user hasn't answered yet.
+  var suggestions: [Suggestion] = []
 }

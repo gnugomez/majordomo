@@ -114,6 +114,10 @@ struct StoreFile: Codable {
   var rules: [LabelRule] = []
   /// The sidebar layout; nil until the first launch that builds one.
   var sidebar: SidebarLayout?
+  /// Suggested labels and rules, pending and dismissed alike — a
+  /// dismissal is remembered by signature so the same pattern isn't
+  /// offered twice.
+  var suggestions: [Suggestion] = []
 }
 
 extension StoreFile {
@@ -126,6 +130,7 @@ extension StoreFile {
     labels = try container.decodeIfPresent([InboxLabel].self, forKey: .labels) ?? []
     rules = try container.decodeIfPresent([LabelRule].self, forKey: .rules) ?? []
     sidebar = try container.decodeIfPresent(SidebarLayout.self, forKey: .sidebar)
+    suggestions = try container.decodeIfPresent([Suggestion].self, forKey: .suggestions) ?? []
   }
 }
 
@@ -493,6 +498,49 @@ final class Store {
     }
     data.sidebar = layout
     save()
+  }
+
+  // MARK: Suggestions
+
+  func suggestions() -> [Suggestion] {
+    data.suggestions
+  }
+
+  /// Every pattern the user has said no to.
+  func dismissedSignatures() -> Set<String> {
+    Set(data.suggestions.filter(\.dismissed).map(\.signature))
+  }
+
+  /// Adds suggestions whose signature isn't already known, pending or
+  /// dismissed — the same pattern is never offered twice.
+  func addSuggestions(_ new: [Suggestion]) {
+    let known = Set(data.suggestions.map(\.signature))
+    let fresh = new.filter { !known.contains($0.signature) }
+    guard !fresh.isEmpty else {
+      return
+    }
+    data.suggestions.append(contentsOf: fresh)
+    save()
+  }
+
+  /// Marks one dismissed; it stays in the file so the pattern behind it
+  /// stays quiet.
+  func dismissSuggestion(_ id: String) {
+    guard let index = data.suggestions.firstIndex(where: { $0.id == id }), !data.suggestions[index].dismissed else {
+      return
+    }
+    data.suggestions[index].dismissed = true
+    save()
+  }
+
+  /// Drops one outright — what accepting it does, since it becomes a real
+  /// rule and has nothing left to say.
+  func removeSuggestion(_ id: String) {
+    let before = data.suggestions.count
+    data.suggestions.removeAll { $0.id == id }
+    if data.suggestions.count != before {
+      save()
+    }
   }
 
   /// The user's hand on one item: `true` forces the label on, `false` off,

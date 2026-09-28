@@ -11,6 +11,11 @@ private let syncInterval: Duration = .seconds(60)
 /// manual refresh and at least this often, so items beyond the recent
 /// window surface instead of hiding until the window happens to shift.
 private let fullSyncInterval: TimeInterval = 60 * 60
+/// The shortest gap between suggestion sweeps. Patterns build over days,
+/// so asking the model more often than this would spend battery to be
+/// told the same thing — and a deep sync's import must not set off a
+/// burst of them.
+private let suggestionSweepInterval: TimeInterval = 6 * 60 * 60
 /// New unread items only post a banner while their activity is this fresh.
 /// A deep sync can surface months-old backlog in one go — that belongs in
 /// the inbox as unread, not in Notification Center as a flood.
@@ -25,12 +30,25 @@ actor SyncEngine {
   /// Posts a user notification for a newly arrived unread item.
   private let notify: @Sendable (InboxItem) -> Void
 
+  /// The on-device model, when one can run here; the null provider
+  /// otherwise, which simply says so.
+  private var intelligence: any IntelligenceProvider = NoIntelligence(
+    reason: "Apple Intelligence isn't set up on this Mac."
+  )
+
   /// Sync/validation errors per account; the rest of an account's state
   /// reads straight from the store.
   private var errors: [AccountId: String] = [:]
   private var lastSyncAt: Date?
   private var lastFullSyncAt: Date?
   private var syncing = false
+  /// True while a suggestion sweep is out with the model.
+  private var suggesting = false
+  /// Whether to look for patterns at all; the user's call, pushed from
+  /// settings.
+  private var suggestionsEnabled = true
+  /// When the last sweep ran, so the next one waits its turn.
+  private var lastSuggestionSweepAt: Date?
   private var inFlight: Task<Void, Never>?
   private var timer: Task<Void, Never>?
 
@@ -64,8 +82,143 @@ actor SyncEngine {
     }
     return AppState(
       items: items, accounts: accounts, lastSyncAt: lastSyncAt, syncing: syncing,
-      labels: store.labels(), rules: store.rules(), sidebar: sidebarLayout()
+      labels: store.labels(), rules: store.rules(), sidebar: sidebarLayout(),
+      suggestions: store.suggestions().filter { !$0.dismissed }
     )
+  }
+
+  // MARK: Intelligence
+
+  /// Installs the provider the app shell built (the real one needs
+  /// FoundationModels, which the engine doesn't import).
+  func setIntelligence(_ provider: any IntelligenceProvider) {
+    intelligence = provider
+  }
+
+  func intelligenceAvailability() -> IntelligenceAvailability {
+    intelligence.availability()
+  }
+
+  /// A sentence into a rule the app will actually run: the model drafts,
+  /// `RuleDraft.validated` checks, and only then does anything reach the
+  /// store. Returns the rule and the target it would create, for the user
+  /// to confirm — nothing is saved here.
+  func composeRule(from text: String) async -> Result<ValidatedRule, IntelligenceError> {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return .failure(IntelligenceError(message: "Describe the rule you want in a sentence."))
+    }
+    do {
+      let draft = try await intelligence.composeRule(from: trimmed, labels: store.labels())
+      switch draft.validated(against: store.labels()) {
+      case .success(let validated):
+        return .success(validated)
+      case .failure(let error):
+        return .failure(IntelligenceError(message: error.localizedDescription))
+      }
+    } catch {
+      let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+      return .failure(IntelligenceError(message: message))
+    }
+  }
+
+  /// Stores a composed or accepted rule: its new target first, so the rule
+  /// has something to point at, then a sweep so the inbox reflects it at
+  /// once.
+  func applyRule(_ validated: ValidatedRule) {
+    if let target = validated.newTarget {
+      store.setLabels(store.labels() + [target])
+    }
+    store.setRules(store.rules() + [validated.rule])
+    sweepLabels()
+    reconcileSidebar()
+    emitState()
+  }
+
+  /// Looks for patterns worth a label and asks the model about the
+  /// strongest few. Mining is deterministic (see Suggestion.swift); the
+  /// model only names and judges.
+  func sweepSuggestions() async {
+    guard suggestionsEnabled, intelligence.availability().isAvailable, !suggesting else {
+      return
+    }
+    suggesting = true
+    lastSuggestionSweepAt = Date()
+    defer { suggesting = false }
+    let labels = store.labels()
+    let candidates = suggestionCandidates(
+      in: store.inboxItems(),
+      coveredSignatures: coveredSignatures(in: store.rules()),
+      dismissed: store.dismissedSignatures()
+    ).prefix(suggestionCandidateBudget)
+    guard !candidates.isEmpty else {
+      return
+    }
+    var fresh: [Suggestion] = []
+    for candidate in candidates {
+      guard let draft = try? await intelligence.judge(candidate, labels: labels), !draft.targetName.isEmpty else {
+        continue
+      }
+      // The model names the label; the conditions stay the mined ones, so
+      // a suggestion always matches the pattern it came from.
+      fresh.append(
+        Suggestion(
+          id: UUID().uuidString,
+          signature: candidate.signature,
+          name: draft.name.isEmpty ? draft.targetName : draft.name,
+          targetName: draft.targetName,
+          targetKind: draft.targetKind.lowercased() == "inbox" ? .inbox : .label,
+          targetSymbol: NSSymbolName.known(draft.targetSymbol) ?? "tag",
+          targetTint: LabelTint(rawValue: draft.targetTint.lowercased()) ?? .blue,
+          rationale: draft.rationale,
+          conditions: candidate.conditions,
+          matchCount: candidate.count,
+          createdAt: Date()
+        )
+      )
+    }
+    guard !fresh.isEmpty else {
+      return
+    }
+    store.addSuggestions(fresh)
+    emitState()
+  }
+
+  /// Turns a suggestion into a real label and rule.
+  func acceptSuggestion(_ id: String) {
+    guard let suggestion = store.suggestions().first(where: { $0.id == id }) else {
+      return
+    }
+    let labels = store.labels()
+    let existing = labels.first { $0.name.caseInsensitiveCompare(suggestion.targetName) == .orderedSame }
+    let target = existing ?? InboxLabel(
+      id: UUID().uuidString,
+      name: suggestion.targetName,
+      symbol: suggestion.targetSymbol,
+      tint: suggestion.targetTint,
+      notify: .follow,
+      order: labels.count,
+      kind: suggestion.targetKind
+    )
+    let rule = LabelRule(
+      id: UUID().uuidString, name: suggestion.name, conditions: suggestion.conditions, labelIds: [target.id]
+    )
+    applyRule(ValidatedRule(rule: rule, newTarget: existing == nil ? target : nil))
+    store.removeSuggestion(id)
+    emitState()
+  }
+
+  func dismissSuggestion(_ id: String) {
+    store.dismissSuggestion(id)
+    emitState()
+  }
+
+  /// Turns pattern-watching on or off. Switching it off stops the sweeps
+  /// and hides what is pending, without forgetting the dismissals — on
+  /// again and the same patterns stay quiet.
+  func setSuggestionsEnabled(_ enabled: Bool) {
+    suggestionsEnabled = enabled
+    emitState()
   }
 
   private func emitState() {
@@ -175,6 +328,22 @@ actor SyncEngine {
     }
     syncing = false
     emitState()
+
+    // Suggestions catch up in the background, at their own slow cadence;
+    // nothing here waits on the model.
+    if suggestionSweepIsDue() {
+      Task {
+        await self.sweepSuggestions()
+      }
+    }
+  }
+
+  /// True when no sweep has run yet, or the interval has passed.
+  private func suggestionSweepIsDue() -> Bool {
+    guard let lastSuggestionSweepAt else {
+      return true
+    }
+    return Date().timeIntervalSince(lastSuggestionSweepAt) >= suggestionSweepInterval
   }
 
   // MARK: Labels

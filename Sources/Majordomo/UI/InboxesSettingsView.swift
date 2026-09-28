@@ -37,7 +37,7 @@ struct InboxesSettingsView: View {
           model.updateSidebar { $0.setHidden(id, !visible) }
         }
       )
-      .frame(height: 340)
+      .frame(height: 280)
 
       HStack(spacing: 8) {
         Button("New Folder") {
@@ -110,7 +110,7 @@ struct InboxesSettingsView: View {
       )
     } else if let selection, let label = model.label(selection) {
       HStack(spacing: 8) {
-        LabelGlyph(symbol: label.symbol, tint: label.tint, size: 20)
+        LabelGlyph(symbol: label.symbol, tint: label.tint)
         Text(label.name)
           .font(.system(size: 13, weight: .medium))
         Spacer()
@@ -236,7 +236,7 @@ private struct InboxInspector: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        LabelGlyph(symbol: inbox.symbol, tint: inbox.tint, size: 20)
+        LabelGlyph(symbol: inbox.symbol, tint: inbox.tint)
         CommitTextField("Inbox name", text: inbox.name) { name in
           var updated = inbox
           updated.name = name.isEmpty ? "Untitled" : name

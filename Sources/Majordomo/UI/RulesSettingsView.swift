@@ -1,15 +1,16 @@
-// The Rules settings page: the logical rules that assign labels — the
-// providers' built-in rules (the sidebar buckets, read-only), the user's
-// rules with their switches, and the editor for the selected one: its
-// conditions (field, test, value), the labels it applies, and a live
-// preview of the items it matches right now. Edits commit whole user rules
-// through the model; text commits on submit or blur.
+// The Rules settings page: what the on-device model suggests, a field for
+// describing a rule in a sentence, and the rules themselves — the
+// providers' built-in ones (the sidebar buckets, read-only), the user's
+// with their switches, and the editor for the selected one: its
+// conditions (field, test, value), what it applies, and a live preview of
+// the items it matches right now. Edits commit whole user rules through
+// the model; text commits on submit or blur.
 
 import SwiftUI
 
 /// The editor's fixed height, shared with its placeholder so the page
 /// never resizes on selection.
-private let editorHeight: CGFloat = 460
+private let editorHeight: CGFloat = 380
 /// The conditions box grows with its rows up to this many, then scrolls —
 /// a built-in rule carries four, and a partly visible fifth row is the
 /// scroll cue.
@@ -18,7 +19,7 @@ private let conditionRowHeight: CGFloat = 28
 /// Rows the match preview shows at most; the header carries the true count.
 private let previewCap = 50
 /// The match preview never shrinks below this, however tall the rule is.
-private let previewMinHeight: CGFloat = 120
+private let previewMinHeight: CGFloat = 100
 
 struct RulesSettingsView: View {
   let model: AppModel
@@ -30,9 +31,24 @@ struct RulesSettingsView: View {
   /// The built-in rules fold away by default: the user's own are the
   /// point of the page, and there are a dozen provider rules.
   @State private var builtinExpanded = false
+  /// True while the composer holds a draft awaiting confirmation.
+  @State private var draftPending = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
+      // One thing asking to be judged at a time: a draft waiting on the
+      // user takes the place of the suggestion card.
+      if !draftPending, model.suggestionsEnabled {
+        SuggestionsView(model: model)
+      }
+      suggestionsToggle
+      RuleComposerView(model: model) { added in
+        selection = added.id
+        autoSelected = true
+      } onPending: { pending in
+        draftPending = pending
+      }
+
       List(selection: $selection) {
         DisclosureGroup(isExpanded: $builtinExpanded) {
           ForEach(allBuiltinRules) { rule in
@@ -67,7 +83,7 @@ struct RulesSettingsView: View {
         }
       }
       .listStyle(.bordered)
-      .frame(height: 176)
+      .frame(height: 132)
 
       ControlGroup {
         Button {
@@ -130,17 +146,6 @@ struct RulesSettingsView: View {
     providerSpecs.first { spec in spec.builtinRules.contains { $0.id == rule.id } }?.displayName ?? ""
   }
 
-  /// A rule's conditions as one sentence — "Kind is issue and Reason is not
-  /// assigned…" — for the built-in rows.
-  private func describe(_ rule: LabelRule) -> String {
-    rule.conditions.map { condition in
-      let test = ConditionTest(op: condition.op, negated: condition.negated).label(mention: condition.field == .mention)
-      return condition.field == .mention
-        ? "\(fieldLabel(condition.field)) \(test)"
-        : "\(fieldLabel(condition.field)) \(test) \(condition.value)"
-    }.joined(separator: rule.match == .any ? " or " : " and ")
-  }
-
   /// "2 conditions → Urgent, Infra" for the list row — "any of 2
   /// conditions" when one holding is enough.
   private func summary(_ rule: LabelRule) -> String {
@@ -151,6 +156,32 @@ struct RulesSettingsView: View {
     }
     let names = rule.labelIds.compactMap { model.label($0)?.name }
     return names.isEmpty ? conditions : "\(conditions) → \(names.joined(separator: ", "))"
+  }
+
+  /// Pattern-watching, off or on. Switching it off stops the sweeps and
+  /// hides what is pending; dismissals are remembered either way, so
+  /// turning it back on doesn't replay what was already refused.
+  private var suggestionsToggle: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "sparkles")
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+      Text("Suggest labels from patterns in your inbox")
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+      Spacer(minLength: 0)
+      Toggle(
+        "Suggest labels",
+        isOn: Binding(
+          get: { model.suggestionsEnabled },
+          set: { model.setSuggestionsEnabled($0) }
+        )
+      )
+      .labelsHidden()
+      .toggleStyle(.switch)
+      .controlSize(.mini)
+      .disabled(!model.intelligence.isAvailable)
+    }
   }
 
   private func replace(_ updated: LabelRule) {
@@ -651,38 +682,3 @@ private struct ConditionRow: View {
   }
 }
 
-/// Operator and negation as one choice, worded as the row reads.
-private struct ConditionTest: Hashable {
-  let op: RuleOperator
-  let negated: Bool
-
-  func label(mention: Bool) -> String {
-    if mention {
-      return negated ? "is not a mention" : "is a mention"
-    }
-    switch (op, negated) {
-    case (.is, false): return "is"
-    case (.is, true): return "is not"
-    case (.contains, false): return "contains"
-    case (.contains, true): return "doesn't contain"
-    case (.matches, false): return "matches"
-    case (.matches, true): return "doesn't match"
-    }
-  }
-}
-
-private func fieldLabel(_ field: RuleField) -> String {
-  switch field {
-  case .repo: "Repository"
-  case .title: "Title"
-  case .body: "Body"
-  case .author: "Author"
-  case .kind: "Kind"
-  case .reason: "Reason"
-  case .state: "State"
-  case .provider: "Provider"
-  case .account: "Account"
-  case .upstreamLabel: "Upstream label"
-  case .mention: "Mention"
-  }
-}

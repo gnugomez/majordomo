@@ -243,11 +243,44 @@ enum DemoData {
       ),
     ]
 
+    // Two patterns the model would have noticed, waiting on an answer:
+    // neither signature is covered by the rules above, so they behave
+    // exactly like freshly mined ones.
+    let suggestions = [
+      Suggestion(
+        id: "demo-suggestion-vector",
+        signature: "repo=acme/vector-kit|",
+        name: "Vector Kit",
+        targetName: "Vector Kit",
+        targetKind: .inbox,
+        targetSymbol: "shippingbox",
+        targetTint: .teal,
+        rationale: "Vector Kit keeps coming up — its own inbox would keep it out of Recent.",
+        conditions: [RuleCondition(field: .repo, op: .is, value: "acme/vector-kit")],
+        matchCount: 7,
+        createdAt: now.addingTimeInterval(-3600)
+      ),
+      Suggestion(
+        id: "demo-suggestion-bots",
+        signature: "author=dependabot[bot]|",
+        name: "Dependabot",
+        targetName: "Dependabot",
+        targetKind: .label,
+        targetSymbol: "shippingbox",
+        targetTint: .gray,
+        rationale: "Dependency bumps arrive steadily and rarely need you — a label would mark them at a glance.",
+        conditions: [RuleCondition(field: .author, op: .is, value: "dependabot[bot]")],
+        matchCount: 6,
+        createdAt: now.addingTimeInterval(-7200)
+      ),
+    ]
+
     return StoreFile(
       accounts: accounts,
       items: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
       labels: labels,
-      rules: rules
+      rules: rules,
+      suggestions: suggestions
     )
   }
 }

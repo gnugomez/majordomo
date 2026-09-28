@@ -39,6 +39,14 @@ final class AppModel {
   /// The sidebar's tree of inboxes and folders; edited through
   /// `updateSidebar`, which applies here at once and pushes to the engine.
   private(set) var sidebarLayout = SidebarLayout()
+  /// Labels and rules the on-device model suggests, waiting on the user —
+  /// empty while `suggestionsEnabled` is off.
+  private(set) var suggestions: [Suggestion] = []
+  /// Whether the model watches for patterns worth a label at all.
+  private(set) var suggestionsEnabled: Bool = AppModel.loadSuggestionsEnabled()
+  /// Whether the on-device model can run here; read once the engine has
+  /// installed its provider.
+  private(set) var intelligence: IntelligenceAvailability = .unavailable("Checking…")
   private(set) var lastSyncAt: Date?
   private(set) var syncing = false
 
@@ -99,6 +107,7 @@ final class AppModel {
     labels = state.labels
     rules = state.rules
     sidebarLayout = state.sidebar
+    suggestions = suggestionsEnabled ? state.suggestions : []
     lastSyncAt = state.lastSyncAt
     syncing = state.syncing
     // A sidebar scope pointing at a removed account would deselect every
@@ -198,6 +207,60 @@ final class AppModel {
     self.rules = rules
     Task {
       await engine?.setRules(rules)
+    }
+  }
+
+  // MARK: Intelligence
+
+  private static func loadSuggestionsEnabled() -> Bool {
+    UserDefaults.standard.object(forKey: "suggestionsEnabled") as? Bool ?? true
+  }
+
+  func setSuggestionsEnabled(_ enabled: Bool) {
+    suggestionsEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: "suggestionsEnabled")
+    if !enabled {
+      suggestions = []
+    }
+    Task {
+      await engine?.setSuggestionsEnabled(enabled)
+    }
+  }
+
+  /// Reads the provider's availability once the engine has one.
+  func refreshIntelligence() {
+    Task {
+      if let availability = await engine?.intelligenceAvailability() {
+        intelligence = availability
+      }
+    }
+  }
+
+  /// A sentence into a rule to confirm; nothing is saved until
+  /// `applyRule`. The message on failure is fit to show verbatim.
+  func composeRule(_ text: String) async -> Result<ValidatedRule, IntelligenceError> {
+    guard let engine else {
+      return .failure(IntelligenceError(message: "The sync engine isn't running."))
+    }
+    return await engine.composeRule(from: text)
+  }
+
+  /// Saves a composed rule (and the label or inbox it needs).
+  func applyRule(_ validated: ValidatedRule) {
+    Task {
+      await engine?.applyRule(validated)
+    }
+  }
+
+  func acceptSuggestion(_ id: String) {
+    Task {
+      await engine?.acceptSuggestion(id)
+    }
+  }
+
+  func dismissSuggestion(_ id: String) {
+    Task {
+      await engine?.dismissSuggestion(id)
     }
   }
 
