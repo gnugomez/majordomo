@@ -3,6 +3,7 @@
 // sidebar material, keyboard navigation, and the toolbar are all the
 // system's. Settings open in their own window.
 
+import AppKit
 import SwiftUI
 
 struct MainWindowView: View {
@@ -28,9 +29,10 @@ struct MainWindowView: View {
       ?? model.items
     let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
     // Hidden inboxes fall back to Recent (always visible, always first).
-    // The search filter applies to every category alike; the sidebar's
-    // badges stay unfiltered (SidebarView counts on its own).
-    let categories = categorize(inboxOrder(matchingSearch(items, model.searchText)), into: specs)
+    // The search and date filters apply to every category alike; the
+    // sidebar's badges stay unfiltered (SidebarView counts on its own).
+    let narrowed = matchingWindow(matchingSearch(items, model.searchText), model.activityWindow, now: model.now)
+    let categories = categorize(inboxOrder(narrowed), into: specs)
       .filter { !model.hiddenCategories.contains($0.id) }
     let category = categories.first { $0.id == sidebar.category } ?? categories[0]
     return Scope(account: account, category: category, threads: groupIntoThreads(category.items))
@@ -102,6 +104,20 @@ struct MainWindowView: View {
     }
   }
 
+  /// The filter glyph as an NSImage. The toolbar draws its items' images
+  /// itself, as templates, so no SwiftUI color modifier ever reaches them;
+  /// a non-template image already painted in the accent color is how the
+  /// active state shows.
+  private static func filterGlyph(active: Bool) -> NSImage {
+    let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "Filter by date")!
+    guard active,
+          let painted = glyph.withSymbolConfiguration(.init(paletteColors: [.controlAccentColor])) else {
+      return glyph
+    }
+    painted.isTemplate = false
+    return painted
+  }
+
   private func windowTitle(for scope: Scope) -> String {
     guard let account = scope.account else {
       return scope.category.label
@@ -126,6 +142,9 @@ struct MainWindowView: View {
     // (the search field owns the trailing edge) and only while something
     // is selected; the invisible item covers the empty case so the detail
     // section (which anchors the list column's items) never disappears.
+    // The date filter is declared last so it is the item nearest the
+    // search field; MainWindowController then moves the toolbar's trailing
+    // spacer ahead of it, which SwiftUI offers no placement for.
     .toolbar {
       if selectedThreads.isEmpty {
         ToolbarItem {
@@ -140,7 +159,37 @@ struct MainWindowView: View {
           openButton(for: actionTargets)
         }
       }
+      ToolbarItem {
+        activityFilterMenu
+      }
     }
+  }
+
+  /// The date filter: a pull-down of rolling windows behind the plain
+  /// filter glyph (no menu chevron), accent-colored while one is active.
+  private var activityFilterMenu: some View {
+    let active = model.activityWindow != nil
+    return Menu {
+      Picker(
+        "Show",
+        selection: Binding(
+          get: { model.activityWindow },
+          set: { model.setActivityWindow($0) }
+        )
+      ) {
+        Text("Any time").tag(ActivityWindow?.none)
+        Divider()
+        ForEach(ActivityWindow.allCases) { window in
+          Text(window.label).tag(Optional(window))
+        }
+      }
+      .pickerStyle(.inline)
+    } label: {
+      Image(nsImage: Self.filterGlyph(active: active))
+        .accessibilityLabel("Filter by date")
+    }
+    .menuIndicator(.hidden)
+    .help(model.activityWindow.map { "Showing the \($0.label.lowercased()) — filter by date" } ?? "Filter by date")
   }
 
   private func markReadButton(for selectedThreads: [InboxThread]) -> some View {

@@ -70,3 +70,14 @@ reintroduces the bug:
 - `orderFrontRegardless()` after `NSApp.activate()` when opening windows:
   cooperative activation can deny the focus steal and the window would open
   buried.
+- `pairFilterWithSearch()` (MainWindowController) moves the toolbar's
+  trailing flexible space ahead of the date-filter item: SwiftUI lays the
+  trailing end out as [items][flexible space][search] and offers no
+  placement after the spacer (`.primaryAction`, `ToolbarSpacer`, and
+  `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
+  the toolbar's add/remove notifications because selection changes re-diff
+  the detail items.
+- The date-filter glyph is an `NSImage` painted via a symbol configuration
+  (MainWindowView.filterGlyph): the toolbar draws item images itself as
+  templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
+  a non-template image keeps its color.

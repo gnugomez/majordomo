@@ -50,6 +50,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     shouldCascadeWindows = false
     windowFrameAutosaveName = "MainWindow"
     window.delegate = self
+    // The toolbar is SwiftUI's; keep its trailing pair in order whenever
+    // SwiftUI re-diffs the items (selection changes swap the detail items).
+    for name in [NSToolbar.didRemoveItemNotification, NSToolbar.willAddItemNotification] {
+      // The toolbar doesn't exist yet (SwiftUI installs it on show), so
+      // the sender is checked per notification rather than at registration.
+      NotificationCenter.default.addObserver(
+        forName: name, object: nil, queue: .main
+      ) { [weak self] notification in
+        let sender = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+        MainActor.assumeIsolated {
+          guard let self, let toolbar = self.window?.toolbar, sender == ObjectIdentifier(toolbar) else {
+            return
+          }
+          self.scheduleFilterPairing()
+        }
+      }
+    }
   }
 
   @available(*, unavailable)
@@ -87,6 +104,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // The views exist once shown; hand the split view to AppKit's autosave.
     DispatchQueue.main.async { [weak self] in
       self?.adoptColumnAutosave()
+      self?.pairFilterWithSearch()
     }
   }
 
@@ -99,6 +117,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     for splitView in Self.splitViews(in: root) where splitView.autosaveName?.isEmpty != false {
       splitView.autosaveName = "MainWindowColumns"
     }
+  }
+
+  private var filterPairingScheduled = false
+
+  /// Coalesces the pairing behind the current runloop turn: SwiftUI adds
+  /// and removes several items per diff, and the layout is only settled
+  /// once they are all in.
+  private func scheduleFilterPairing() {
+    guard !filterPairingScheduled else {
+      return
+    }
+    filterPairingScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      self?.filterPairingScheduled = false
+      self?.pairFilterWithSearch()
+    }
+  }
+
+  /// SwiftUI lays the toolbar's trailing end out as
+  /// [detail items…][flexible space][search field], with no placement
+  /// that lands an item after the spacer. The date filter (the last
+  /// detail item) belongs flush against the search field, the way Music
+  /// pairs its filter with search — so the spacer moves ahead of it.
+  /// Idempotent: once paired, the item before the search field is no
+  /// longer the spacer and nothing happens.
+  private func pairFilterWithSearch() {
+    guard let toolbar = window?.toolbar else {
+      return
+    }
+    let items = toolbar.items
+    guard let searchIndex = items.lastIndex(where: { $0 is NSSearchToolbarItem }),
+          searchIndex >= 2,
+          items[searchIndex - 1].itemIdentifier == .flexibleSpace,
+          items[searchIndex - 2].itemIdentifier != .flexibleSpace,
+          !(items[searchIndex - 2] is NSTrackingSeparatorToolbarItem) else {
+      return
+    }
+    toolbar.removeItem(at: searchIndex - 1)
+    toolbar.insertItem(withItemIdentifier: .flexibleSpace, at: searchIndex - 2)
   }
 
   private static func splitViews(in view: NSView) -> [NSSplitView] {

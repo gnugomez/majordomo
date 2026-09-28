@@ -38,11 +38,22 @@ struct ItemRowView: View {
             .truncationMode(.tail)
         }
         HStack(spacing: 4) {
-          Text(highlighted(metaLine(for: item, now: now), terms: highlightTerms))
+          // The where-and-who is the only part that truncates: the time
+          // keeps its full size (like the provider mark), so a narrow column
+          // loses the repo's tail, never the "3h".
+          let source = metaSource(for: item)
+          let time = relativeTime(item.updatedAt, now: now)
+          if !source.isEmpty {
+            Text(highlighted(source, terms: highlightTerms))
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+              .truncationMode(.tail)
+          }
+          Text(source.isEmpty ? time : "· \(time)")
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.tail)
+            .fixedSize()
           // A subtle whose-item-is-this hint, riding along after the time.
           ProviderMark(provider: item.provider)
             .foregroundStyle(.tertiary)

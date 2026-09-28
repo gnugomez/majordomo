@@ -1,5 +1,6 @@
-// Middle pane of the main window: the selected category's threads, unread
-// first — selecting feeds the preview, double-click or ⏎ opens the browser.
+// Middle pane of the main window: the selected category's threads, newest
+// activity first — selecting feeds the preview, double-click or ⏎ opens the
+// browser.
 
 import SwiftUI
 
@@ -27,6 +28,12 @@ struct InboxListView: View {
           symbol: "magnifyingglass",
           title: "No results",
           caption: "Nothing here matches “\(model.searchText)”."
+        )
+      } else if let window = model.activityWindow {
+        EmptyStateView(
+          symbol: "calendar",
+          title: "Nothing in the \(window.label.lowercased())",
+          caption: "Widen the date filter in the toolbar to see the rest of your inbox."
         )
       } else if categoryId == recentCategory.id {
         EmptyStateView(

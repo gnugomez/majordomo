@@ -53,6 +53,8 @@ final class AppModel {
   /// Inboxes the user hid from the sidebar (settings → Inboxes). Persisted;
   /// "recent" is the catch-all and can never be hidden.
   private(set) var hiddenCategories: Set<String> = AppModel.loadHiddenCategories()
+  /// The toolbar's date filter, remembered across launches; nil is any time.
+  private(set) var activityWindow: ActivityWindow? = AppModel.loadActivityWindow()
   /// Which new items notify, and with what sound (settings → Notifications).
   private(set) var notifyScope: NotifyScope = NotifyScope(
     rawValue: UserDefaults.standard.string(forKey: "notifyScope") ?? ""
@@ -137,6 +139,15 @@ final class AppModel {
 
   private static func loadHiddenCategories() -> Set<String> {
     Set(UserDefaults.standard.stringArray(forKey: hiddenCategoriesKey) ?? [])
+  }
+
+  private static func loadActivityWindow() -> ActivityWindow? {
+    UserDefaults.standard.string(forKey: "activityWindow").flatMap(ActivityWindow.init(rawValue:))
+  }
+
+  func setActivityWindow(_ window: ActivityWindow?) {
+    activityWindow = window
+    UserDefaults.standard.set(window?.rawValue, forKey: "activityWindow")
   }
 
   func setNotifyScope(_ scope: NotifyScope) {

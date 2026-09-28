@@ -46,16 +46,17 @@ func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] 
   }
 }
 
-/// Unread first, newest activity first within each group — the order every
-/// list in the app shows items in. Recency alone won't do: updatedAt is the
-/// target's last-activity time, so a busy already-read MR would sit above a
-/// fresh unread arrival indefinitely.
+/// Newest activity first — the order every list in the app shows items in.
+/// Read state never enters the ordering: a row keeps its place when it is
+/// read, so nothing shifts under the pointer; the unread dot, the bold
+/// title, and the sidebar badges carry the signal instead. Equal times fall
+/// back to the id so ties don't reshuffle between syncs.
 func inboxOrder(_ items: [InboxItem]) -> [InboxItem] {
   items.sorted { a, b in
-    if a.read != b.read {
-      return !a.read
+    if a.updatedAt != b.updatedAt {
+      return a.updatedAt > b.updatedAt
     }
-    return a.updatedAt > b.updatedAt
+    return a.id < b.id
   }
 }
 
@@ -71,6 +72,48 @@ func matchingSearch(_ items: [InboxItem], _ query: String) -> [InboxItem] {
       fields.contains { $0.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
     }
   }
+}
+
+/// The toolbar's date filter: a rolling window over an item's last
+/// activity. Absent (nil) means any time.
+enum ActivityWindow: String, CaseIterable, Identifiable, Sendable {
+  case twoDays
+  case fiveDays
+  case week
+  case twoWeeks
+  case month
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .twoDays: "Last 2 days"
+    case .fiveDays: "Last 5 days"
+    case .week: "Last week"
+    case .twoWeeks: "Last 2 weeks"
+    case .month: "Last month"
+    }
+  }
+
+  /// Rolling, in days — "last month" is 30 of them.
+  var days: Int {
+    switch self {
+    case .twoDays: 2
+    case .fiveDays: 5
+    case .week: 7
+    case .twoWeeks: 14
+    case .month: 30
+    }
+  }
+}
+
+/// Items whose last activity falls inside the window; a nil window passes
+/// everything through. Stacks with matchingSearch — both narrow the list,
+/// neither touches the sidebar badges.
+func matchingWindow(_ items: [InboxItem], _ window: ActivityWindow?, now: Date) -> [InboxItem] {
+  guard let window else { return items }
+  let cutoff = now.addingTimeInterval(-TimeInterval(window.days) * 24 * 60 * 60)
+  return items.filter { $0.updatedAt >= cutoff }
 }
 
 /// What the sidebar selects: a category id, optionally scoped to one

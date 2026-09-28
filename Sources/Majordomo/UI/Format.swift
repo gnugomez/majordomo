@@ -50,9 +50,10 @@ func absoluteTime(_ date: Date) -> String {
   absoluteFormatter.string(from: date)
 }
 
-/// An item's meta line — "repo · author · 1h", skipping missing parts —
-/// shared by the list rows and the tray-menu rows.
-func metaLine(for item: InboxItem, now: Date) -> String {
+/// The where-and-who of an item's meta line — "repo · author", skipping
+/// missing parts. The list rows show it ahead of the time in an element of
+/// its own, so a narrow column truncates this and never the time.
+func metaSource(for item: InboxItem) -> String {
   var parts: [String] = []
   if !item.repo.isEmpty {
     parts.append(item.repo)
@@ -60,8 +61,15 @@ func metaLine(for item: InboxItem, now: Date) -> String {
   if let author = item.author {
     parts.append(author)
   }
-  parts.append(relativeTime(item.updatedAt, now: now))
   return parts.joined(separator: " · ")
+}
+
+/// The whole meta line — "repo · author · 1h" — for the tray-menu rows,
+/// which are plain text.
+func metaLine(for item: InboxItem, now: Date) -> String {
+  let source = metaSource(for: item)
+  let time = relativeTime(item.updatedAt, now: now)
+  return source.isEmpty ? time : "\(source) · \(time)"
 }
 
 /// `GitLab · @username · gitlab.example.com` — the account's who-and-where
