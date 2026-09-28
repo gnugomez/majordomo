@@ -27,14 +27,18 @@ struct MainWindowView: View {
     let account = sidebar.account.flatMap { id in model.accounts.first { $0.id == id } }
     let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } }
       ?? model.items
-    let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
-    // Hidden inboxes fall back to Recent (always visible, always first).
-    // The search and date filters apply to every category alike; the
-    // sidebar's badges stay unfiltered (SidebarView counts on its own).
+    let labels = account.map { accountLabels(for: $0.provider, user: model.labels) }
+      ?? aggregatedLabels(user: model.labels)
+    let specs = categories(for: labels)
+    // The sidebar layout decides what is selectable: an inbox hidden there
+    // or gone from the tree falls back to Recent (always first in specs,
+    // never hidden). The search and date filters apply to every category
+    // alike; the sidebar's badges stay unfiltered (SidebarView counts on
+    // its own).
     let narrowed = matchingWindow(matchingSearch(items, model.searchText), model.activityWindow, now: model.now)
     let categories = categorize(inboxOrder(narrowed), into: specs)
-      .filter { !model.hiddenCategories.contains($0.id) }
-    let category = categories.first { $0.id == sidebar.category } ?? categories[0]
+    let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
+    let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
     return Scope(account: account, category: category, threads: groupIntoThreads(category.items))
   }
 

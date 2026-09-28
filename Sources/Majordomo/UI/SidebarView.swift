@@ -2,7 +2,9 @@
 // top (open by default), one collapsible section per connected account —
 // headed by the provider's mark, its name, and the account's username — and
 // the identity/settings row at the foot. Buckets and their wording come from
-// each provider's spec.
+// each provider's spec; the user's label folders sit nested under one
+// collapsible "Labels" node after them in every section, in their own
+// tints.
 
 import SwiftUI
 
@@ -99,16 +101,16 @@ struct SidebarView: View {
     }
   }
 
+  /// One section's rows, drawn from the sidebar layout: inboxes and
+  /// folders in the user's order, hidden ones skipped.
   @ViewBuilder
   private func categoryRows(account: AccountState?) -> some View {
     let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } } ?? model.items
-    let specs = account.map { accountCategories(for: $0.provider) } ?? aggregatedCategories
-    ForEach(categorize(items, into: specs).filter { !model.hiddenCategories.contains($0.id) }) { category in
-      Label(category.label, systemImage: category.symbol)
-        // Unread threads, not items — the badge matches the rows the list
-        // will actually show.
-        .badge(groupIntoThreads(category.items).count { !$0.read })
-        .tag(SidebarSelection(account: account?.id, category: category.id))
+    let labels = account.map { accountLabels(for: $0.provider, user: model.labels) }
+      ?? aggregatedLabels(user: model.labels)
+    let rows = sidebarRows(layout: model.sidebarLayout, categories: categorize(items, into: categories(for: labels)))
+    ForEach(rows) { row in
+      SidebarRowView(row: row, sectionKey: account?.id ?? "all", account: account, model: model)
     }
   }
 
@@ -139,5 +141,102 @@ struct SidebarView: View {
   private var accountsHelp: String {
     let names = model.accounts.compactMap(\.username).map { "@\($0)" }
     return names.isEmpty ? "Settings" : "\(names.joined(separator: ", ")) — Settings"
+  }
+}
+
+
+/// One row of the layout: an inbox row, or a folder that draws its rows
+/// inside a disclosure group — a struct, so the recursion has a type.
+private struct SidebarRowView: View {
+  let row: SidebarRow
+  let sectionKey: String
+  let account: AccountState?
+  let model: AppModel
+
+  var body: some View {
+    switch row {
+    case .inbox(let category):
+      inboxRow(category)
+    case .folder(let folder, let rows):
+      SidebarFolderGroup(
+        folder: folder,
+        sectionKey: sectionKey,
+        unreadCount: unreadThreadCount(in: rows),
+        openSettings: { model.openSettings?() }
+      ) {
+        ForEach(rows) { child in
+          SidebarRowView(row: child, sectionKey: sectionKey, account: account, model: model)
+        }
+      }
+    }
+  }
+
+  private func inboxRow(_ category: Category) -> some View {
+    Label {
+      Text(category.label)
+    } icon: {
+      // A tinted label wears its tint; the accent (every built-in) is
+      // the sidebar's own glyph color and draws like the catch-all.
+      if let tint = category.spec.tint {
+        Image(systemName: category.symbol)
+          .foregroundStyle(tint.color)
+      } else {
+        Image(systemName: category.symbol)
+      }
+    }
+    // Unread threads, not items — the badge matches the rows the list
+    // will actually show.
+    .badge(groupIntoThreads(category.items).count { !$0.read })
+    .tag(SidebarSelection(account: account?.id, category: category.id))
+    .contextMenu {
+      if category.spec.labelId != nil {
+        Button("Edit Labels…") {
+          model.openSettings?()
+        }
+      }
+    }
+  }
+}
+
+/// A folder of the layout: a disclosure group headed by the folder's own
+/// glyph and name. Not an inbox — selection skips the header — but it
+/// carries the unread count across what it holds. Expansion persists per
+/// section and folder ("folderExpanded-<sectionKey>-<folderId>"), open by
+/// default.
+private struct SidebarFolderGroup<Rows: View>: View {
+  let folder: SidebarFolder
+  let unreadCount: Int
+  let openSettings: () -> Void
+  @ViewBuilder let rows: Rows
+
+  @AppStorage private var expanded: Bool
+
+  init(
+    folder: SidebarFolder, sectionKey: String, unreadCount: Int, openSettings: @escaping () -> Void,
+    @ViewBuilder rows: () -> Rows
+  ) {
+    self.folder = folder
+    self.unreadCount = unreadCount
+    self.openSettings = openSettings
+    self.rows = rows()
+    _expanded = AppStorage(wrappedValue: true, "folderExpanded-\(sectionKey)-\(folder.id)")
+  }
+
+  var body: some View {
+    DisclosureGroup(isExpanded: $expanded) {
+      rows
+    } label: {
+      Label(folder.name, systemImage: folder.symbol)
+        .badge(unreadCount)
+        .contextMenu {
+          Button("Edit Inboxes…") {
+            openSettings()
+          }
+        }
+        // Only the header row is unselectable — it is a group, not an
+        // inbox. Placed on the label, not the group: on the group it would
+        // cover the rows inside as well.
+        .selectionDisabled()
+    }
   }
 }

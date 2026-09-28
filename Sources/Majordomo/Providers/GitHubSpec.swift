@@ -1,5 +1,6 @@
 // Everything GitHub-specific that isn't API traffic: naming, the octocat
-// mark, glyphs and colors for its tokens, and its sidebar buckets.
+// mark, glyphs and colors for its tokens, and its sidebar buckets as
+// built-in labels and rules.
 
 import SwiftUI
 
@@ -20,21 +21,8 @@ struct GitHubSpec: GitForgeSpec {
     URL(string: "https://github.com/\(username).png?size=96")
   }
 
-  let categories: [CategorySpec] = [
-    CategorySpec(id: "assigned", label: "Assigned", symbol: "person.crop.circle", order: 1) {
-      $0.reason == "assigned"
-    },
-    CategorySpec(id: "mentions", label: "Mentions", symbol: "at", order: 2) {
-      $0.reason == "mentioned"
-    },
-    CategorySpec(id: "reviews", label: "Review requests", symbol: "eye", order: 3) {
-      $0.reason == "review_requested"
-    },
-    CategorySpec(id: "issues", label: "Issues", symbol: "smallcircle.filled.circle", order: 4) {
-      $0.kind == "issue" && !GitForgeVisuals.claimedReasons.contains($0.reason)
-    },
-    CategorySpec(id: "pulls", label: "Pull requests", symbol: "arrow.triangle.branch", order: 5) {
-      $0.kind == "pull" && !GitForgeVisuals.claimedReasons.contains($0.reason)
-    },
-  ]
+  let builtinLabels = GitForgeBuckets.labels(pullsName: "Pull requests")
+  let builtinRules = GitForgeBuckets.rules(
+    provider: .github, reviewReasons: ["review_requested"], pullKind: "pull", pullsName: "Pull requests"
+  )
 }

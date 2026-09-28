@@ -85,6 +85,19 @@ struct PreviewView: View {
               fieldLabel("Updated")
               Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
             }
+            GridRow {
+              fieldLabel("Labels")
+              labelsRow(thread)
+            }
+            if !item.upstreamLabels.isEmpty {
+              GridRow {
+                fieldLabel("Upstream")
+                  .help("Labels the target carries at \(item.provider.displayName)")
+                Text(item.upstreamLabels.joined(separator: ", "))
+                  .foregroundStyle(.secondary)
+                  .textSelection(.enabled)
+              }
+            }
           }
           .font(.system(size: 12))
 
@@ -173,6 +186,59 @@ struct PreviewView: View {
       model.selectedMemberId = member.id
     })
     .help("Select this notification — the toolbar actions apply to just it")
+  }
+
+  /// The thread's labels as pills, and the menu that edits them by hand:
+  /// one toggle per label (checked when every member carries it), applied
+  /// to every member, plus a way back to what the rules decide. Tags only:
+  /// an inbox is never shown here nor applied by hand.
+  private func labelsRow(_ thread: InboxThread) -> some View {
+    let carried = model.userLabels.filter { label in thread.items.contains { $0.labels.contains(label.id) } }
+    return HStack(spacing: 6) {
+      ForEach(carried) { label in
+        LabelCapsule(label: label)
+      }
+      if carried.isEmpty {
+        Text("None")
+          .foregroundStyle(.tertiary)
+      }
+      Menu {
+        ForEach(model.userLabels) { label in
+          let on = thread.items.allSatisfy { $0.labels.contains(label.id) }
+          Toggle(isOn: Binding(
+            get: { on },
+            set: { wanted in
+              for member in thread.items {
+                model.setItemLabel(member.id, label.id, on: wanted)
+              }
+            }
+          )) {
+            Label(label.name, systemImage: label.symbol)
+          }
+        }
+        if model.userLabels.isEmpty {
+          Text("No labels yet")
+        }
+        Divider()
+        Button("Reset to Rules") {
+          for member in thread.items {
+            for label in model.userLabels {
+              model.setItemLabel(member.id, label.id, on: nil)
+            }
+          }
+        }
+        Button("Edit Labels…") {
+          model.openSettings?()
+        }
+      } label: {
+        Image(systemName: "plus")
+          .font(.system(size: 10, weight: .semibold))
+      }
+      .menuIndicator(.hidden)
+      .controlSize(.small)
+      .fixedSize()
+      .help("Add or remove labels by hand")
+    }
   }
 
   private func fieldLabel(_ text: String) -> some View {

@@ -1,5 +1,6 @@
-// The little capsule at a row's trailing edge: an item state (colored) or
-// its reason (muted; accent-tinted for the "needs you" tier).
+// The little capsules: an item's state (colored) or reason (muted;
+// accent-tinted for the "needs you" tier), and the user's labels in their
+// own tints.
 
 import SwiftUI
 
@@ -22,6 +23,31 @@ struct CapsuleTag: View {
       )
       .lineLimit(1)
       .fixedSize()
+  }
+}
+
+/// A label's pill: its glyph and name in its tint. Rows show a couple at
+/// most, the preview shows them all.
+struct LabelCapsule: View {
+  let label: InboxLabel
+  var selected = false
+
+  var body: some View {
+    HStack(spacing: 3) {
+      Image(systemName: label.symbol)
+        .font(.system(size: 9, weight: .medium))
+      Text(label.name)
+        .font(.system(size: 10, weight: .medium))
+    }
+    .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(label.tint.color))
+    .padding(.horizontal, 6)
+    .padding(.vertical, 2)
+    .background(
+      selected ? AnyShapeStyle(.quaternary) : AnyShapeStyle(label.tint.color.opacity(0.14)),
+      in: Capsule()
+    )
+    .lineLimit(1)
+    .fixedSize()
   }
 }
 

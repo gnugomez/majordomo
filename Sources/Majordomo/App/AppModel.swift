@@ -30,6 +30,15 @@ final class AppModel {
   // Engine-pushed state.
   private(set) var items: [InboxItem] = []
   private(set) var accounts: [AccountState] = []
+  /// The user's labels (folder order) and rules (evaluation order). Edits
+  /// apply here at once — the settings editors bind text fields to them,
+  /// and a round trip through the engine would lag the keystrokes — then
+  /// push to the engine, whose next state echoes the same values.
+  private(set) var labels: [InboxLabel] = []
+  private(set) var rules: [LabelRule] = []
+  /// The sidebar's tree of inboxes and folders; edited through
+  /// `updateSidebar`, which applies here at once and pushes to the engine.
+  private(set) var sidebarLayout = SidebarLayout()
   private(set) var lastSyncAt: Date?
   private(set) var syncing = false
 
@@ -50,9 +59,6 @@ final class AppModel {
       UserDefaults.standard.set(sidebarSelection.account, forKey: "sidebarAccount")
     }
   }
-  /// Inboxes the user hid from the sidebar (settings → Inboxes). Persisted;
-  /// "recent" is the catch-all and can never be hidden.
-  private(set) var hiddenCategories: Set<String> = AppModel.loadHiddenCategories()
   /// The toolbar's date filter, remembered across launches; nil is any time.
   private(set) var activityWindow: ActivityWindow? = AppModel.loadActivityWindow()
   /// Which new items notify, and with what sound (settings → Notifications).
@@ -90,6 +96,9 @@ final class AppModel {
   func apply(_ state: AppState) {
     items = state.items
     accounts = state.accounts
+    labels = state.labels
+    rules = state.rules
+    sidebarLayout = state.sidebar
     lastSyncAt = state.lastSyncAt
     syncing = state.syncing
     // A sidebar scope pointing at a removed account would deselect every
@@ -135,12 +144,6 @@ final class AppModel {
     )
   }
 
-  private static let hiddenCategoriesKey = "hiddenCategories"
-
-  private static func loadHiddenCategories() -> Set<String> {
-    Set(UserDefaults.standard.stringArray(forKey: hiddenCategoriesKey) ?? [])
-  }
-
   private static func loadActivityWindow() -> ActivityWindow? {
     UserDefaults.standard.string(forKey: "activityWindow").flatMap(ActivityWindow.init(rawValue:))
   }
@@ -160,16 +163,64 @@ final class AppModel {
     UserDefaults.standard.set(sound, forKey: "notificationSound")
   }
 
-  func setCategoryHidden(_ id: String, _ hidden: Bool) {
-    guard id != recentCategory.id else {
+  // MARK: Labels
+
+  /// Every label the sidebar can show: the providers' built-ins as "All
+  /// Inboxes" merges them, then the user's.
+  var allLabels: [InboxLabel] {
+    aggregatedBuiltinLabels + labels
+  }
+
+  /// The user's tags: pills on rows, applied by hand, the Labels page.
+  var userLabels: [InboxLabel] {
+    labels.filter { $0.kind == .label }
+  }
+
+  /// The user's own inboxes: rule-fed buckets seen only in the sidebar,
+  /// made and edited on the Inboxes page.
+  var userInboxes: [InboxLabel] {
+    labels.filter { $0.kind == .inbox }
+  }
+
+  /// Built-in or the user's own.
+  func label(_ id: LabelId) -> InboxLabel? {
+    allLabels.first { $0.id == id }
+  }
+
+  func setLabels(_ labels: [InboxLabel]) {
+    self.labels = labels
+    Task {
+      await engine?.setLabels(labels)
+    }
+  }
+
+  func setRules(_ rules: [LabelRule]) {
+    self.rules = rules
+    Task {
+      await engine?.setRules(rules)
+    }
+  }
+
+  /// Edits the sidebar layout in place (move, hide, add or dissolve a
+  /// folder, rename) and pushes the result to the engine.
+  func updateSidebar(_ change: (inout SidebarLayout) -> Void) {
+    var layout = sidebarLayout
+    change(&layout)
+    guard layout != sidebarLayout else {
       return
     }
-    if hidden {
-      hiddenCategories.insert(id)
-    } else {
-      hiddenCategories.remove(id)
+    sidebarLayout = layout
+    Task {
+      await engine?.setSidebarLayout(layout)
     }
-    UserDefaults.standard.set(hiddenCategories.sorted(), forKey: Self.hiddenCategoriesKey)
+  }
+
+  /// Forces a label on (`true`) or off (`false`) for one item, or hands it
+  /// back to the rules (nil).
+  func setItemLabel(_ itemId: String, _ labelId: LabelId, on: Bool?) {
+    Task {
+      await engine?.setLabelOverride(itemId: itemId, labelId: labelId, on: on)
+    }
   }
 
   func markRead(_ ids: Set<String>) {

@@ -1,7 +1,8 @@
 // Everything GitLab-specific that isn't API traffic: naming, the tanuki
-// mark, glyphs and colors for its tokens, and its sidebar buckets — worded
-// GitLab's way ("Merge requests"), which shows in per-account sections while
-// the aggregated view merges buckets by id.
+// mark, glyphs and colors for its tokens, and its sidebar buckets as
+// built-in labels and rules — worded GitLab's way ("Merge requests"), which
+// shows in per-account sections while the aggregated view merges labels by
+// id.
 
 import SwiftUI
 
@@ -35,23 +36,12 @@ struct GitLabSpec: GitForgeSpec {
     return AnyView(MarkdownBody(text: body))
   }
 
-  let categories: [CategorySpec] = [
-    CategorySpec(id: "assigned", label: "Assigned", symbol: "person.crop.circle", order: 1) {
-      $0.reason == "assigned"
-    },
-    CategorySpec(id: "mentions", label: "Mentions", symbol: "at", order: 2) {
-      $0.reason == "mentioned"
-    },
-    CategorySpec(id: "reviews", label: "Review requests", symbol: "eye", order: 3) {
-      $0.reason == "review_requested" || $0.reason == "approval_required"
-    },
-    CategorySpec(id: "issues", label: "Issues", symbol: "smallcircle.filled.circle", order: 4) {
-      $0.kind == "issue" && !GitForgeVisuals.claimedReasons.contains($0.reason)
-    },
-    CategorySpec(id: "pulls", label: "Merge requests", symbol: "arrow.triangle.branch", order: 5) {
-      $0.kind == "merge" && !GitForgeVisuals.claimedReasons.contains($0.reason)
-    },
-  ]
+  // Both review-request todos fill the review bucket: a rule each.
+  let builtinLabels = GitForgeBuckets.labels(pullsName: "Merge requests")
+  let builtinRules = GitForgeBuckets.rules(
+    provider: .gitlab, reviewReasons: ["review_requested", "approval_required"], pullKind: "merge",
+    pullsName: "Merge requests"
+  )
 }
 
 /// A comment framed as a quotation: accent bar, attribution, then the text —

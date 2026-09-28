@@ -23,6 +23,10 @@ struct FetchedItem: Sendable {
   /// Preview text; the provider decides what a "body" is for it and how its
   /// spec renders it.
   var body: String?
+  /// Labels the target carries upstream (an issue's own labels), when the
+  /// provider fetched them this round; nil means "didn't look", not "none",
+  /// so a prior sync's answer survives.
+  var upstreamLabels: [String]?
   /// True when the provider reports the user already handled this upstream
   /// (read notification thread, done todo). Consumed at upsert time to mark
   /// the local item read; never stored. nil means "unknown/unread".

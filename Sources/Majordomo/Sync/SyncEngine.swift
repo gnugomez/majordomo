@@ -41,6 +41,7 @@ actor SyncEngine {
     self.emit = emit
     self.notify = notify
     store = isDemo ? Store(fixture: DemoData.storeFile()) : Store()
+    store.builtinLabelIds = Set(aggregatedBuiltinLabels.map(\.id))
     clients = Dictionary(uniqueKeysWithValues: providerSpecs.map { ($0.id, $0.makeClient()) })
     for account in store.accounts() where account.config == nil {
       errors[account.id] = "The stored token can't be read — remove and re-add the account."
@@ -49,7 +50,7 @@ actor SyncEngine {
 
   func getState() -> AppState {
     // Items ship unordered — every list sorts for display via inboxOrder.
-    let items = store.getItems().map(\.inboxItem)
+    let items = store.inboxItems()
     let accounts = store.accounts().map { stored in
       AccountState(
         id: stored.id,
@@ -61,7 +62,10 @@ actor SyncEngine {
         error: errors[stored.id]
       )
     }
-    return AppState(items: items, accounts: accounts, lastSyncAt: lastSyncAt, syncing: syncing)
+    return AppState(
+      items: items, accounts: accounts, lastSyncAt: lastSyncAt, syncing: syncing,
+      labels: store.labels(), rules: store.rules(), sidebar: sidebarLayout()
+    )
   }
 
   private func emitState() {
@@ -121,6 +125,9 @@ actor SyncEngine {
         if seededAccounts.contains(accountId) {
           newIds.append(contentsOf: added)
         }
+        // Rules run over the refreshed items right away, so the state pushed
+        // at the end of the sync — and any banner — carries their labels.
+        sweepLabels(accountId: accountId)
 
         // Items upstream stopped returning (GitHub's /notifications only
         // lists unread threads, for one) were handled there: mark them read
@@ -144,7 +151,7 @@ actor SyncEngine {
     }
 
     if !newIds.isEmpty {
-      let byId = Dictionary(uniqueKeysWithValues: store.getItems().map { ($0.id, $0) })
+      let byId = Dictionary(uniqueKeysWithValues: store.inboxItems().map { ($0.id, $0) })
       // Items that arrive already handled upstream don't deserve a ping —
       // nor does old backlog a deep fetch surfaced (it shows up unread in
       // the inbox instead). Which fresh unread ones do is the notification
@@ -152,7 +159,6 @@ actor SyncEngine {
       let freshCutoff = Date().addingTimeInterval(-notifyFreshnessWindow)
       let fresh = newIds.compactMap { byId[$0] }
         .filter { !$0.read && $0.updatedAt > freshCutoff }
-        .map(\.inboxItem)
       // One banner per thread: a target arriving as several notifications at
       // once (a GitLab MR mentioning, assigning, and requesting review) pings
       // once. The mention member fronts it so the scope setting sees it.
@@ -168,6 +174,78 @@ actor SyncEngine {
       lastFullSyncAt = lastSyncAt
     }
     syncing = false
+    emitState()
+  }
+
+  // MARK: Labels
+
+  /// Recomputes the rules' assignments for the live items — one account's,
+  /// or every account's — and persists only the sets that changed, in one
+  /// save. The providers' built-in rules and labels (the sidebar buckets)
+  /// run alongside the user's. Parked accounts' items are not live and
+  /// stay as they were.
+  private func sweepLabels(accountId: AccountId? = nil) {
+    let stored = store.getItems().filter { accountId == nil || $0.accountId == accountId }
+    let assigned = LabelEngine.autoLabels(
+      for: stored.map { store.inboxItem($0) },
+      rules: allBuiltinRules + store.rules(),
+      labels: aggregatedBuiltinLabels + store.labels()
+    )
+    let updates = stored.compactMap { item -> (id: String, labels: Set<LabelId>)? in
+      let labels = assigned[item.id] ?? []
+      return labels == item.autoLabels ? nil : (id: item.id, labels: labels)
+    }
+    store.applyAutoLabels(updates)
+  }
+
+  /// Replaces the label set and re-sweeps: a deleted label leaves every
+  /// item and rule (Store.setLabels), and the rest reassign under the new
+  /// set. The sidebar picks up new labels and drops deleted ones.
+  func setLabels(_ labels: [InboxLabel]) {
+    store.setLabels(labels)
+    sweepLabels()
+    reconcileSidebar()
+    emitState()
+  }
+
+  // MARK: Sidebar
+
+  /// The sidebar layout in step with what exists: the stored one (or the
+  /// standard one on a store that has none), with new labels added and
+  /// vanished ones dropped.
+  private func sidebarLayout() -> SidebarLayout {
+    let builtins = aggregatedBuiltinLabels.map(\.id)
+    let user = store.labels()
+    let inboxes = user.filter { $0.kind == .inbox }.map(\.id)
+    let labels = user.filter { $0.kind == .label }.map(\.id)
+    let stored = store.sidebarLayout()
+      ?? .standard(catchAll: catchAllInboxId, builtins: builtins + inboxes, labels: labels)
+    return stored.reconciled(catchAll: catchAllInboxId, builtins: builtins, inboxes: inboxes, labels: labels)
+  }
+
+  /// Persists the reconciled layout when it differs from the stored one.
+  private func reconcileSidebar() {
+    store.setSidebarLayout(sidebarLayout())
+  }
+
+  /// The user's sidebar edits (Inboxes settings, a label's show-as-inbox
+  /// switch): stored as given, reconciled on the way back out.
+  func setSidebarLayout(_ layout: SidebarLayout) {
+    store.setSidebarLayout(layout)
+    emitState()
+  }
+
+  /// Replaces the rules and re-sweeps every live item.
+  func setRules(_ rules: [LabelRule]) {
+    store.setRules(rules)
+    sweepLabels()
+    emitState()
+  }
+
+  /// The user's hand on one item's label: forced on, forced off, or (nil)
+  /// back to whatever the rules say.
+  func setLabelOverride(itemId: String, labelId: LabelId, on: Bool?) {
+    store.setLabelOverride(itemId: itemId, labelId: labelId, on: on)
     emitState()
   }
 
@@ -299,7 +377,11 @@ actor SyncEngine {
     guard timer == nil else { return }
     timer = Task {
       // The stored state first — profile refresh and sync both hit the
-      // network, and the UI must not sit empty while they run.
+      // network, and the UI must not sit empty while they run. Rules run
+      // over it before it ships, so folders are right from the first frame
+      // (and the fixtures never need hand-computed assignments).
+      self.sweepLabels()
+      self.reconcileSidebar()
       self.emitState()
       // Demo mode is fixtures only: never touch the network.
       guard !isDemo else { return }

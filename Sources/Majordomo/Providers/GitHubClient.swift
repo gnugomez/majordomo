@@ -58,12 +58,17 @@ private struct GHSubject: Decodable {
     let login: String?
   }
 
+  struct Label: Decodable {
+    let name: String?
+  }
+
   let state: String?
   let merged: Bool?
   let merged_at: String?
   let draft: Bool?
   let user: User?
   let body: String?
+  let labels: [Label]?
 }
 
 /// What one subject lookup teaches us; cached per thread id + updated_at.
@@ -71,6 +76,7 @@ private struct Enrichment: Sendable {
   var state: String?
   var author: String?
   var body: String?
+  var upstreamLabels: [String]?
 }
 
 /// True when a Link header advertises a rel="next" page.
@@ -252,6 +258,7 @@ actor GitHubClient: ProviderClient {
           item.state = known.state
           item.author = known.author
           item.body = known.body
+          item.upstreamLabels = known.upstreamLabels
         } else {
           pending.append((items.count, thread, key))
         }
@@ -281,6 +288,7 @@ actor GitHubClient: ProviderClient {
               known.state = toItemState(subjectType: subjectType, subject: subject)
               known.author = subject.user?.login
               known.body = truncatedBody(subject.body)
+              known.upstreamLabels = subject.labels?.compactMap(\.name)
             }
             return (job.index, job.key, known)
           }
@@ -299,6 +307,7 @@ actor GitHubClient: ProviderClient {
       items[lookup.index].state = lookup.known.state
       items[lookup.index].author = lookup.known.author
       items[lookup.index].body = lookup.known.body
+      items[lookup.index].upstreamLabels = lookup.known.upstreamLabels
     }
 
     stateCache = nextCache

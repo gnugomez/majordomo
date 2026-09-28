@@ -4,7 +4,9 @@
 // Accounts are keyed by AccountId, any number per provider. A removed
 // account is parked, not erased: its token goes at once, but its record and
 // items linger for a while so adding the same account back resumes with the
-// read state intact — nothing upstream holds a copy of that.
+// read state intact — nothing upstream holds a copy of that. The user's
+// labels and rules live here too, next to the per-item assignments they
+// govern.
 
 import Foundation
 import os
@@ -40,13 +42,51 @@ struct StoredItem: Codable, Sendable {
   var firstSeenAt: Date
   /// The last sync in which upstream still returned the item.
   var lastSeenUpstreamAt: Date
+  /// What the rules assigned on the last sweep.
+  var autoLabels: Set<LabelId> = []
+  /// The user's forced-on/forced-off labels, kept apart from autoLabels so
+  /// a sweep never undoes them.
+  var labelOverrides: LabelOverrides = [:]
+  /// Labels the target carries at the provider, as last reported.
+  var upstreamLabels: [String]?
 
-  var inboxItem: InboxItem {
+  /// The published shape, with the effective label set resolved against
+  /// the labels that exist.
+  func inboxItem(existingLabels: Set<LabelId>) -> InboxItem {
     InboxItem(
       id: id, accountId: accountId, provider: provider, kind: kind,
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
-      updatedAt: updatedAt, state: state, author: author, body: body, read: read
+      updatedAt: updatedAt, state: state, author: author, body: body, read: read,
+      labels: effectiveLabels(auto: autoLabels, overrides: labelOverrides, existing: existingLabels),
+      upstreamLabels: upstreamLabels ?? []
     )
+  }
+}
+
+extension StoredItem {
+  /// Items written before labels existed lack the label keys; they decode
+  /// with empty assignments instead of failing the whole store.
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    accountId = try container.decode(AccountId.self, forKey: .accountId)
+    provider = try container.decode(ProviderId.self, forKey: .provider)
+    kind = try container.decode(String.self, forKey: .kind)
+    title = try container.decode(String.self, forKey: .title)
+    repo = try container.decode(String.self, forKey: .repo)
+    url = try container.decode(String.self, forKey: .url)
+    reason = try container.decode(String.self, forKey: .reason)
+    isMention = try container.decode(Bool.self, forKey: .isMention)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    state = try container.decodeIfPresent(String.self, forKey: .state)
+    author = try container.decodeIfPresent(String.self, forKey: .author)
+    body = try container.decodeIfPresent(String.self, forKey: .body)
+    read = try container.decode(Bool.self, forKey: .read)
+    firstSeenAt = try container.decode(Date.self, forKey: .firstSeenAt)
+    lastSeenUpstreamAt = try container.decode(Date.self, forKey: .lastSeenUpstreamAt)
+    autoLabels = try container.decodeIfPresent(Set<LabelId>.self, forKey: .autoLabels) ?? []
+    labelOverrides = try container.decodeIfPresent(LabelOverrides.self, forKey: .labelOverrides) ?? [:]
+    upstreamLabels = try container.decodeIfPresent([String].self, forKey: .upstreamLabels)
   }
 }
 
@@ -70,6 +110,23 @@ struct StoredAccount: Codable {
 struct StoreFile: Codable {
   var accounts: [String: StoredAccount] = [:]
   var items: [String: StoredItem] = [:]
+  var labels: [InboxLabel] = []
+  var rules: [LabelRule] = []
+  /// The sidebar layout; nil until the first launch that builds one.
+  var sidebar: SidebarLayout?
+}
+
+extension StoreFile {
+  /// Stores written before labels existed lack these keys; they decode as
+  /// empty rather than failing the whole file.
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    accounts = try container.decodeIfPresent([String: StoredAccount].self, forKey: .accounts) ?? [:]
+    items = try container.decodeIfPresent([String: StoredItem].self, forKey: .items) ?? [:]
+    labels = try container.decodeIfPresent([InboxLabel].self, forKey: .labels) ?? []
+    rules = try container.decodeIfPresent([LabelRule].self, forKey: .rules) ?? []
+    sidebar = try container.decodeIfPresent(SidebarLayout.self, forKey: .sidebar)
+  }
 }
 
 struct StoredAccountInfo {
@@ -97,6 +154,10 @@ final class Store {
   private lazy var key = TokenCipher.loadOrCreateKey()
   /// Decoded tokens, memoized so decryption runs once per account per run.
   private var tokenCache: [AccountId: String] = [:]
+  /// Ids of labels defined outside the store — the providers' built-in
+  /// ones. The engine sets them so effective label sets keep those
+  /// assignments and a user-label edit never scrubs them.
+  var builtinLabelIds: Set<LabelId> = []
 
   /// ISO 8601 both ways; decoding tolerates fractional seconds.
   private static func decoder() -> JSONDecoder {
@@ -304,6 +365,22 @@ final class Store {
     data.items.values.filter { isConnected($0.accountId) }
   }
 
+  /// The live collection in its published shape, effective labels resolved.
+  func inboxItems() -> [InboxItem] {
+    let existing = labelIds
+    return getItems().map { $0.inboxItem(existingLabels: existing) }
+  }
+
+  /// One stored item in its published shape.
+  func inboxItem(_ stored: StoredItem) -> InboxItem {
+    stored.inboxItem(existingLabels: labelIds)
+  }
+
+  /// Every label that exists: the user's plus the built-ins.
+  private var labelIds: Set<LabelId> {
+    Set(data.labels.map(\.id)).union(builtinLabelIds)
+  }
+
   /// Adopts new items (unread) and refreshes known ones (fields updated,
   /// lastSeenUpstreamAt bumped, local read preserved). Item ids compose as
   /// "\(accountId):\(externalId)". Returns the ids new to the collection.
@@ -339,7 +416,12 @@ final class Store {
         // here or upstream both count, and nothing un-reads an item.
         read: (existing?.read ?? false) || fetched.upstreamRead == true,
         firstSeenAt: existing?.firstSeenAt ?? now,
-        lastSeenUpstreamAt: now
+        lastSeenUpstreamAt: now,
+        // Assignments are the rules' and the user's, not the fetch's: they
+        // ride along untouched (the sweep right after refreshes autoLabels).
+        autoLabels: existing?.autoLabels ?? [],
+        labelOverrides: existing?.labelOverrides ?? [:],
+        upstreamLabels: fetched.upstreamLabels ?? existing?.upstreamLabels
       )
     }
     save()
@@ -353,6 +435,91 @@ final class Store {
         data.items[id]?.read = true
         changed = true
       }
+    }
+    if changed {
+      save()
+    }
+  }
+
+  // MARK: Labels
+
+  /// The user's labels, in folder order.
+  func labels() -> [InboxLabel] {
+    data.labels.sorted { $0.order < $1.order }
+  }
+
+  /// Replaces the user's label set. A label that disappears is scrubbed
+  /// from every item's assignments and overrides (parked ones included) and
+  /// from every rule, so nothing keeps pointing at it; built-ins stay.
+  func setLabels(_ labels: [InboxLabel]) {
+    let kept = Set(labels.map(\.id)).union(builtinLabelIds)
+    data.labels = labels
+    for (id, item) in data.items {
+      let auto = item.autoLabels.intersection(kept)
+      let overrides = item.labelOverrides.filter { kept.contains($0.key) }
+      if auto != item.autoLabels || overrides.count != item.labelOverrides.count {
+        data.items[id]?.autoLabels = auto
+        data.items[id]?.labelOverrides = overrides
+      }
+    }
+    data.rules = data.rules.map { rule in
+      var scrubbed = rule
+      scrubbed.labelIds = rule.labelIds.filter { kept.contains($0) }
+      return scrubbed
+    }
+    save()
+  }
+
+  /// The user's rules, in evaluation order.
+  func rules() -> [LabelRule] {
+    data.rules
+  }
+
+  func setRules(_ rules: [LabelRule]) {
+    data.rules = rules
+    save()
+  }
+
+  // MARK: Sidebar
+
+  /// The stored sidebar layout, nil before one was ever built.
+  func sidebarLayout() -> SidebarLayout? {
+    data.sidebar
+  }
+
+  func setSidebarLayout(_ layout: SidebarLayout) {
+    guard data.sidebar != layout else {
+      return
+    }
+    data.sidebar = layout
+    save()
+  }
+
+  /// The user's hand on one item: `true` forces the label on, `false` off,
+  /// nil hands it back to the rules.
+  func setLabelOverride(itemId: String, labelId: LabelId, on: Bool?) {
+    guard var item = data.items[itemId] else {
+      return
+    }
+    if let on {
+      item.labelOverrides[labelId] = on
+    } else {
+      item.labelOverrides.removeValue(forKey: labelId)
+    }
+    data.items[itemId] = item
+    save()
+  }
+
+  /// A sweep's worth of rule assignments in a single save — the store
+  /// writes the whole file each time. Unchanged sets cost nothing.
+  func applyAutoLabels(_ updates: [(id: String, labels: Set<LabelId>)]) {
+    var changed = false
+    for update in updates {
+      guard let item = data.items[update.id], item.autoLabels != update.labels else {
+        continue
+      }
+      data.items[update.id]?.autoLabels = update.labels
+      changed = true
     }
     if changed {
       save()

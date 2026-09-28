@@ -23,7 +23,9 @@ A bare `swift run` works for quick iteration, but launch-at-login and
 notifications need a real bundle, so those are disabled outside
 `Majordomo.app` (a warning is logged). For visual checks,
 `MAJORDOMO_OPEN_MAIN=1` opens the main window at launch — no trip through
-the tray menu needed; `MAJORDOMO_DEMO=1` is what `make demo` sets.
+the tray menu needed — and `MAJORDOMO_OPEN_SETTINGS=Labels` (any tab
+label) opens the settings window on that tab; `MAJORDOMO_DEMO=1` is what
+`make demo` sets.
 
 ## How the code is laid out
 
@@ -47,12 +49,17 @@ The core is a generic notification manager: an item's `kind`, `state`, and
 `reason` are **opaque tokens** the core never interprets. Everything about
 how a provider's items look and read — glyphs, colors, capsule labels,
 sidebar buckets and their wording — comes from the provider's `ProviderSpec`
-implementation (in code, not from the API). Adding a provider means:
+implementation (in code, not from the API). The buckets are built-in labels
+(`builtinLabels`) and the rules that fill them (`builtinRules`), evaluated
+by the same `LabelEngine` as the user's own labels and rules: they show as
+folders, list read-only in the Labels and Rules settings, and can be hidden
+from the Inboxes page. Adding a provider means:
 
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
    tokens (errors as human-readable `ProviderError` strings — they render
    verbatim in the UI);
-2. a `ProviderSpec` with the presentation for those tokens;
+2. a `ProviderSpec` with the presentation for those tokens and its built-in
+   labels and rules (`GitForgeBuckets` builds the git-forge set);
 3. one registration line in `providerSpecs`.
 
 Any number of accounts per provider can be connected; accounts are keyed by

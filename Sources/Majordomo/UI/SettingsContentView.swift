@@ -1,6 +1,7 @@
 // The settings pages, split into the categories the tabbed
 // settings window shows: Accounts (the account list with its add/remove
-// pair and token update), General, Inboxes, and Notifications.
+// pair and token update), General, and Notifications. Inboxes, Labels,
+// and Rules have files of their own.
 
 import AppKit
 import SwiftUI
@@ -13,9 +14,10 @@ extension View {
 }
 
 /// One labeled row inside a settings card: label left, control right, with
-/// an optional leading glyph.
+/// an optional leading glyph (tinted when the row stands for a label).
 struct SettingsRow<Control: View>: View {
   var symbol: String?
+  var tint: Color?
   let label: String
   @ViewBuilder var control: Control
 
@@ -24,7 +26,7 @@ struct SettingsRow<Control: View>: View {
       if let symbol {
         Image(systemName: symbol)
           .frame(width: 18)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
       }
       Text(label)
         .font(.system(size: 13))
@@ -149,39 +151,6 @@ struct AccountsSettingsView: View {
 
   private func subtitle(_ account: AccountState) -> String {
     account.error ?? accountDescriptor(account)
-  }
-}
-
-struct InboxesSettingsView: View {
-  let model: AppModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      VStack(spacing: 0) {
-        // The aggregated bucket list — every provider's categories merged.
-        ForEach(Array(aggregatedCategories.enumerated()), id: \.element.id) { index, category in
-          if index > 0 {
-            Divider().padding(.leading, 40)
-          }
-          SettingsRow(symbol: category.symbol, label: category.label) {
-            Toggle(
-              category.label,
-              isOn: Binding(
-                get: { !model.hiddenCategories.contains(category.id) },
-                set: { model.setCategoryHidden(category.id, !$0) }
-              )
-            )
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .disabled(category.id == recentCategory.id)
-          }
-        }
-      }
-      .settingsCard()
-      SettingsHint(text: "Hidden inboxes leave the sidebar — in All Inboxes and in every account section. Recent is the catch-all and always stays.")
-    }
-    .padding(16)
   }
 }
 

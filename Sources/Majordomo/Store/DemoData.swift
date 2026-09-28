@@ -11,6 +11,11 @@ enum DemoData {
   private static let github: AccountId = "demo-github"
   private static let gitlab: AccountId = "demo-gitlab"
 
+  private static let urgentLabel: LabelId = "demo-label-urgent"
+  private static let infraLabel: LabelId = "demo-label-infra"
+  private static let laterLabel: LabelId = "demo-label-later"
+  private static let teamInbox: LabelId = "demo-inbox-team"
+
   static func storeFile() -> StoreFile {
     let now = Date()
 
@@ -18,14 +23,16 @@ enum DemoData {
       minutesAgo: Double, account: AccountId, provider: ProviderId, kind: String,
       title: String, repo: String, reason: String, mention: Bool = false,
       state: String? = nil, author: String? = nil, body: String? = nil, read: Bool = true,
-      url: String = "https://example.com"
+      url: String = "https://example.com", upstreamLabels: [String]? = nil,
+      labelOverrides: LabelOverrides = [:]
     ) -> StoredItem {
       let date = now.addingTimeInterval(-minutesAgo * 60)
       return StoredItem(
         id: "\(account):\(Int(minutesAgo))", accountId: account, provider: provider,
         kind: kind, title: title, repo: repo, url: url,
         reason: reason, isMention: mention, updatedAt: date, state: state,
-        author: author, body: body, read: read, firstSeenAt: date, lastSeenUpstreamAt: now
+        author: author, body: body, read: read, firstSeenAt: date, lastSeenUpstreamAt: now,
+        labelOverrides: labelOverrides, upstreamLabels: upstreamLabels
       )
     }
 
@@ -123,12 +130,16 @@ enum DemoData {
         title: "Rate-limit the public search endpoint", repo: "acme/atlas",
         reason: "assigned", state: "open", author: "mona",
         body: "Anonymous search should cap at **60 req/min** per IP — the crawler traffic from last week made `search/v2` the top CPU consumer.",
-        read: false
+        read: false,
+        // Carries the tracker's own "urgent" label — a rule picks it up.
+        upstreamLabels: ["urgent", "backend"]
       ),
       item(
         minutesAgo: 3 * 60, account: github, provider: .github, kind: "pull",
         title: "chore(deps): bump tokio from 1.39 to 1.40", repo: "acme/atlas",
-        reason: "subscribed", state: "merged", author: "dependabot[bot]"
+        reason: "subscribed", state: "merged", author: "dependabot[bot]",
+        // Filed under Later by hand — no rule says so.
+        labelOverrides: [laterLabel: true]
       ),
       item(
         minutesAgo: 5 * 60, account: github, provider: .github, kind: "pull",
@@ -183,9 +194,60 @@ enum DemoData {
       ),
     ]
 
+    // Labels, a user inbox, and the rules that fill them; assignments are
+    // computed at launch by the sync engine's sweep, like the real store's.
+    let labels = [
+      InboxLabel(id: urgentLabel, name: "Urgent", symbol: "flame", tint: .red, notify: .urgent, order: 0),
+      InboxLabel(id: infraLabel, name: "Infra", symbol: "server.rack", tint: .blue, notify: .follow, order: 1),
+      InboxLabel(id: laterLabel, name: "Later", symbol: "moon.zzz", tint: .gray, notify: .never, order: 2),
+      InboxLabel(
+        id: teamInbox, name: "Team", symbol: "person.2", tint: .blue, notify: .follow, order: 3, kind: .inbox
+      ),
+    ]
+    let rules = [
+      LabelRule(
+        id: "demo-rule-team", name: "Teammates",
+        match: .any,
+        conditions: [
+          RuleCondition(field: .author, op: .is, value: "mona"),
+          RuleCondition(field: .author, op: .is, value: "sasha"),
+        ],
+        labelIds: [teamInbox]
+      ),
+      LabelRule(
+        id: "demo-rule-crash", name: "Crashes are urgent",
+        match: .any,
+        conditions: [
+          RuleCondition(field: .title, op: .contains, value: "crash"),
+          RuleCondition(field: .body, op: .contains, value: "crash"),
+        ],
+        labelIds: [urgentLabel]
+      ),
+      LabelRule(
+        id: "demo-rule-upstream", name: "Upstream urgent",
+        conditions: [RuleCondition(field: .upstreamLabel, op: .is, value: "urgent")],
+        labelIds: [urgentLabel]
+      ),
+      LabelRule(
+        id: "demo-rule-infra", name: "Infra repos",
+        conditions: [RuleCondition(field: .repo, op: .is, value: "acme/infra")],
+        labelIds: [infraLabel]
+      ),
+      LabelRule(
+        id: "demo-rule-bots", name: "Bot chores can wait",
+        conditions: [
+          RuleCondition(field: .author, op: .contains, value: "[bot]"),
+          RuleCondition(field: .mention, negated: true),
+        ],
+        labelIds: [laterLabel]
+      ),
+    ]
+
     return StoreFile(
       accounts: accounts,
-      items: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+      items: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
+      labels: labels,
+      rules: rules
     )
   }
 }

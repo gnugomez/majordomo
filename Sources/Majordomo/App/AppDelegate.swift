@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import UserNotifications
 
 /// Rows shown in the tray menu before "Open Majordomo" takes over.
 private let menuMentionCap = 8
@@ -32,15 +33,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
           guard let delegate = AppDelegateBox.shared else {
             return
           }
-          // The engine reports every new unread item; the notification
-          // scope setting decides which deserve a ping.
-          let wanted = switch delegate.model.notifyScope {
-          case .mentions: item.isMention
-          case .all: true
-          case .none: false
+          // The engine reports every new unread item. Its labels speak
+          // first: an urgent or always label pings whatever the scope, a
+          // never label silences it; unlabeled items (and follow-policy
+          // labels) leave it to the notification scope setting.
+          let model = delegate.model
+          let policy = LabelNotifyPolicy.effective(item.labels.compactMap { model.label($0)?.notify })
+          let wanted: Bool
+          var level: UNNotificationInterruptionLevel = .active
+          switch policy {
+          case .never:
+            wanted = false
+          case .always:
+            wanted = true
+          case .urgent:
+            wanted = true
+            level = .timeSensitive
+          case .follow:
+            wanted = switch model.notifyScope {
+            case .mentions: item.isMention
+            case .all: true
+            case .none: false
+            }
           }
           if wanted {
-            delegate.notifier.post(item, sound: delegate.model.notificationSound)
+            delegate.notifier.post(item, sound: model.notificationSound, interruptionLevel: level)
           }
         }
       }
@@ -69,6 +86,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // (or a screenshot script) doesn't need a trip through the tray menu.
     if ProcessInfo.processInfo.environment["MAJORDOMO_OPEN_MAIN"] != nil {
       openMainWindow()
+    }
+    // Likewise MAJORDOMO_OPEN_SETTINGS=<tab label> opens settings on that
+    // tab, for a screenshot of one page.
+    if let tab = ProcessInfo.processInfo.environment["MAJORDOMO_OPEN_SETTINGS"] {
+      openSettings()
+      settingsWindow?.select(tab: tab)
     }
 
     let engine = engine!

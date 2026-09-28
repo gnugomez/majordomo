@@ -48,6 +48,13 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// whether) to render it.
   var body: String?
   var read: Bool
+  /// The labels the item carries: what the rules assigned with the user's
+  /// overrides applied (see effectiveLabels). Folders, badges, and banner
+  /// policy read only this.
+  var labels: Set<LabelId> = []
+  /// Labels the target carries at the provider (an issue's own labels) —
+  /// opaque strings, there for rules to test.
+  var upstreamLabels: [String] = []
 }
 
 /// What the user supplies to connect an account.
@@ -77,4 +84,11 @@ struct AppState: Sendable {
   var accounts: [AccountState] = []
   var lastSyncAt: Date?
   var syncing: Bool = false
+  /// The user's labels, in folder order.
+  var labels: [InboxLabel] = []
+  /// The user's rules, in evaluation order.
+  var rules: [LabelRule] = []
+  /// The sidebar's tree of inboxes and folders, reconciled with the labels
+  /// that exist.
+  var sidebar: SidebarLayout = SidebarLayout()
 }

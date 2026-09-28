@@ -29,10 +29,6 @@ extension GitForgeSpec {
 }
 
 enum GitForgeVisuals {
-  /// Reasons that get their own sidebar bucket, and so never fall through
-  /// to a kind bucket.
-  static let claimedReasons: Set<String> = ["assigned", "mentioned", "review_requested"]
-
   /// The "needs you" tier — deliberately excludes "assigned": an assignment
   /// is a task, not an interruption.
   static func isMention(_ reason: String) -> Bool {

@@ -27,11 +27,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate, @unchecked Sen
     }
   }
 
-  func post(_ item: InboxItem, sound: String) {
+  /// Posts a banner for the item. `interruptionLevel` is the label
+  /// policy's call: `.timeSensitive` for an urgent label (it breaks through
+  /// Focus), `.active` for everything else.
+  func post(_ item: InboxItem, sound: String, interruptionLevel: UNNotificationInterruptionLevel = .active) {
     guard isBundled else {
       return
     }
     let content = UNMutableNotificationContent()
+    content.interruptionLevel = interruptionLevel
     // Repo, with the provider name as fallback (a GitLab todo may carry no
     // project).
     content.title = item.repo.isEmpty ? item.provider.displayName : item.repo

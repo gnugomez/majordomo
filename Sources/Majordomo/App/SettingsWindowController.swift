@@ -31,9 +31,16 @@ private final class SettingsTabsController: NSTabViewController {
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
+  private let tabs: SettingsTabsController
+
   init(model: AppModel) {
     let tabs = SettingsTabsController()
+    self.tabs = tabs
     tabs.tabStyle = .toolbar
+    // The window is titled after the tab label here and in the delegate;
+    // left on, AppKit would also copy the selected hosting controller's
+    // (empty) title over it, and the window would read "Untitled".
+    tabs.canPropagateSelectedChildViewControllerTitle = false
 
     func page(_ content: some View) -> NSHostingController<some View> {
       let host = NSHostingController(rootView: content.frame(width: 440))
@@ -55,6 +62,16 @@ final class SettingsWindowController: NSWindowController {
     inboxes.label = "Inboxes"
     inboxes.image = NSImage(systemSymbolName: "tray.2", accessibilityDescription: "Inboxes")
     tabs.addTabViewItem(inboxes)
+
+    let labels = NSTabViewItem(viewController: page(LabelsSettingsView(model: model)))
+    labels.label = "Labels"
+    labels.image = NSImage(systemSymbolName: "tag", accessibilityDescription: "Labels")
+    tabs.addTabViewItem(labels)
+
+    let rules = NSTabViewItem(viewController: page(RulesSettingsView(model: model)))
+    rules.label = "Rules"
+    rules.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Rules")
+    tabs.addTabViewItem(rules)
 
     let notifications = NSTabViewItem(viewController: page(NotificationsSettingsView(model: model)))
     notifications.label = "Notifications"
@@ -92,5 +109,17 @@ final class SettingsWindowController: NSWindowController {
     // Same guard as the main window: never open buried when cooperative
     // activation denies the focus steal.
     window?.orderFrontRegardless()
+  }
+
+  /// Switches to the tab with this label ("Labels", "Rules", …); an unknown
+  /// label leaves the selection alone.
+  func select(tab label: String) {
+    guard let index = tabs.tabViewItems.firstIndex(where: { $0.label == label }) else {
+      return
+    }
+    tabs.selectedTabViewItemIndex = index
+    // A programmatic switch doesn't pass through the tab delegate the way a
+    // click does; title the window here.
+    window?.title = label
   }
 }

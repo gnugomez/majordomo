@@ -1,6 +1,7 @@
 // The inbox rows. ItemRowView is a thread's summary row: an unread dot,
-// title line with the kind glyph, meta line with the provider hint, a
-// tappable member count that unfolds the thread, and the capsule.
+// title line with the kind glyph, meta line with the provider hint, the
+// thread's label pills, a tappable member count that unfolds the thread,
+// and the capsule.
 // MemberRowView is one unfolded member, indented beneath its summary.
 // Selected rows swap every fixed color for hierarchical styles, which AppKit
 // flips to white on an emphasized (accent) selection and keeps dark on an
@@ -8,9 +9,14 @@
 
 import SwiftUI
 
+/// Label pills a row shows before folding the rest into "+N".
+private let rowLabelCap = 2
+
 struct ItemRowView: View {
   let thread: InboxThread
   let now: Date
+  /// The labels any member of the thread carries, in folder order.
+  var labels: [InboxLabel] = []
   var selected = false
   var expanded = false
   var onToggleExpand: (() -> Void)?
@@ -59,6 +65,14 @@ struct ItemRowView: View {
             .foregroundStyle(.tertiary)
             .frame(width: 10, height: 10)
           Spacer(minLength: 6)
+          // The thread's labels, a couple at most so the row stays one
+          // line; the rest fold into a count.
+          ForEach(labels.prefix(rowLabelCap)) { label in
+            LabelCapsule(label: label, selected: selected)
+          }
+          if labels.count > rowLabelCap {
+            CapsuleTag(text: "+\(labels.count - rowLabelCap)", selected: selected)
+          }
           ItemCapsule(item: item, selected: selected)
           if thread.items.count > 1 {
             memberCount

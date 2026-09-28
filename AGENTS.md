@@ -10,9 +10,12 @@ and RELEASING.md.
   (ProviderClient + ProviderSpec per provider) → `Store`/`Sync` →
   `App` (AppKit shell) and `UI` (SwiftUI). Don't cross those lines.
 - **Provider decoupling**: the core is token-generic — item kind/state/reason
-  are opaque strings. ALL presentation (glyphs, colors, labels, sidebar
-  buckets) comes from the provider's `ProviderSpec`, registered in
-  `providerSpecs`. Never interpret provider tokens in core/UI code.
+  are opaque strings. ALL presentation (glyphs, colors, capsule labels) and
+  the sidebar buckets come from the provider's `ProviderSpec`, registered in
+  `providerSpecs`. Buckets are built-in labels plus the rules that fill
+  them (`builtinLabels`/`builtinRules`), run by the same `LabelEngine` as
+  the user's labels and rules; they list read-only in settings and hide
+  from the Inboxes page. Never interpret provider tokens in core/UI code.
 - **Style**: strict Swift 6 concurrency, 2-space indent, one type per file
   where sensible; extract well-named helpers over clever one-liners.
   Provider errors are human-readable strings — they render verbatim.

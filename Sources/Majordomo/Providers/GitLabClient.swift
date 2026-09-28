@@ -31,6 +31,8 @@ private struct GLTodo: Decodable {
     let work_in_progress: Bool?
     /// Whoever opened the issue/MR.
     let author: GLAuthor?
+    /// The issue/MR's own labels, by name.
+    let labels: [String]?
   }
 
   struct GLAuthor: Decodable {
@@ -144,7 +146,8 @@ private func toFetchedItem(_ todo: GLTodo) -> FetchedItem? {
     updatedAt: updatedAt,
     state: toItemState(todo),
     author: todo.target?.author?.username ?? todo.author?.username,
-    body: truncatedBody(bodyText(todo))
+    body: truncatedBody(bodyText(todo)),
+    upstreamLabels: todo.target?.labels
   )
 }
 

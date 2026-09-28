@@ -57,6 +57,7 @@ struct InboxListView: View {
           ItemRowView(
             thread: thread,
             now: model.now,
+            labels: labels(on: thread.items),
             selected: model.selectedThreadIds.contains(thread.id),
             expanded: expandedThreadIds.contains(thread.id)
           ) {
@@ -87,6 +88,7 @@ struct InboxListView: View {
           model.markRead(Set(picked.flatMap(\.itemIds)))
         }
         .disabled(!picked.contains { !$0.read })
+        labelsMenu(for: picked.flatMap(\.items))
       } primaryAction: { ids in
         open(resolveSelection(in: threads, ids: ids))
       }
@@ -97,6 +99,38 @@ struct InboxListView: View {
         }
         open(picked)
         return .handled
+      }
+    }
+  }
+
+  /// The labels any of these items carries — tags only, never an inbox.
+  private func labels(on items: [InboxItem]) -> [InboxLabel] {
+    model.userLabels.filter { label in items.contains { $0.labels.contains(label.id) } }
+  }
+
+  /// "Labels ▸": one toggle per label, applied to every selected item — a
+  /// checkmark means every one of them carries it.
+  private func labelsMenu(for items: [InboxItem]) -> some View {
+    Menu("Labels") {
+      ForEach(model.userLabels) { label in
+        let on = !items.isEmpty && items.allSatisfy { $0.labels.contains(label.id) }
+        Toggle(isOn: Binding(
+          get: { on },
+          set: { wanted in
+            for item in items {
+              model.setItemLabel(item.id, label.id, on: wanted)
+            }
+          }
+        )) {
+          Label(label.name, systemImage: label.symbol)
+        }
+      }
+      if model.userLabels.isEmpty {
+        Text("No labels yet")
+      }
+      Divider()
+      Button("Edit Labels…") {
+        model.openSettings?()
       }
     }
   }

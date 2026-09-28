@@ -1,12 +1,13 @@
-// How the inbox splits into named buckets. The buckets themselves come from
-// the provider specs — the core defines only the catch-all, the merging
-// rules, and what the sidebar selects.
+// How the inbox splits into named buckets: the catch-all, then one folder
+// per label — the providers' built-in ones and the user's own. The core
+// defines only the catch-all, how labels list per section, and what the
+// sidebar selects.
 
 import Foundation
 
 /// The core's catch-all bucket: everything. Always present, always first,
 /// never hideable.
-let recentCategory = CategorySpec(id: "recent", label: "Recent", symbol: "tray.full", order: 0) { _ in
+let recentCategory = CategorySpec(id: catchAllInboxId, label: "Recent", symbol: "tray.full", order: 0) { _ in
   true
 }
 
@@ -20,30 +21,100 @@ struct Category: Identifiable, Sendable {
   var symbol: String { spec.symbol }
 }
 
-/// The aggregated bucket list ("All Inboxes"): every provider's categories
-/// merged by id — the first registration's wording wins — with the catch-all
-/// in front.
-let aggregatedCategories: [CategorySpec] = {
-  var seen: Set<String> = [recentCategory.id]
-  var merged = [recentCategory]
-  for spec in providerSpecs {
-    for category in spec.categories where !seen.contains(category.id) {
-      seen.insert(category.id)
-      merged.append(category)
-    }
-  }
-  return merged.sorted { $0.order < $1.order }
-}()
+/// The labels "All Inboxes" lists: every provider's built-ins merged by id,
+/// then the user's.
+func aggregatedLabels(user: [InboxLabel]) -> [InboxLabel] {
+  aggregatedBuiltinLabels + user
+}
 
-/// One account's bucket list, in the provider's own wording.
-func accountCategories(for provider: ProviderId) -> [CategorySpec] {
-  ([recentCategory] + spec(for: provider).categories).sorted { $0.order < $1.order }
+/// The labels one account's section lists: its provider's built-ins in the
+/// provider's own wording, then the user's — labels are the user's, so
+/// every section shows the same folders after the built-ins.
+func accountLabels(for provider: ProviderId, user: [InboxLabel]) -> [InboxLabel] {
+  spec(for: provider).builtinLabels + user
+}
+
+/// The sidebar's buckets for a label list: the catch-all first, then one
+/// folder per label holding the items that carry it. A folder's id is its
+/// label's id, so the hidden-inbox setting addresses either. The accent
+/// tint is the sidebar's own glyph color and draws as such.
+func categories(for labels: [InboxLabel]) -> [CategorySpec] {
+  [recentCategory] + labels.enumerated().map { index, label in
+    let id = label.id
+    return CategorySpec(
+      id: id,
+      label: label.name,
+      symbol: label.symbol,
+      order: index + 1,
+      tint: label.tint == .accent ? nil : label.tint,
+      labelId: id
+    ) { $0.labels.contains(id) }
+  }
 }
 
 func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] {
   specs.map { spec in
     Category(spec: spec, items: items.filter(spec.matches))
   }
+}
+
+/// One drawn row of a sidebar section: an inbox with its items, or a
+/// folder with the rows inside it.
+enum SidebarRow: Identifiable, Sendable {
+  case inbox(Category)
+  case folder(SidebarFolder, rows: [SidebarRow])
+
+  var id: String {
+    switch self {
+    case .inbox(let category): category.id
+    case .folder(let folder, _): folder.id
+    }
+  }
+
+  /// Every inbox in the row, folders flattened, in display order.
+  var inboxes: [Category] {
+    switch self {
+    case .inbox(let category): [category]
+    case .folder(_, let rows): rows.flatMap(\.inboxes)
+    }
+  }
+}
+
+/// A section's rows in layout order: each inbox node resolved to its
+/// bucket, hidden and unknown inboxes dropped (the catch-all never is), and
+/// folders with nothing visible inside dropped with them. The sidebar draws
+/// this; the scope resolution selects from its flattening.
+func sidebarRows(layout: SidebarLayout, categories: [Category]) -> [SidebarRow] {
+  let byId = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+  func rows(for nodes: [SidebarNode]) -> [SidebarRow] {
+    nodes.compactMap { node in
+      switch node {
+      case .inbox(let id):
+        guard id == catchAllInboxId || layout.isVisible(id), let category = byId[id] else {
+          return nil
+        }
+        return .inbox(category)
+      case .folder(let folder):
+        let inside = rows(for: folder.children)
+        return inside.isEmpty ? nil : .folder(folder, rows: inside)
+      }
+    }
+  }
+  return rows(for: layout.nodes)
+}
+
+/// The inboxes a section lets the user select, in layout order.
+func visibleCategories(layout: SidebarLayout, categories: [Category]) -> [Category] {
+  sidebarRows(layout: layout, categories: categories).flatMap(\.inboxes)
+}
+
+/// Unread threads across these rows' inboxes — an item in two of them
+/// counts once, so a folder's badge never exceeds what opening its
+/// inboxes would show.
+func unreadThreadCount(in rows: [SidebarRow]) -> Int {
+  var seen = Set<String>()
+  let items = rows.flatMap(\.inboxes).flatMap(\.items).filter { seen.insert($0.id).inserted }
+  return groupIntoThreads(items).count { !$0.read }
 }
 
 /// Newest activity first — the order every list in the app shows items in.
