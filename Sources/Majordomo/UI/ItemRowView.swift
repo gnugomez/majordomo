@@ -5,8 +5,8 @@
 // tappable member count that unfolds the thread, and an optional excerpt of
 // the item's text under the rest.
 // The excerpt line is the model's one-line summary when it has written
-// one, marked with the glyph Mail uses for a generated line; the item's own
-// text stands in until then.
+// one, marked with the glyph that stands for a generated line; the item's
+// own text stands in until then.
 // MemberRowView is one unfolded member, indented beneath its summary; the
 // excerpt switch governs its snippet too, so turning excerpts off quiets
 // the whole list.
@@ -19,8 +19,8 @@ import SwiftUI
 /// Label pills a row shows before folding the rest into "+N".
 private let rowLabelCap = 2
 
-/// The mark on a line the on-device model wrote — the same glyph Mail puts
-/// in front of a summarized message, so the convention reads at a glance.
+/// The mark on a line the on-device model wrote: the system's own summary
+/// glyph, so what it means reads at a glance.
 let summaryGlyph = "text.line.2.summary"
 
 /// One element of a row's meta line, ready to draw.
@@ -272,9 +272,9 @@ struct MemberRowView: View {
 }
 
 /// What goes under a row: the model's summary when it has written one, led
-/// by the glyph that says so and wrapping under it the way Mail's does;
-/// otherwise the item's own text. nil when the layout hides the line, or
-/// when there is nothing to show.
+/// by the glyph that says so and wrapping under it; otherwise the item's
+/// own text. nil when the layout hides the line, or when there is nothing
+/// to show.
 private func excerptLine(for item: InboxItem, layout: RowLayout, terms: [String]) -> Text? {
   guard layout.shows(.excerpt) else {
     return nil

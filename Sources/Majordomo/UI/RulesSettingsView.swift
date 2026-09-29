@@ -292,8 +292,8 @@ private struct RuleEditor: View {
       }
       .textFieldStyle(.roundedBorder)
 
-      // "When [all|any] of these hold": the rule's match mode, as Mail's
-      // rules put it.
+      // "When [all|any] of these hold": the rule's match mode, in the
+      // words rule editors conventionally use for it.
       HStack(spacing: 4) {
         Text("When")
         Picker(
