@@ -4,6 +4,9 @@
 // who, when, the provider hint, the label pills, the capsule — plus a
 // tappable member count that unfolds the thread, and an optional excerpt of
 // the item's text under the rest.
+// The excerpt line is the model's one-line summary when it has written
+// one, marked with the glyph Mail uses for a generated line; the item's own
+// text stands in until then.
 // MemberRowView is one unfolded member, indented beneath its summary; the
 // excerpt switch governs its snippet too, so turning excerpts off quiets
 // the whole list.
@@ -15,6 +18,10 @@ import SwiftUI
 
 /// Label pills a row shows before folding the rest into "+N".
 private let rowLabelCap = 2
+
+/// The mark on a line the on-device model wrote — the same glyph Mail puts
+/// in front of a summarized message, so the convention reads at a glance.
+let summaryGlyph = "text.line.2.summary"
 
 /// One element of a row's meta line, ready to draw.
 private enum MetaPiece {
@@ -57,7 +64,7 @@ struct ItemRowView: View {
   var body: some View {
     let item = thread.lead
     let pieces = metaPieces(for: item)
-    let excerpt = layout.shows(.excerpt) ? bodySnippet(item.body, terms: highlightTerms) : nil
+    let excerpt = excerptLine(for: item, layout: layout, terms: highlightTerms)
     // Two lines center against the dot; with an excerpt the row runs to
     // three, and the dot rides at the top the way the member rows' does.
     HStack(alignment: excerpt == nil ? .center : .top, spacing: 8) {
@@ -83,7 +90,7 @@ struct ItemRowView: View {
           metaLine(pieces)
         }
         if let excerpt {
-          Text(excerpt)
+          excerpt
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
             .lineLimit(2)
@@ -249,8 +256,8 @@ struct MemberRowView: View {
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
         }
-        if layout.shows(.excerpt), let snippet = bodySnippet(member.body, terms: highlightTerms) {
-          Text(snippet)
+        if let excerpt = excerptLine(for: member, layout: layout, terms: highlightTerms) {
+          excerpt
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
             .lineLimit(2)
@@ -262,6 +269,20 @@ struct MemberRowView: View {
     .padding(.leading, 16)
     .contentShape(Rectangle())
   }
+}
+
+/// What goes under a row: the model's summary when it has written one, led
+/// by the glyph that says so and wrapping under it the way Mail's does;
+/// otherwise the item's own text. nil when the layout hides the line, or
+/// when there is nothing to show.
+private func excerptLine(for item: InboxItem, layout: RowLayout, terms: [String]) -> Text? {
+  guard layout.shows(.excerpt) else {
+    return nil
+  }
+  if let summary = item.summary, !summary.isEmpty {
+    return Text("\(Image(systemName: summaryGlyph)) \(highlighted(summary, terms: terms))")
+  }
+  return bodySnippet(item.body, terms: terms).map(Text.init)
 }
 
 /// A body flattened to preview text — inline markdown only, so code fences

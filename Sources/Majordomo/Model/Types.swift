@@ -47,6 +47,10 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// description; opaque to the core. The provider's spec decides how (and
   /// whether) to render it.
   var body: String?
+  /// The on-device model's one-line summary of that text, once it has
+  /// written one. Rows show it in place of the raw excerpt, marked as
+  /// generated; nothing else reads it.
+  var summary: String?
   var read: Bool
   /// The labels the item carries: what the rules assigned with the user's
   /// overrides applied (see effectiveLabels). Folders, badges, and banner

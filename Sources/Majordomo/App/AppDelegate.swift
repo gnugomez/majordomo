@@ -100,9 +100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       // too — the composer is the point of the Rules page and has to be
       // usable there. Demo fixtures still ship their own suggestions.
       await engine.setIntelligence(AppleIntelligence())
-      await MainActor.run {
+      let switches = await MainActor.run {
         model.refreshIntelligence()
+        return model.intelligenceSwitches
       }
+      await engine.setIntelligenceSwitches(
+        intelligence: switches.intelligence,
+        suggestions: switches.suggestions,
+        summaries: switches.summaries
+      )
       await engine.start()
     }
   }

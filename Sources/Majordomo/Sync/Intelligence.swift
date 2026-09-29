@@ -1,8 +1,9 @@
-// Where the on-device model plugs in. Two jobs, both optional: turning a
-// sentence into a rule, and judging the patterns Suggestion.swift mined.
-// The protocol keeps the rest of the app honest — nothing here knows about
-// FoundationModels, and with no model present every caller sees the same
-// "unavailable" and carries on.
+// Where the on-device model plugs in. Three jobs, all optional: turning a
+// sentence into a rule, judging the patterns Suggestion.swift mined, and
+// summarizing a notification's text for its inbox row. The protocol keeps
+// the rest of the app honest — nothing here knows about FoundationModels,
+// and with no model present every caller sees the same "unavailable" and
+// carries on.
 
 import Foundation
 
@@ -24,6 +25,17 @@ enum IntelligenceAvailability: Equatable, Sendable {
   }
 }
 
+/// One notification to summarize, as the model sees it: its text, and the
+/// little context that makes the summary read right. Provider tokens stay
+/// out — the model is told what the item says, not what the platform calls
+/// it.
+struct SummaryRequest: Sendable {
+  let title: String
+  let repo: String
+  let author: String?
+  let body: String
+}
+
 /// What the app asks a model to do. One implementation talks to Apple
 /// Intelligence; the null one stands in wherever it can't run.
 protocol IntelligenceProvider: Sendable {
@@ -34,6 +46,9 @@ protocol IntelligenceProvider: Sendable {
   /// Whether a mined pattern deserves a label, and what to call it. nil
   /// means "not worth suggesting".
   func judge(_ candidate: SuggestionCandidate, labels: [InboxLabel]) async throws -> RuleDraft?
+  /// A notification's text in one line, for the row to show under the
+  /// title. Throws a human-readable message; the caller skips the item.
+  func summarize(_ request: SummaryRequest) async throws -> String
 }
 
 /// The stand-in when Apple Intelligence isn't available: it says so, and
@@ -51,6 +66,10 @@ struct NoIntelligence: IntelligenceProvider {
 
   func judge(_ candidate: SuggestionCandidate, labels: [InboxLabel]) async throws -> RuleDraft? {
     nil
+  }
+
+  func summarize(_ request: SummaryRequest) async throws -> String {
+    throw IntelligenceError(message: reason)
   }
 }
 

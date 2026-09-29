@@ -1,9 +1,10 @@
 // The on-device model behind the intelligence seam: Apple's Foundation
-// Models, running entirely on this Mac. Two jobs — turning a sentence into
-// a draft rule, and judging a mined pattern — and both hand back a
-// RuleDraft that the engine validates before anything reaches the store.
-// Guided generation constrains every field to this app's own vocabulary,
-// so the model picks from the fields and operators that exist rather than
+// Models, running entirely on this Mac. Three jobs — turning a sentence
+// into a draft rule, judging a mined pattern, and summarizing a
+// notification's text for its row. The first two hand back a RuleDraft
+// that the engine validates before anything reaches the store. Guided
+// generation constrains every field to this app's own vocabulary, so the
+// model picks from the fields and operators that exist rather than
 // inventing names.
 
 import Foundation
@@ -12,10 +13,17 @@ import os
 
 private let log = Logger(subsystem: "dev.majordomo.app", category: "intelligence")
 
-/// Bumped whenever the instructions or the proposal shapes change. It has
-/// no cache to invalidate — nothing here is cached — but it keeps the
-/// prompt's version visible next to the text it describes.
-private let promptVersion = 1
+/// Bumped whenever the instructions or the proposal shapes change, to keep
+/// the prompt's version visible next to the text it describes. Summaries
+/// are the one output that is stored, and they are keyed by the text they
+/// were made from — so a reworded prompt reaches an item when its text next
+/// changes, not before.
+private let promptVersion = 2
+
+/// How much of a body the summarizer reads. Notification bodies run to
+/// whole issue descriptions; the opening is where the point is, and a
+/// shorter prompt is a faster one.
+private let summaryBodyCap = 1500
 
 /// What the model may propose for a rule. Every string is constrained to
 /// the tokens the app understands; `RuleDraft.validated` still checks the
@@ -83,6 +91,13 @@ private struct SuggestionProposal {
 
   @Guide(description: "One sentence addressed to the user, under 20 words, saying what this would collect and why that helps. Empty when not worth suggesting.")
   var rationale: String
+}
+
+/// What the model may say about one notification.
+@Generable
+private struct SummaryProposal {
+  @Guide(description: "The summary: one plain sentence of at most 18 words, no markdown, no links, no emoji.")
+  var summary: String
 }
 
 /// Apple's on-device model. An actor: requests serialize through it, so a
@@ -168,6 +183,19 @@ actor AppleIntelligence: IntelligenceProvider {
       targetTint: proposal.targetTint,
       rationale: proposal.rationale.trimmingCharacters(in: .whitespacesAndNewlines)
     )
+  }
+
+  func summarize(_ request: SummaryRequest) async throws -> String {
+    try requireAvailable()
+    let session = LanguageModelSession(instructions: Self.summaryInstructions)
+    do {
+      let proposal = try await session.respond(
+        to: Self.describe(request), generating: SummaryProposal.self
+      ).content
+      return proposal.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch {
+      throw Self.failure(error, doing: "summarize that")
+    }
   }
 
   private func requireAvailable() throws {
@@ -302,6 +330,48 @@ actor AppleIntelligence: IntelligenceProvider {
     mention counts or days. When you say no, leave the name and rationale \
     empty.
     """
+  }
+
+  /// v\(promptVersion). The row shows the title right above this line, so
+  /// the instructions spend most of their words on not restating it — the
+  /// mistake a small model makes here — and on keeping the sentence short
+  /// enough for the two lines it has.
+  private static var summaryInstructions: String {
+    """
+    You write the one line a developer reads under a notification in their \
+    inbox. The notifications come from GitHub and GitLab: issues, pull \
+    requests, merge requests, review requests, comments.
+
+    Say what the text says: what changed, what is asked, what is broken. \
+    One sentence, at most 18 words, plain words, no markdown, no code \
+    fences, no links, no emoji, no quotes.
+
+    The notification's title is shown directly above your line, so never \
+    restate it — write what the title leaves out. When the text adds \
+    nothing to the title, say what it asks of the reader instead.
+
+    Write about the notification, never about yourself or the summary: no \
+    "this comment", no "the author says", no "summary:". Start with the \
+    substance.
+
+    Examples of the register:
+    - Asks for a review of the retry semantics before the old path goes.
+    - Fails on files over 2 GB because the document is mapped up front.
+    - Rolls out to 5% of nodes first, promoting only if the error rate holds.
+    """
+  }
+
+  private static func describe(_ request: SummaryRequest) -> String {
+    var lines = ["Title: \(request.title)"]
+    if !request.repo.isEmpty {
+      lines.append("Project: \(request.repo)")
+    }
+    if let author = request.author {
+      lines.append("Written by: \(author)")
+    }
+    lines.append("Text:")
+    lines.append(String(request.body.prefix(summaryBodyCap)))
+    return lines.joined(separator: "\n")
   }
 
   private static func describe(_ candidate: SuggestionCandidate) -> String {

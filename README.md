@@ -20,6 +20,8 @@ the SDK.
   inboxes — connect as many GitHub or GitLab accounts as you like
 - 🎛 Arrange the rows to taste — repo, author, time, labels, an excerpt of
   the text: show what you want, in the order you want it
+- 🧠 Apple Intelligence sums up what a notification says in the line under
+  it, the way Mail does — on device, and switchable off
 - 🔒 Everything stays on your machine — read-only, no backend, tokens
   encrypted at rest
 

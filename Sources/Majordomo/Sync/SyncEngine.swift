@@ -16,6 +16,10 @@ private let fullSyncInterval: TimeInterval = 60 * 60
 /// told the same thing — and a deep sync's import must not set off a
 /// burst of them.
 private let suggestionSweepInterval: TimeInterval = 6 * 60 * 60
+/// Summaries a sweep writes at most. Each one is a model round trip of a
+/// second or two, so a pass takes the rows the user is looking at and
+/// leaves the rest to the next one.
+private let summaryBudget = 8
 /// New unread items only post a banner while their activity is this fresh.
 /// A deep sync can surface months-old backlog in one go — that belongs in
 /// the inbox as unread, not in Notification Center as a flood.
@@ -49,6 +53,16 @@ actor SyncEngine {
   private var suggestionsEnabled = true
   /// The master switch over every on-device feature.
   private var intelligenceEnabled = true
+  /// Whether the model writes the rows' summaries. The app model folds the
+  /// row layout into this: with the excerpt line hidden there is nowhere to
+  /// show one, and nothing is generated.
+  private var summariesEnabled = true
+  /// True while a summary sweep is out with the model.
+  private var summarizing = false
+  /// Items the model wouldn't summarize this run — a guardrail refusal or
+  /// a hiccup. Forgotten at relaunch; retrying them every minute would
+  /// spend the budget on the same failures.
+  private var summaryFailures: Set<String> = []
   /// When the last sweep ran, so the next one waits its turn.
   private var lastSuggestionSweepAt: Date?
   private var inFlight: Task<Void, Never>?
@@ -189,6 +203,58 @@ actor SyncEngine {
     emitState()
   }
 
+  /// Writes the missing row summaries, a budgeted handful at a time, and
+  /// publishes each one as it lands so rows fill in rather than appearing
+  /// all at once. Runs after every sync and whenever the feature is
+  /// switched back on.
+  func sweepSummaries() async {
+    guard intelligenceEnabled, summariesEnabled, intelligence.availability().isAvailable, !summarizing else {
+      return
+    }
+    summarizing = true
+    defer { summarizing = false }
+    let queue = store.itemsNeedingSummary(limit: summaryBudget)
+      .filter { !summaryFailures.contains($0.id) }
+    for item in queue {
+      guard let body = item.body else {
+        continue
+      }
+      let request = SummaryRequest(
+        title: item.title, repo: item.repo, author: item.author, body: body
+      )
+      guard let summary = try? await intelligence.summarize(request), !summary.isEmpty else {
+        summaryFailures.insert(item.id)
+        continue
+      }
+      // The item may have been pruned or parked while the model worked;
+      // the store drops a summary for an id it no longer has.
+      store.setSummary(summary, itemId: item.id, of: body)
+      emitState()
+    }
+  }
+
+  /// Turns the row summaries on or off. Switching them on catches up at
+  /// once — the alternative is a minute of rows that say nothing.
+  func setSummariesEnabled(_ enabled: Bool) {
+    guard enabled != summariesEnabled else {
+      return
+    }
+    summariesEnabled = enabled
+    if enabled {
+      Task {
+        await self.sweepSummaries()
+      }
+    }
+  }
+
+  /// The on-device switches as the user left them, pushed once at launch:
+  /// the engine's own defaults are only right for a first run.
+  func setIntelligenceSwitches(intelligence: Bool, suggestions: Bool, summaries: Bool) {
+    intelligenceEnabled = intelligence
+    suggestionsEnabled = suggestions
+    summariesEnabled = summaries
+  }
+
   /// Turns a suggestion into a real label and rule.
   func acceptSuggestion(_ id: String) {
     guard let suggestion = store.suggestions().first(where: { $0.id == id }) else {
@@ -227,10 +293,16 @@ actor SyncEngine {
   }
 
   /// Turns every on-device feature off or on. Off, nothing is drafted and
-  /// no sweep runs; what was already suggested simply stops being offered.
+  /// no sweep runs; what was already suggested simply stops being offered,
+  /// and the summaries already written stay on their rows.
   func setIntelligenceEnabled(_ enabled: Bool) {
     intelligenceEnabled = enabled
     emitState()
+    if enabled {
+      Task {
+        await self.sweepSummaries()
+      }
+    }
   }
 
   private func emitState() {
@@ -341,8 +413,12 @@ actor SyncEngine {
     syncing = false
     emitState()
 
-    // Suggestions catch up in the background, at their own slow cadence;
-    // nothing here waits on the model.
+    // The model catches up in the background; nothing here waits on it.
+    // Summaries go first: they are what the rows are missing right now,
+    // while patterns build over days.
+    Task {
+      await self.sweepSummaries()
+    }
     if suggestionSweepIsDue() {
       Task {
         await self.sweepSuggestions()
@@ -579,6 +655,11 @@ actor SyncEngine {
       self.sweepLabels()
       self.reconcileSidebar()
       self.emitState()
+      // Summarizing is local work on text already in the store, so it runs
+      // before the first fetch — and in demo mode, which never fetches.
+      Task {
+        await self.sweepSummaries()
+      }
       // Demo mode is fixtures only: never touch the network.
       guard !isDemo else { return }
       await self.refreshProfiles()

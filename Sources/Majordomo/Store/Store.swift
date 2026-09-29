@@ -6,8 +6,11 @@
 // items linger for a while so adding the same account back resumes with the
 // read state intact — nothing upstream holds a copy of that. The user's
 // labels and rules live here too, next to the per-item assignments they
-// govern.
+// govern, as do the summaries the on-device model writes — keyed by the
+// text they were made from, so they survive relaunches and go stale only
+// when that text changes.
 
+import CryptoKit
 import Foundation
 import os
 
@@ -38,6 +41,10 @@ struct StoredItem: Codable, Sendable {
   var author: String?
   var body: String?
   var read: Bool
+  /// The model's one-line summary of the body, and the fingerprint of the
+  /// text it was made from: a body that changes earns a fresh one.
+  var summary: String?
+  var summaryOf: String?
   /// When this item first entered the collection.
   var firstSeenAt: Date
   /// The last sync in which upstream still returned the item.
@@ -58,7 +65,7 @@ struct StoredItem: Codable, Sendable {
     InboxItem(
       id: id, accountId: accountId, provider: provider, kind: kind,
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
-      updatedAt: updatedAt, state: state, author: author, body: body, read: read,
+      updatedAt: updatedAt, state: state, author: author, body: body, summary: summary, read: read,
       labels: effectiveLabels(auto: autoLabels, overrides: labelOverrides, existing: existingLabels),
       hiddenFrom: hiddenFrom,
       upstreamLabels: upstreamLabels ?? []
@@ -85,6 +92,8 @@ extension StoredItem {
     author = try container.decodeIfPresent(String.self, forKey: .author)
     body = try container.decodeIfPresent(String.self, forKey: .body)
     read = try container.decode(Bool.self, forKey: .read)
+    summary = try container.decodeIfPresent(String.self, forKey: .summary)
+    summaryOf = try container.decodeIfPresent(String.self, forKey: .summaryOf)
     firstSeenAt = try container.decode(Date.self, forKey: .firstSeenAt)
     lastSeenUpstreamAt = try container.decode(Date.self, forKey: .lastSeenUpstreamAt)
     autoLabels = try container.decodeIfPresent(Set<LabelId>.self, forKey: .autoLabels) ?? []
@@ -136,6 +145,14 @@ extension StoreFile {
     sidebar = try container.decodeIfPresent(SidebarLayout.self, forKey: .sidebar)
     suggestions = try container.decodeIfPresent([Suggestion].self, forKey: .suggestions) ?? []
   }
+}
+
+/// What a stored summary was made from. Truncated: it only ever has to
+/// tell the same text from different text, and the store is a file the app
+/// rewrites whole.
+private func textFingerprint(_ text: String) -> String {
+  let digest = SHA256.hash(data: Data(text.utf8))
+  return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
 }
 
 struct StoredAccountInfo {
@@ -424,6 +441,11 @@ final class Store {
         // Local read state only ever moves toward read: the user reading it
         // here or upstream both count, and nothing un-reads an item.
         read: (existing?.read ?? false) || fetched.upstreamRead == true,
+        // The summary rides along: a text that came back unchanged keeps
+        // the line the model already wrote for it, and one that changed is
+        // picked up by the next sweep (its fingerprint no longer matches).
+        summary: existing?.summary,
+        summaryOf: existing?.summaryOf,
         firstSeenAt: existing?.firstSeenAt ?? now,
         lastSeenUpstreamAt: now,
         // Assignments are the rules' and the user's, not the fetch's: they
@@ -436,6 +458,39 @@ final class Store {
     }
     save()
     return newIds
+  }
+
+  // MARK: Summaries
+
+  /// Items whose text has no current summary, worst-missed first: unread
+  /// before read, newest before oldest — the order the user reads in, so a
+  /// budgeted sweep spends itself on the rows in front of them.
+  func itemsNeedingSummary(limit: Int) -> [StoredItem] {
+    let queue = getItems()
+      .filter { item in
+        guard let body = item.body, !body.isEmpty else {
+          return false
+        }
+        return item.summary == nil || item.summaryOf != textFingerprint(body)
+      }
+      .sorted { a, b in
+        if a.read != b.read {
+          return b.read
+        }
+        return a.updatedAt > b.updatedAt
+      }
+    return Array(queue.prefix(limit))
+  }
+
+  /// Files a summary against the text it was made from; a later edit of
+  /// that text no longer matches, and the next sweep rewrites it.
+  func setSummary(_ summary: String, itemId: String, of text: String) {
+    guard data.items[itemId] != nil else {
+      return
+    }
+    data.items[itemId]?.summary = summary
+    data.items[itemId]?.summaryOf = textFingerprint(text)
+    save()
   }
 
   func markRead(_ ids: [String]) {

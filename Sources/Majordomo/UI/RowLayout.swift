@@ -47,7 +47,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
     case .provider: "Where it came from"
     case .labels: "The labels it carries"
     case .status: "Its state or reason"
-    case .excerpt: "A couple of lines of its text"
+    case .excerpt: "Its summary, or a couple of lines of its text"
     }
   }
 
@@ -69,9 +69,9 @@ struct RowLayout: Codable, Equatable, Sendable {
   var hidden: Set<RowField>
 
   /// The row as it reads out of the box: where and who, then when, then
-  /// the badges. The excerpt is off — it is the one field that costs a
-  /// line of height.
-  static let `default` = RowLayout(order: RowField.allCases, hidden: [.excerpt])
+  /// the badges, then the excerpt — which costs a line of height and earns
+  /// it, since it carries the model's summary wherever there is one.
+  static let `default` = RowLayout(order: RowField.allCases, hidden: [])
 
   func shows(_ field: RowField) -> Bool {
     !hidden.contains(field)

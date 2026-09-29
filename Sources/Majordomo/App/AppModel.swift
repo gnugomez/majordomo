@@ -45,8 +45,13 @@ final class AppModel {
   /// Whether the model watches for patterns worth a label at all; only
   /// consulted while `intelligenceEnabled` is on.
   private(set) var suggestionsEnabled: Bool = AppModel.loadSuggestionsEnabled()
-  /// The master switch over every on-device feature — the rule composer
-  /// and the suggestions both. Off means nothing is generated at all.
+  /// Whether the model writes the one-line summaries the rows show in
+  /// place of raw excerpt text; only consulted while `intelligenceEnabled`
+  /// is on.
+  private(set) var summariesEnabled: Bool = AppModel.loadSummariesEnabled()
+  /// The master switch over every on-device feature — the rule composer,
+  /// the suggestions, and the summaries. Off means nothing is generated at
+  /// all.
   private(set) var intelligenceEnabled: Bool = AppModel.loadIntelligenceEnabled()
   /// Whether the on-device model can run here; read once the engine has
   /// installed its provider.
@@ -187,7 +192,13 @@ final class AppModel {
   }
 
   func setRowLayout(_ layout: RowLayout) {
+    let summarized = summariesWanted
     rowLayout = layout
+    // Hiding the excerpt leaves a summary nowhere to go; showing it again
+    // asks for the ones that were never written.
+    if summariesWanted != summarized {
+      pushSummariesWanted()
+    }
     guard let raw = try? JSONEncoder().encode(layout) else {
       log.error("failed to encode the row layout")
       return
@@ -253,6 +264,11 @@ final class AppModel {
     intelligenceActive && suggestionsEnabled
   }
 
+  /// True when the model is writing row summaries right now.
+  var summariesActive: Bool {
+    intelligenceActive && summariesWanted
+  }
+
   private static func loadIntelligenceEnabled() -> Bool {
     UserDefaults.standard.object(forKey: "intelligenceEnabled") as? Bool ?? true
   }
@@ -267,6 +283,35 @@ final class AppModel {
     Task {
       await engine?.setIntelligenceEnabled(enabled)
     }
+  }
+
+  private static func loadSummariesEnabled() -> Bool {
+    UserDefaults.standard.object(forKey: "summariesEnabled") as? Bool ?? true
+  }
+
+  /// What the engine is told: the user's switch, plus the fact that a row
+  /// with its excerpt hidden has nowhere to show a summary.
+  private var summariesWanted: Bool {
+    summariesEnabled && rowLayout.shows(.excerpt)
+  }
+
+  private func pushSummariesWanted() {
+    let wanted = summariesWanted
+    Task {
+      await engine?.setSummariesEnabled(wanted)
+    }
+  }
+
+  func setSummariesEnabled(_ enabled: Bool) {
+    summariesEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: "summariesEnabled")
+    pushSummariesWanted()
+  }
+
+  /// The on-device switches as the user left them, for the launch push —
+  /// the engine's own defaults only suit a first run.
+  var intelligenceSwitches: (intelligence: Bool, suggestions: Bool, summaries: Bool) {
+    (intelligenceEnabled, suggestionsEnabled, summariesWanted)
   }
 
   private static func loadSuggestionsEnabled() -> Bool {
