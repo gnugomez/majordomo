@@ -1,7 +1,8 @@
 // The settings pages, split into the categories the tabbed
 // settings window shows: Accounts (the account list with its add/remove
-// pair and token update), General, and Notifications. Inboxes, Labels,
-// and Rules have files of their own.
+// pair and token update), General (launch at login, and the inbox-row
+// editor next door), and Notifications. Inboxes, Labels, and Rules have
+// files of their own.
 
 import AppKit
 import SwiftUI
@@ -228,19 +229,23 @@ struct GeneralSettingsView: View {
   let model: AppModel
 
   var body: some View {
-    SettingsRow(label: "Launch at login") {
-      Toggle(
-        "Launch at login",
-        isOn: Binding(
-          get: { model.launchAtLogin },
-          set: { model.setLaunchAtLogin($0) }
+    VStack(alignment: .leading, spacing: 12) {
+      SettingsRow(label: "Launch at login") {
+        Toggle(
+          "Launch at login",
+          isOn: Binding(
+            get: { model.launchAtLogin },
+            set: { model.setLaunchAtLogin($0) }
+          )
         )
-      )
-      .labelsHidden()
-      .toggleStyle(.switch)
-      .controlSize(.small)
+        .labelsHidden()
+        .toggleStyle(.switch)
+        .controlSize(.small)
+      }
+      .settingsCard()
+
+      RowLayoutEditor(model: model)
     }
-    .settingsCard()
     .padding(16)
   }
 }

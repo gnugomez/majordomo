@@ -58,6 +58,7 @@ struct InboxListView: View {
             thread: thread,
             now: model.now,
             labels: labels(on: thread.items),
+            layout: model.rowLayout,
             selected: model.selectedThreadIds.contains(thread.id),
             expanded: expandedThreadIds.contains(thread.id)
           ) {
@@ -68,8 +69,13 @@ struct InboxListView: View {
           // right beneath the summary.
           if expandedThreadIds.contains(thread.id) {
             ForEach(thread.items) { member in
-              MemberRowView(member: member, now: model.now, selected: model.selectedThreadIds.contains(member.id))
-                .tag(member.id)
+              MemberRowView(
+                member: member,
+                now: model.now,
+                layout: model.rowLayout,
+                selected: model.selectedThreadIds.contains(member.id)
+              )
+              .tag(member.id)
             }
           }
         }

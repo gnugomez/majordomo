@@ -80,6 +80,8 @@ final class AppModel {
   /// "default", "none", or a system alert sound name ("Ping").
   private(set) var notificationSound: String =
     UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
+  /// What the inbox rows show, and in what order (settings → General).
+  private(set) var rowLayout: RowLayout = AppModel.loadRowLayout()
   /// Selection is by thread id, so it survives sync updates.
   var selectedThreadIds: Set<String> = []
   /// A message picked inside the previewed thread: the toolbar actions
@@ -174,6 +176,23 @@ final class AppModel {
   func setNotificationSound(_ sound: String) {
     notificationSound = sound
     UserDefaults.standard.set(sound, forKey: "notificationSound")
+  }
+
+  private static func loadRowLayout() -> RowLayout {
+    guard let raw = UserDefaults.standard.data(forKey: "rowLayout"),
+          let stored = try? JSONDecoder().decode(RowLayout.self, from: raw) else {
+      return .default
+    }
+    return stored
+  }
+
+  func setRowLayout(_ layout: RowLayout) {
+    rowLayout = layout
+    guard let raw = try? JSONEncoder().encode(layout) else {
+      log.error("failed to encode the row layout")
+      return
+    }
+    UserDefaults.standard.set(raw, forKey: "rowLayout")
   }
 
   // MARK: Labels

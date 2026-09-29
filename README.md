@@ -18,6 +18,8 @@ the SDK.
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with per-account sections and configurable
   inboxes — connect as many GitHub or GitLab accounts as you like
+- 🎛 Arrange the rows to taste — repo, author, time, labels, an excerpt of
+  the text: show what you want, in the order you want it
 - 🔒 Everything stays on your machine — read-only, no backend, tokens
   encrypted at rest
 
