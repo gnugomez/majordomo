@@ -152,6 +152,12 @@ private struct SidebarRowView: View {
   let account: AccountState?
   let model: AppModel
 
+  /// An inactive window greys its source list out. A tint has to step
+  /// aside for that: an explicit color knows nothing about the window's
+  /// state, and a custom icon would stay lit while every built-in one next
+  /// to it went quiet.
+  @Environment(\.appearsActive) private var appearsActive
+
   var body: some View {
     switch row {
     case .inbox(let category):
@@ -174,9 +180,11 @@ private struct SidebarRowView: View {
     Label {
       Text(category.label)
     } icon: {
-      // A tinted label wears its tint; the accent (every built-in) is
-      // the sidebar's own glyph color and draws like the catch-all.
-      if let tint = category.spec.tint {
+      // A tinted label wears its tint while the window is active; the
+      // accent (every built-in) is the sidebar's own glyph color and draws
+      // like the catch-all. Dropping the tint is what greys it out — the
+      // plain glyph follows the window the way the built-ins do.
+      if let tint = category.spec.tint, appearsActive {
         Image(systemName: category.symbol)
           .foregroundStyle(tint.color)
       } else {
