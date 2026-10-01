@@ -1,7 +1,9 @@
 // Left column of the main window: the aggregated "All Inboxes" section on
 // top (open by default), one collapsible section per connected account —
-// headed by the provider's mark, its name, and the account's username — and
-// the identity/settings row at the foot. Buckets and their wording come from
+// headed by the provider's mark, its name, and the account's username.
+// Nothing sits at the foot but sync activity while it runs: a permanent
+// account row says nothing the sections above don't, and settings have
+// ⌘, the tray menu and the rows' own menus. Buckets and their wording come from
 // each provider's spec; the user's label folders sit nested under one
 // collapsible "Labels" node after them in every section, in their own
 // tints.
@@ -36,57 +38,21 @@ struct SidebarView: View {
       }
     }
     .listStyle(.sidebar)
-    // The sidebar's foot: sync activity while it runs, and the account row
-    // — avatars + name, the way into settings alongside ⌘, and the tray
-    // menu.
+    // The sidebar's foot carries sync activity and nothing else: it shows
+    // while a sync runs and leaves no furniture behind when it doesn't.
+    // Settings open from ⌘, the tray menu, and the rows' own menus.
     .safeAreaInset(edge: .bottom) {
-      VStack(spacing: 0) {
-        if model.syncing {
-          VStack(spacing: 5) {
-            ProgressView()
-              .progressViewStyle(.linear)
-              .controlSize(.small)
-            Text("Syncing…")
-              .font(.system(size: 11))
-              .foregroundStyle(.secondary)
-          }
-          .padding(.horizontal, 14)
-          .padding(.bottom, 6)
+      if model.syncing {
+        VStack(spacing: 5) {
+          ProgressView()
+            .progressViewStyle(.linear)
+            .controlSize(.small)
+          Text("Syncing…")
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
         }
-        Button {
-          model.openSettings?()
-        } label: {
-          HStack(spacing: 8) {
-            if model.accounts.isEmpty {
-              Image(systemName: "person.crop.circle")
-                .font(.system(size: 19, weight: .light))
-                .foregroundStyle(.secondary)
-              Text("Connect an account")
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
-            } else {
-              // The connected faces, stacked; a thin ring keeps overlapping
-              // avatars legible against each other.
-              HStack(spacing: -7) {
-                ForEach(model.accounts) { account in
-                  AccountAvatar(account: account, size: 22)
-                    .overlay {
-                      Circle().strokeBorder(.background, lineWidth: 1.5)
-                    }
-                }
-              }
-              Text(accountLabel)
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-          }
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .help(accountsHelp)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
       }
     }
   }
@@ -130,19 +96,7 @@ struct SidebarView: View {
 
   /// The primary identity's full name (username as fallback); the stacked
   /// avatars carry the rest.
-  private var accountLabel: String {
-    guard let first = model.accounts.first else {
-      return ""
-    }
-    return first.name ?? first.username ?? first.provider.displayName
-  }
-
-  private var accountsHelp: String {
-    let names = model.accounts.compactMap(\.username).map { "@\($0)" }
-    return names.isEmpty ? "Settings" : "\(names.joined(separator: ", ")) — Settings"
-  }
 }
-
 
 /// One row of the layout: an inbox row, or a folder that draws its rows
 /// inside a disclosure group — a struct, so the recursion has a type.
