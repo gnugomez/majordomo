@@ -225,6 +225,7 @@ actor SyncEngine {
     }
     summarizing = true
     defer { summarizing = false }
+    var wrote = false
     let queue = store.itemsNeedingSummary(limit: summaryBudget)
       .filter { !summaryFailures.contains($0.id) }
     for item in queue {
@@ -241,6 +242,12 @@ actor SyncEngine {
       // The item may have been pruned or parked while the model worked;
       // the store drops a summary for an id it no longer has.
       store.setSummary(summary, itemId: item.id, of: body)
+      wrote = true
+    }
+    // One push for the batch. Every push re-lays the whole list out, and a
+    // sweep that pushed per answer spent that cost eight times over — which
+    // is felt as the window going sticky while the model works.
+    if wrote {
       emitState()
     }
   }
@@ -259,6 +266,7 @@ actor SyncEngine {
     }
     judging = true
     defer { judging = false }
+    var answered = false
     // One queue across every rule, so a rule with a long backlog can't
     // starve the others of the budget.
     let queue = asking
@@ -291,8 +299,12 @@ actor SyncEngine {
         continue
       }
       store.setVerdict(matched, itemId: item.id, rule: rule.id, question: question)
-      // The answer only becomes a label through the rules: sweep, then
-      // publish, exactly as a condition change would.
+      answered = true
+    }
+    // The answers only become labels through the rules: sweep, then
+    // publish, exactly as a condition change would — once for the batch,
+    // since both cost the whole collection.
+    if answered {
       sweepLabels()
       emitState()
     }
