@@ -1,6 +1,8 @@
-// Assigns labels from the user's logical rules. Pure functions over an item
-// and the rule set — no state, no I/O — run by the sync engine after every
-// upsert and whenever the labels or rules change.
+// Assigns labels from the user's rules. Pure functions over an item and the
+// rule set — no state, no I/O — run by the sync engine after every upsert
+// and whenever the labels or rules change. An intelligence rule is no
+// different here: the model's answer is already on the item, cached by the
+// store, and this only reads it.
 
 import Foundation
 
@@ -66,27 +68,41 @@ enum LabelEngine {
   }
 }
 
-/// A rule holds when its conditions hold — every one, or any one with
-/// `match: .any`. A rule with no conditions matches nothing either way: an
-/// empty rule is a draft, not a catch-all.
+/// A conditions rule holds when its conditions hold — every one, or any
+/// one with `match: .any`. An intelligence rule holds when the model
+/// answered yes to its question. Either way an empty rule matches nothing:
+/// no conditions, or no question, is a draft, not a catch-all.
 private struct CompiledRule {
+  let id: String
   let labelIds: [LabelId]
+  let judge: RuleJudge
+  let asksAnything: Bool
   let match: RuleMatch
   let conditions: [CompiledCondition]
 
   init(_ rule: LabelRule) {
+    id = rule.id
     labelIds = rule.labelIds
+    judge = rule.judge
+    asksAnything = rule.question != nil
     match = rule.match
     conditions = rule.conditions.map(CompiledCondition.init)
   }
 
   func matches(_ item: InboxItem) -> Bool {
-    guard !conditions.isEmpty else {
-      return false
-    }
-    switch match {
-    case .all: return conditions.allSatisfy { $0.holds(for: item) }
-    case .any: return conditions.contains { $0.holds(for: item) }
+    switch judge {
+    case .intelligence:
+      // An item the model hasn't been asked about yet carries no answer,
+      // and no answer is not a match.
+      return asksAnything && item.verdicts[id] == true
+    case .conditions:
+      guard !conditions.isEmpty else {
+        return false
+      }
+      switch match {
+      case .all: return conditions.allSatisfy { $0.holds(for: item) }
+      case .any: return conditions.contains { $0.holds(for: item) }
+      }
     }
   }
 }

@@ -52,6 +52,10 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// generated; nothing else reads it.
   var summary: String?
   var read: Bool
+  /// What the on-device model answered about this item, per intelligence
+  /// rule: yes, no, or absent for one it hasn't been asked yet. The rules
+  /// read it; nothing else interprets it.
+  var verdicts: [String: Bool] = [:]
   /// The labels the item carries: what the rules assigned with the user's
   /// overrides applied (see effectiveLabels). Folders, badges, and banner
   /// policy read only this.

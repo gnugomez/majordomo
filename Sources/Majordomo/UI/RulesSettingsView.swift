@@ -1,10 +1,11 @@
 // The Rules settings page: what the on-device model suggests, a field for
 // describing a rule in a sentence, and the rules themselves — the
 // providers' built-in ones (the sidebar buckets, read-only), the user's
-// with their switches, and the editor for the selected one: its
-// conditions (field, test, value), what it applies, and a live preview of
-// the items it matches right now. Edits commit whole user rules through
-// the model; text commits on submit or blur.
+// with their switches, and the editor for the selected one: how it decides
+// (conditions of field, test and value, or a question the on-device model
+// answers), what it applies, and a live preview of the items it matches
+// right now. Edits commit whole user rules through the model; text commits
+// on submit or blur.
 
 import SwiftUI
 
@@ -85,8 +86,13 @@ struct RulesSettingsView: View {
       .frame(height: 132)
 
       ControlGroup {
-        Button {
-          add()
+        Menu {
+          Button("Conditions Rule") {
+            add(judge: .conditions)
+          }
+          Button("Apple Intelligence Rule") {
+            add(judge: .intelligence)
+          }
         } label: {
           Image(systemName: "plus")
         }
@@ -146,12 +152,16 @@ struct RulesSettingsView: View {
   }
 
   /// "2 conditions → Urgent, Infra" for the list row — "any of 2
-  /// conditions" when one holding is enough.
+  /// conditions" when one holding is enough, "a question" when the model
+  /// is the one deciding.
   private func summary(_ rule: LabelRule) -> String {
     let count = rule.conditions.count
     var conditions = count == 1 ? "1 condition" : "\(count) conditions"
     if rule.match == .any, count > 1 {
       conditions = "any of \(conditions)"
+    }
+    if rule.judge == .intelligence {
+      conditions = rule.question == nil ? "no question yet" : "a question"
     }
     let names = rule.labelIds.compactMap { model.label($0)?.name }
     guard !names.isEmpty else {
@@ -165,10 +175,15 @@ struct RulesSettingsView: View {
     model.setRules(model.rules.map { $0.id == updated.id ? updated : $0 })
   }
 
-  private func add() {
+  private func add(judge: RuleJudge) {
     let rule = LabelRule(
-      id: UUID().uuidString, name: "New Rule",
-      conditions: [RuleCondition(field: .title, op: .contains, value: "")], labelIds: []
+      id: UUID().uuidString,
+      name: judge == .intelligence ? "New Intelligence Rule" : "New Rule",
+      judge: judge,
+      // A conditions rule opens on an empty condition to fill in; a
+      // question starts blank, since the whole of it is the user's wording.
+      conditions: judge == .conditions ? [RuleCondition(field: .title, op: .contains, value: "")] : [],
+      labelIds: []
     )
     model.setRules(model.rules + [rule])
     selection = rule.id
@@ -268,7 +283,7 @@ private struct RuleEditor: View {
           MatchRow(item: item, now: model.now)
         }
         if matches.isEmpty {
-          Text(rule.conditions.isEmpty ? "The preview fills in as you add conditions." : "Nothing in the inbox matches these conditions.")
+          Text(emptyPreview)
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
         }
@@ -292,6 +307,48 @@ private struct RuleEditor: View {
       }
       .textFieldStyle(.roundedBorder)
 
+      // What decides. Switching keeps both sides, so a rule tried one way
+      // and then the other finds its conditions — or its question — where
+      // it left them.
+      Picker("Decides by", selection: judgeBinding) {
+        Text("Conditions").tag(RuleJudge.conditions)
+        Text("Apple Intelligence").tag(RuleJudge.intelligence)
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+
+      if rule.judge == .intelligence {
+        questionControls
+      } else {
+        conditionControls
+      }
+
+      Text("Apply to")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(.secondary)
+      // A user rule feeds the user's inboxes and labels; a built-in one
+      // fills a built-in inbox, so the read-only view offers those.
+      let inboxes = readOnly ? model.catalog.builtinLabels : model.userInboxes
+      let labels = model.userLabels
+      let choices = inboxes + labels
+      RuleTargetRow(
+        pills: choices.filter { rule.labelIds.contains($0.id) },
+        placeholder: choices.isEmpty ? "Create an inbox or a label first." : "Nothing yet",
+        inboxes: inboxes,
+        labels: labels,
+        help: "Choose the inboxes and labels this rule applies",
+        binding: labelBinding
+      )
+
+      moveControl
+      pinControl
+    }
+  }
+
+  /// The conditions half of the editor: the match mode, the rows, and the
+  /// button that adds one.
+  private var conditionControls: some View {
+    VStack(alignment: .leading, spacing: 8) {
       // "When [all|any] of these hold": the rule's match mode, in the
       // words rule editors conventionally use for it.
       HStack(spacing: 4) {
@@ -346,26 +403,46 @@ private struct RuleEditor: View {
         commit(conditions: rule.conditions + [RuleCondition(field: .title, op: .contains, value: "")])
       }
       .controlSize(.small)
-
-      Text("Apply to")
-        .font(.system(size: 11, weight: .medium))
-        .foregroundStyle(.secondary)
-      // A user rule feeds the user's inboxes and labels; a built-in one
-      // fills a built-in inbox, so the read-only view offers those.
-      let inboxes = readOnly ? model.catalog.builtinLabels : model.userInboxes
-      let labels = model.userLabels
-      let choices = inboxes + labels
-      RuleTargetRow(
-        pills: choices.filter { rule.labelIds.contains($0.id) },
-        placeholder: choices.isEmpty ? "Create an inbox or a label first." : "Nothing yet",
-        inboxes: inboxes,
-        labels: labels,
-        help: "Choose the inboxes and labels this rule applies",
-        binding: labelBinding
-      )
-
-      moveControl
     }
+  }
+
+  /// The question half: what the model is asked about each notification,
+  /// in the user's own words, with what it costs said plainly.
+  private var questionControls: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 4) {
+        Image(systemName: "apple.intelligence")
+        Text("When the answer to this is yes")
+      }
+      .font(.system(size: 11, weight: .medium))
+      .foregroundStyle(.secondary)
+      CommitTextEditor(
+        prompt: "Describe what this rule should catch, the way you would say it out loud.",
+        text: rule.prompt
+      ) { prompt in
+        var updated = rule
+        updated.prompt = prompt
+        onChange(updated)
+      }
+      .frame(height: 76)
+      Text(questionHint)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// What the user needs to know about the question they are writing: that
+  /// it is answered per notification, on this Mac, and that an unavailable
+  /// model means nothing gets answered at all.
+  private var questionHint: String {
+    if let reason = model.intelligence.reason {
+      return reason
+    }
+    if !model.intelligenceEnabled {
+      return "Apple Intelligence is switched off in Settings, so nothing is being judged."
+    }
+    return "Every notification is judged once against this question, on this Mac, and the answer is kept until the question or the notification changes."
   }
 
   /// Whether a matching item is moved rather than copied. Moved means it
@@ -380,6 +457,24 @@ private struct RuleEditor: View {
       .toggleStyle(.checkbox)
       .controlSize(.small)
       Text("Matching items move into the inboxes above and drop out of every other one, Recent included.")
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// Whether what this rule catches rides at the top of Recent, in a box
+  /// of its own. The box is the label's, not the rule's: two rules filling
+  /// the same label share one.
+  private var pinControl: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Toggle(isOn: pinsBinding) {
+        Text("Show at the top of Recent")
+          .font(.system(size: 12))
+      }
+      .toggleStyle(.checkbox)
+      .controlSize(.small)
+      Text("The newest unread ones sit in a box above the list, under the label's name. They stay in the list too.")
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -423,6 +518,30 @@ private struct RuleEditor: View {
     )
   }
 
+  /// The conditions-or-question switch.
+  private var judgeBinding: Binding<RuleJudge> {
+    Binding(
+      get: { rule.judge },
+      set: { judge in
+        var updated = rule
+        updated.judge = judge
+        onChange(updated)
+      }
+    )
+  }
+
+  /// The top-box switch.
+  private var pinsBinding: Binding<Bool> {
+    Binding(
+      get: { rule.pinsToTop },
+      set: { on in
+        var updated = rule
+        updated.pinsToTop = on
+        onChange(updated)
+      }
+    )
+  }
+
   /// What the rule would label right now, newest first — the fastest way
   /// to see whether a condition is written right. The engine's own
   /// evaluation, so all/any and the empty-rule case agree with the sweep.
@@ -431,19 +550,50 @@ private struct RuleEditor: View {
   }
 
   private var matchHeader: String {
+    if rule.judge == .intelligence {
+      guard rule.question != nil else {
+        return "Write a question — a rule that asks nothing matches nothing"
+      }
+      return [matchedCount, judgedCount, stateNote].compactMap { $0 }.joined(separator: " · ")
+    }
     guard !rule.conditions.isEmpty else {
       return "Add a condition — an empty rule matches nothing"
     }
-    let count = matches.count
-    let matched = switch count {
+    return [matchedCount, stateNote].compactMap { $0 }.joined(separator: " · ")
+  }
+
+  private var matchedCount: String {
+    switch matches.count {
     case 0: "No items match yet"
     case 1: "Matches 1 item now"
-    default: "Matches \(count) items now"
+    default: "Matches \(matches.count) items now"
     }
+  }
+
+  /// How far the model has got through the inbox with this question —
+  /// without it, a half-judged rule looks like a broken one.
+  private var judgedCount: String {
+    let judged = model.items.count { $0.verdicts[rule.id] != nil }
+    return judged == model.items.count ? "all judged" : "\(judged) of \(model.items.count) judged"
+  }
+
+  /// Why the rule might be doing nothing, when that isn't its own doing.
+  private var stateNote: String? {
     if let definedBy {
-      return "\(matched) · built into \(definedBy), read-only"
+      return "built into \(definedBy), read-only"
     }
-    return rule.enabled ? matched : "\(matched) · the rule is switched off"
+    return rule.enabled ? nil : "the rule is switched off"
+  }
+
+  private var emptyPreview: String {
+    if rule.judge == .intelligence {
+      return rule.question == nil
+        ? "The preview fills in once you write a question."
+        : "Nothing has been judged a match yet."
+    }
+    return rule.conditions.isEmpty
+      ? "The preview fills in as you add conditions."
+      : "Nothing in the inbox matches these conditions."
   }
 }
 

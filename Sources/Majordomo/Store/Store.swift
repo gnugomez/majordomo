@@ -24,6 +24,19 @@ private let itemsCap = 500
 /// it back resumes where it left off; past it, everything of its is dropped.
 private let retainRemovedSeconds: TimeInterval = 90 * 24 * 60 * 60
 
+/// The model's answer for one intelligence rule on one item. Both
+/// fingerprints matter and they go stale differently: a rewritten question
+/// throws the answer away (it was given to a different question), while
+/// changed text only queues a fresh one — the last answer keeps standing
+/// until the model has given a new one.
+struct RuleVerdict: Codable, Sendable, Hashable {
+  var matched: Bool
+  /// Fingerprint of the question that was asked.
+  var question: String
+  /// Fingerprint of the text it was asked about.
+  var text: String
+}
+
 /// A FetchedItem the app has adopted into its own collection. The transient
 /// upstreamRead signal is consumed at upsert and never persisted.
 struct StoredItem: Codable, Sendable {
@@ -58,6 +71,8 @@ struct StoredItem: Codable, Sendable {
   var labelOverrides: LabelOverrides = [:]
   /// Labels the target carries at the provider, as last reported.
   var upstreamLabels: [String]?
+  /// What the model answered for each intelligence rule, by rule id.
+  var verdicts: [String: RuleVerdict] = [:]
 
   /// The published shape, with the effective label set resolved against
   /// the labels that exist.
@@ -66,6 +81,7 @@ struct StoredItem: Codable, Sendable {
       id: id, accountId: accountId, provider: provider, kind: kind,
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
       updatedAt: updatedAt, state: state, author: author, body: body, summary: summary, read: read,
+      verdicts: verdicts.mapValues(\.matched),
       labels: effectiveLabels(auto: autoLabels, overrides: labelOverrides, existing: existingLabels),
       hiddenFrom: hiddenFrom,
       upstreamLabels: upstreamLabels ?? []
@@ -100,6 +116,7 @@ extension StoredItem {
     hiddenFrom = try container.decodeIfPresent(Set<LabelId>.self, forKey: .hiddenFrom) ?? []
     labelOverrides = try container.decodeIfPresent(LabelOverrides.self, forKey: .labelOverrides) ?? [:]
     upstreamLabels = try container.decodeIfPresent([String].self, forKey: .upstreamLabels)
+    verdicts = try container.decodeIfPresent([String: RuleVerdict].self, forKey: .verdicts) ?? [:]
   }
 }
 
@@ -131,6 +148,9 @@ struct StoreFile: Codable {
   /// dismissal is remembered by signature so the same pattern isn't
   /// offered twice.
   var suggestions: [Suggestion] = []
+  /// Whether the starter label and rule were ever added. Set the once,
+  /// kept forever: deleting what they seeded is final.
+  var seeded: Bool = false
 }
 
 extension StoreFile {
@@ -144,6 +164,7 @@ extension StoreFile {
     rules = try container.decodeIfPresent([LabelRule].self, forKey: .rules) ?? []
     sidebar = try container.decodeIfPresent(SidebarLayout.self, forKey: .sidebar)
     suggestions = try container.decodeIfPresent([Suggestion].self, forKey: .suggestions) ?? []
+    seeded = try container.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
   }
 }
 
@@ -453,7 +474,10 @@ final class Store {
         autoLabels: existing?.autoLabels ?? [],
         hiddenFrom: existing?.hiddenFrom ?? [],
         labelOverrides: existing?.labelOverrides ?? [:],
-        upstreamLabels: fetched.upstreamLabels ?? existing?.upstreamLabels
+        upstreamLabels: fetched.upstreamLabels ?? existing?.upstreamLabels,
+        // Answers ride along; the text fingerprint inside each one is what
+        // decides whether the sweep asks again.
+        verdicts: existing?.verdicts ?? [:]
       )
     }
     save()
@@ -491,6 +515,50 @@ final class Store {
     data.items[itemId]?.summary = summary
     data.items[itemId]?.summaryOf = textFingerprint(text)
     save()
+  }
+
+  // MARK: Verdicts
+
+  /// Items this rule has no current answer for, worst-missed first: unread
+  /// before read, newest before oldest. An item whose text changed since
+  /// the answer comes back here too — the standing answer keeps showing
+  /// until this returns a new one.
+  func itemsNeedingVerdict(rule: String, question: String, limit: Int) -> [StoredItem] {
+    let asked = textFingerprint(question)
+    let queue = getItems()
+      .filter { item in
+        guard let verdict = item.verdicts[rule] else {
+          return true
+        }
+        return verdict.question != asked || verdict.text != textFingerprint(itemText(item))
+      }
+      .sorted { a, b in
+        if a.read != b.read {
+          return b.read
+        }
+        return a.updatedAt > b.updatedAt
+      }
+    return Array(queue.prefix(limit))
+  }
+
+  /// Files an answer against the question asked and the text it was asked
+  /// about.
+  func setVerdict(_ matched: Bool, itemId: String, rule: String, question: String) {
+    guard let item = data.items[itemId] else {
+      return
+    }
+    data.items[itemId]?.verdicts[rule] = RuleVerdict(
+      matched: matched,
+      question: textFingerprint(question),
+      text: textFingerprint(itemText(item))
+    )
+    save()
+  }
+
+  /// What a rule is asked about: the title and the body together, so a
+  /// comment arriving on a known item is judged afresh.
+  private func itemText(_ item: StoredItem) -> String {
+    "\(item.title)\n\(item.body ?? "")"
   }
 
   func markRead(_ ids: [String]) {
@@ -540,8 +608,44 @@ final class Store {
     data.rules
   }
 
+  /// Replaces the rule set. An answer belongs to the question it was
+  /// given for: a rule that is gone, or one whose question was rewritten,
+  /// leaves its answers behind rather than carrying a verdict on wording
+  /// nobody asked.
   func setRules(_ rules: [LabelRule]) {
     data.rules = rules
+    let asked = rules.reduce(into: [String: String]()) { asked, rule in
+      if let question = rule.question {
+        asked[rule.id] = textFingerprint(question)
+      }
+    }
+    for (id, item) in data.items {
+      let kept = item.verdicts.filter { asked[$0.key] == $0.value.question }
+      if kept.count != item.verdicts.count {
+        data.items[id]?.verdicts = kept
+      }
+    }
+    save()
+  }
+
+  // MARK: Starter setup
+
+  /// Adds the app's starting labels and rules, once. A store that has been
+  /// seeded is never seeded again, so deleting them is final.
+  func seed(labels: [InboxLabel], rules: [LabelRule]) {
+    guard !data.seeded else {
+      return
+    }
+    data.seeded = true
+    let existing = Set(data.labels.map(\.id))
+    let offset = data.labels.count
+    for (index, label) in labels.enumerated() where !existing.contains(label.id) {
+      var seeded = label
+      seeded.order = offset + index
+      data.labels.append(seeded)
+    }
+    let known = Set(data.rules.map(\.id))
+    data.rules.append(contentsOf: rules.filter { !known.contains($0.id) })
     save()
   }
 

@@ -49,10 +49,21 @@ struct InboxListView: View {
         )
       }
     } else {
+      let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
       List(selection: Binding(
         get: { model.selectedThreadIds },
         set: { model.selectedThreadIds = $0 }
       )) {
+        // The pinned labels ride at the top of the catch-all only, inside
+        // the list so they scroll away with everything else. Unselectable:
+        // the arrows and ⌘A belong to the notifications, not to a spotlight.
+        if !pinned.isEmpty {
+          PinnedLabelBox(model: model, boxes: pinned)
+            .fixedSize(horizontal: false, vertical: true)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: 6))
+            .selectionDisabled()
+        }
         ForEach(threads) { thread in
           ItemRowView(
             thread: thread,
@@ -81,6 +92,13 @@ struct InboxListView: View {
         }
       }
       .listStyle(.inset)
+      // The box is a row whose height the table measures once and keeps:
+      // inserted or grown after the list was built, it draws clipped to
+      // whatever height it was first given. Keying the list to the shape of
+      // the box hands AppKit a new table to measure, which is why this is
+      // the box's shape and not its contents — it rebuilds when a line
+      // appears or goes, not on every answer the model files.
+      .id(pinned.map { "\($0.id):\($0.threads.count)" }.joined(separator: "|"))
       // Arrows walk the inbox from the first keystroke; without this the
       // sidebar holds the keyboard until a row is clicked.
       .claimsInitialKeyboardFocus()

@@ -1,6 +1,8 @@
-// Where the on-device model plugs in. Three jobs, all optional: turning a
-// sentence into a rule, judging the patterns Suggestion.swift mined, and
-// summarizing a notification's text for its inbox row. The protocol keeps
+// Where the on-device model plugs in. Four jobs, all optional: turning a
+// sentence into a rule, judging the patterns Suggestion.swift mined,
+// summarizing a notification's text for its inbox row, and answering a
+// user's own yes-or-no question about a notification for an intelligence
+// rule. The protocol keeps
 // the rest of the app honest — nothing here knows about FoundationModels,
 // and with no model present every caller sees the same "unavailable" and
 // carries on.
@@ -36,6 +38,18 @@ struct SummaryRequest: Sendable {
   let body: String
 }
 
+/// One notification put to an intelligence rule's question. The question
+/// is the user's, in their words; the rest is what the notification says.
+struct VerdictRequest: Sendable {
+  let question: String
+  let title: String
+  let repo: String
+  let author: String?
+  let body: String?
+  /// The core's own "needs you" tier — not a provider token.
+  let isMention: Bool
+}
+
 /// What the app asks a model to do. One implementation talks to Apple
 /// Intelligence; the null one stands in wherever it can't run.
 protocol IntelligenceProvider: Sendable {
@@ -49,6 +63,9 @@ protocol IntelligenceProvider: Sendable {
   /// A notification's text in one line, for the row to show under the
   /// title. Throws a human-readable message; the caller skips the item.
   func summarize(_ request: SummaryRequest) async throws -> String
+  /// Whether one notification answers an intelligence rule's question.
+  /// Throws a human-readable message; the caller leaves the item unjudged.
+  func evaluate(_ request: VerdictRequest) async throws -> Bool
 }
 
 /// The stand-in when Apple Intelligence isn't available: it says so, and
@@ -69,6 +86,10 @@ struct NoIntelligence: IntelligenceProvider {
   }
 
   func summarize(_ request: SummaryRequest) async throws -> String {
+    throw IntelligenceError(message: reason)
+  }
+
+  func evaluate(_ request: VerdictRequest) async throws -> Bool {
     throw IntelligenceError(message: reason)
   }
 }

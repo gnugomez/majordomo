@@ -22,6 +22,9 @@ the SDK.
   the text: show what you want, in the order you want it
 - 🧠 Apple Intelligence sums up what a notification says in the line under
   it — on device, and switchable off
+- 🎯 Rules that read rather than match: describe what matters in your own
+  words and the model judges each notification against it; what it picks
+  can ride at the top of the inbox in a box of its own
 - 🔒 Everything stays on your machine — read-only, no backend, tokens
   encrypted at rest
 

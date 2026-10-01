@@ -146,39 +146,73 @@ enum RuleMatch: String, Codable, CaseIterable, Sendable {
   case any
 }
 
-/// A logical rule: when its conditions hold for an item — all of them, or
-/// any one with `match: .any` — the rule's labels are added to it. Rules
-/// are independent — each matching rule contributes, and the item ends up
-/// with the union.
+/// What a rule decides with.
+enum RuleJudge: String, Codable, CaseIterable, Sendable {
+  /// The item's own fields, tested logically — `conditions`.
+  case conditions
+  /// A question put to the on-device model in the user's own words —
+  /// `prompt`. The answer is cached per item; nothing here evaluates it.
+  case intelligence
+}
+
+/// A rule: when it holds for an item, its labels are added to it. A
+/// conditions rule holds when its conditions do — all of them, or any one
+/// with `match: .any`; an intelligence rule holds when the model answered
+/// yes to its prompt. Rules are independent — each matching rule
+/// contributes, and the item ends up with the union.
 struct LabelRule: Identifiable, Codable, Hashable, Sendable {
   var id: String
   var name: String
   var enabled: Bool = true
+  /// How this rule decides. The unused side is kept, not cleared: a rule
+  /// switched to the model and back finds its conditions where it left
+  /// them.
+  var judge: RuleJudge = .conditions
   var match: RuleMatch = .all
   var conditions: [RuleCondition]
+  /// The question the model answers about each notification — an
+  /// intelligence rule's whole definition, in the user's words.
+  var prompt: String = ""
   var labelIds: [LabelId]
   /// Whether a matching item is MOVED rather than copied: it shows only
   /// in what this rule applies, and nowhere else — the catch-all
   /// included.
   var movesItems: Bool = false
+  /// Whether the labels this rule fills ride at the top of the catch-all,
+  /// in a box of their own.
+  var pinsToTop: Bool = false
 }
 
 extension LabelRule {
   private enum CodingKeys: String, CodingKey {
-    case id, name, enabled, match, conditions, labelIds, movesItems
+    case id, name, enabled, judge, match, conditions, prompt, labelIds, movesItems, pinsToTop
   }
 
-  /// Rules stored before `match` or the move fields existed require every
-  /// condition and move nothing.
+  /// Rules stored before `match`, the move fields, or the model existed
+  /// require every condition, move nothing, are judged by their
+  /// conditions, and stay out of the top box.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     name = try container.decode(String.self, forKey: .name)
     enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    judge = try container.decodeIfPresent(RuleJudge.self, forKey: .judge) ?? .conditions
     match = try container.decodeIfPresent(RuleMatch.self, forKey: .match) ?? .all
     conditions = try container.decode([RuleCondition].self, forKey: .conditions)
+    prompt = try container.decodeIfPresent(String.self, forKey: .prompt) ?? ""
     labelIds = try container.decode([LabelId].self, forKey: .labelIds)
     movesItems = try container.decodeIfPresent(Bool.self, forKey: .movesItems) ?? false
+    pinsToTop = try container.decodeIfPresent(Bool.self, forKey: .pinsToTop) ?? false
+  }
+
+  /// The question this rule puts to the model, or nil when it has none to
+  /// ask — a conditions rule, or an intelligence rule still being written.
+  var question: String? {
+    guard judge == .intelligence else {
+      return nil
+    }
+    let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
   }
 
   /// The inboxes this rule hides a matching item from, given every inbox

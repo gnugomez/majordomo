@@ -92,6 +92,12 @@ reintroduces the bug:
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
+- The inbox list is keyed to the pinned box's shape (`InboxListView`): a
+  row inserted into — or grown inside — a table that was already built
+  keeps the height it was first measured at and draws clipped until
+  something forces another pass (resizing the column does). The id hands
+  AppKit a new table to measure. It keys on the box's SHAPE, not its
+  contents, so answers landing one by one don't rebuild the list.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither

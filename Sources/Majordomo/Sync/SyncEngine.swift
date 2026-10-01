@@ -20,6 +20,10 @@ private let suggestionSweepInterval: TimeInterval = 6 * 60 * 60
 /// second or two, so a pass takes the rows the user is looking at and
 /// leaves the rest to the next one.
 private let summaryBudget = 8
+/// Verdicts a sweep collects at most, across every intelligence rule. The
+/// same bargain as the summaries: the rows in front of the user first, the
+/// rest on the next pass.
+private let verdictBudget = 8
 /// New unread items only post a banner while their activity is this fresh.
 /// A deep sync can surface months-old backlog in one go — that belongs in
 /// the inbox as unread, not in Notification Center as a flood.
@@ -63,6 +67,11 @@ actor SyncEngine {
   /// a hiccup. Forgotten at relaunch; retrying them every minute would
   /// spend the budget on the same failures.
   private var summaryFailures: Set<String> = []
+  /// True while a verdict sweep is out with the model.
+  private var judging = false
+  /// "item:rule" pairs the model wouldn't answer this run, for the same
+  /// reason as the summary failures.
+  private var verdictFailures: Set<String> = []
   /// When the last sweep ran, so the next one waits its turn.
   private var lastSuggestionSweepAt: Date?
   private var inFlight: Task<Void, Never>?
@@ -76,6 +85,9 @@ actor SyncEngine {
     self.notify = notify
     store = isDemo ? Store(fixture: DemoData.storeFile()) : Store()
     store.builtinLabelIds = LabelCatalog.current(user: [], userRules: []).builtinIds
+    // The starter label and rule, once per store (see StarterSetup): the
+    // feature arrives configured, and stays deleted if the user deletes it.
+    store.seed(labels: StarterSetup.labels, rules: StarterSetup.rules)
     clients = Dictionary(uniqueKeysWithValues: providerSpecs.map { ($0.id, $0.makeClient()) })
     for account in store.accounts() where account.config == nil {
       errors[account.id] = "The stored token can't be read — remove and re-add the account."
@@ -233,6 +245,59 @@ actor SyncEngine {
     }
   }
 
+  /// Answers what the intelligence rules are asking: a budgeted handful of
+  /// item-and-question pairs per pass, newest unread first, each one
+  /// published as it lands so a label fills in rather than appearing all at
+  /// once. Runs after every sync and whenever the rules change.
+  func sweepVerdicts() async {
+    guard intelligenceEnabled, intelligence.availability().isAvailable, !judging else {
+      return
+    }
+    let asking = store.rules().filter { $0.enabled && $0.question != nil }
+    guard !asking.isEmpty else {
+      return
+    }
+    judging = true
+    defer { judging = false }
+    // One queue across every rule, so a rule with a long backlog can't
+    // starve the others of the budget.
+    let queue = asking
+      .flatMap { rule -> [(item: StoredItem, rule: LabelRule, question: String)] in
+        guard let question = rule.question else {
+          return []
+        }
+        return store.itemsNeedingVerdict(rule: rule.id, question: question, limit: verdictBudget)
+          .map { (item: $0, rule: rule, question: question) }
+      }
+      .filter { !verdictFailures.contains("\($0.item.id):\($0.rule.id)") }
+      .sorted { a, b in
+        if a.item.read != b.item.read {
+          return b.item.read
+        }
+        return a.item.updatedAt > b.item.updatedAt
+      }
+      .prefix(verdictBudget)
+    for (item, rule, question) in queue {
+      let request = VerdictRequest(
+        question: question,
+        title: item.title,
+        repo: item.repo,
+        author: item.author,
+        body: item.body,
+        isMention: item.isMention
+      )
+      guard let matched = try? await intelligence.evaluate(request) else {
+        verdictFailures.insert("\(item.id):\(rule.id)")
+        continue
+      }
+      store.setVerdict(matched, itemId: item.id, rule: rule.id, question: question)
+      // The answer only becomes a label through the rules: sweep, then
+      // publish, exactly as a condition change would.
+      sweepLabels()
+      emitState()
+    }
+  }
+
   /// Turns the row summaries on or off. Switching them on catches up at
   /// once — the alternative is a minute of rows that say nothing.
   func setSummariesEnabled(_ enabled: Bool) {
@@ -301,6 +366,9 @@ actor SyncEngine {
     if enabled {
       Task {
         await self.sweepSummaries()
+      }
+      Task {
+        await self.sweepVerdicts()
       }
     }
   }
@@ -419,6 +487,9 @@ actor SyncEngine {
     Task {
       await self.sweepSummaries()
     }
+    Task {
+      await self.sweepVerdicts()
+    }
     if suggestionSweepIsDue() {
       Task {
         await self.sweepSuggestions()
@@ -507,11 +578,17 @@ actor SyncEngine {
     emitState()
   }
 
-  /// Replaces the rules and re-sweeps every live item.
+  /// Replaces the rules and re-sweeps every live item. A rewritten
+  /// question drops the answers it was given (Store.setRules), so the
+  /// labels it fed empty here and fill again as the model catches up.
   func setRules(_ rules: [LabelRule]) {
     store.setRules(rules)
+    verdictFailures = []
     sweepLabels()
     emitState()
+    Task {
+      await self.sweepVerdicts()
+    }
   }
 
   /// The user's hand on one item's label: forced on, forced off, or (nil)
@@ -659,6 +736,9 @@ actor SyncEngine {
       // before the first fetch — and in demo mode, which never fetches.
       Task {
         await self.sweepSummaries()
+      }
+      Task {
+        await self.sweepVerdicts()
       }
       // Demo mode is fixtures only: never touch the network.
       guard !isDemo else { return }
