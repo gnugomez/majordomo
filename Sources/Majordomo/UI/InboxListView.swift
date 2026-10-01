@@ -81,6 +81,9 @@ struct InboxListView: View {
         }
       }
       .listStyle(.inset)
+      // Arrows walk the inbox from the first keystroke; without this the
+      // sidebar holds the keyboard until a row is clicked.
+      .claimsInitialKeyboardFocus()
       // Selection stays the list's own (a tap gesture on row content would
       // swallow the clicks NSTableView needs), so ⇧/⌘-click and ⌘A come for
       // free; double-click and the context menu arrive through the

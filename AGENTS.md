@@ -92,6 +92,12 @@ reintroduces the bug:
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
+- The inbox list takes the window's first responder through an AppKit
+  claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
+  a NavigationSplitView's keyboard to the sidebar, and neither
+  `defaultFocus` on the split view nor a `FocusState` on the content column
+  moves it — the arrow keys would walk the sidebar until a row is clicked.
+  It fires once per window and never out of a text field.
 - The date-filter glyph is an `NSImage` painted via a symbol configuration
   (MainWindowView.filterGlyph): the toolbar draws item images itself as
   templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
