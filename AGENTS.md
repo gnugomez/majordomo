@@ -92,16 +92,16 @@ reintroduces the bug:
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
-- The inbox list is keyed to the pinned box's shape (`InboxListView`): a
-  List row is measured once, when it is inserted, and keeps that height —
-  and the box arrives, and grows a line at a time, as the model answers, so
-  it drew clipped until something forced another pass (resizing the column
-  does). The id hands AppKit a new table to measure. It keys on the SHAPE,
-  not the contents, so answers landing one by one don't rebuild the list.
-  Nothing cheaper worked: not `fixedSize`, not an explicit row height
-  (the table clamps it anyway), not a section header (which also brings a
-  separator the design doesn't want). The rebuild leaves the window's first
-  responder unheld, which is the case InitialKeyboardFocus re-claims on.
+- The inbox list is nudged half a point wider, for one frame, whenever the
+  pinned box's shape changes (`InboxListView`): a List row is measured
+  once, when it arrives, and keeps that height — and the box arrives, and
+  grows a line at a time, as the model answers, so it drew clipped. A width
+  change is what makes the table measure again (dragging the column divider
+  fixed it by hand); the nudge is that drag, done for the user. Nothing
+  else worked: not `fixedSize`, not an explicit row height (the table
+  clamps it), not a section header (and it brings a separator besides).
+  Keying the list's `id` to the box also worked, but rebuilt every row —
+  which is what made opening Recent take a visible moment.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither

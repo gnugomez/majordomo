@@ -11,6 +11,9 @@ struct InboxListView: View {
 
   /// Threads unfolded into their member rows (the count button toggles).
   @State private var expandedThreadIds: Set<String> = []
+  /// True for the one frame that nudges the list's width, so the table
+  /// measures its rows again.
+  @State private var remeasuring = false
 
   var body: some View {
     // Items keep showing while their account is connected, even when it
@@ -50,6 +53,9 @@ struct InboxListView: View {
       }
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
+      // What the spotlight takes up: a line appearing or going is what the
+      // table has to measure again.
+      let spotlightShape = pinned.map { "\($0.id):\($0.threads.count)" }.joined(separator: "|")
       List(selection: Binding(
         get: { model.selectedThreadIds },
         set: { model.selectedThreadIds = $0 }
@@ -91,14 +97,21 @@ struct InboxListView: View {
         }
       }
       .listStyle(.inset)
-      // The box is a row whose height the table measures once, when it is
-      // inserted, and keeps: it arrives — and grows a line at a time — as
-      // the model answers, and draws clipped to that first height until
-      // something forces another pass (resizing the column does). Keying
-      // the list to the shape of the box hands AppKit a new table to
-      // measure. It keys on the SHAPE, not the contents, so answers
-      // landing one by one don't rebuild the list under the user.
-      .id(pinned.map { "\($0.id):\($0.threads.count)" }.joined(separator: "|"))
+      // A hair of width, given and taken straight back. The table measures
+      // a row once, when it arrives, and keeps that height — and the box
+      // arrives, and grows, after the list was built, so it draws clipped
+      // until something changes the width (dragging the column divider is
+      // what made it whole by hand). This is that drag, done for the user:
+      // two layout passes, where rebuilding the list costs every row in it
+      // — and that rebuild is what made opening Recent take a moment.
+      .padding(.trailing, remeasuring ? 0.5 : 0)
+      .onChange(of: spotlightShape) {
+        remeasuring = true
+        Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(20))
+          remeasuring = false
+        }
+      }
       // The spotlight arrives above everything else, and a list that kept
       // its place in the content would show it already half scrolled past.
       .defaultScrollAnchor(.top)
