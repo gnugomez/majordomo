@@ -75,7 +75,12 @@ struct InboxListView: View {
         if !pinned.isEmpty {
           PinnedLabelBox(model: model, boxes: pinned)
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: 6))
+            // The half point that makes the table measure this row again
+            // rides on the row's own insets, not on the list's width: one
+            // row to re-measure instead of the column.
+            .listRowInsets(
+              EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: remeasuring ? 6.5 : 6)
+            )
             .selectionDisabled()
         }
         ForEach(threads) { thread in
@@ -106,14 +111,6 @@ struct InboxListView: View {
         }
       }
       .listStyle(.inset)
-      // A hair of width, given and taken straight back. The table measures
-      // a row once, when it arrives, and keeps that height — and the box
-      // arrives, and grows, after the list was built, so it draws clipped
-      // until something changes the width (dragging the column divider is
-      // what made it whole by hand). This is that drag, done for the user:
-      // two layout passes, where rebuilding the list costs every row in it
-      // — and that rebuild is what made opening Recent take a moment.
-      .padding(.trailing, remeasuring ? 0.5 : 0)
       .onChange(of: spotlightShape) {
         // Nothing to measure when there is no box, and never from inside
         // the pass that noticed the change: setting this synchronously

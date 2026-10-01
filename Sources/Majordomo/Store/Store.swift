@@ -506,15 +506,20 @@ final class Store {
     return Array(queue.prefix(limit))
   }
 
-  /// Files a summary against the text it was made from; a later edit of
-  /// that text no longer matches, and the next sweep rewrites it.
-  func setSummary(_ summary: String, itemId: String, of text: String) {
-    guard data.items[itemId] != nil else {
-      return
+  /// Files a sweep's summaries against the text each was made from; a
+  /// later edit of that text no longer matches, and the next sweep
+  /// rewrites it. A batch, because every save rewrites the whole file —
+  /// saving per answer rewrote it once for each.
+  func setSummaries(_ updates: [(itemId: String, summary: String, text: String)]) {
+    var changed = false
+    for update in updates where data.items[update.itemId] != nil {
+      data.items[update.itemId]?.summary = update.summary
+      data.items[update.itemId]?.summaryOf = textFingerprint(update.text)
+      changed = true
     }
-    data.items[itemId]?.summary = summary
-    data.items[itemId]?.summaryOf = textFingerprint(text)
-    save()
+    if changed {
+      save()
+    }
   }
 
   // MARK: Verdicts
@@ -541,18 +546,24 @@ final class Store {
     return Array(queue.prefix(limit))
   }
 
-  /// Files an answer against the question asked and the text it was asked
-  /// about.
-  func setVerdict(_ matched: Bool, itemId: String, rule: String, question: String) {
-    guard let item = data.items[itemId] else {
-      return
+  /// Files a sweep's answers against the question asked and the text each
+  /// was asked about, in one write — see setSummaries.
+  func setVerdicts(_ updates: [(itemId: String, rule: String, matched: Bool, question: String)]) {
+    var changed = false
+    for update in updates {
+      guard let item = data.items[update.itemId] else {
+        continue
+      }
+      data.items[update.itemId]?.verdicts[update.rule] = RuleVerdict(
+        matched: update.matched,
+        question: textFingerprint(update.question),
+        text: textFingerprint(itemText(item))
+      )
+      changed = true
     }
-    data.items[itemId]?.verdicts[rule] = RuleVerdict(
-      matched: matched,
-      question: textFingerprint(question),
-      text: textFingerprint(itemText(item))
-    )
-    save()
+    if changed {
+      save()
+    }
   }
 
   /// What a rule is asked about: the title and the body together, so a

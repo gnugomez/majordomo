@@ -225,7 +225,7 @@ actor SyncEngine {
     }
     summarizing = true
     defer { summarizing = false }
-    var wrote = false
+    var written: [(itemId: String, summary: String, text: String)] = []
     let queue = store.itemsNeedingSummary(limit: summaryBudget)
       .filter { !summaryFailures.contains($0.id) }
     for item in queue {
@@ -239,17 +239,18 @@ actor SyncEngine {
         summaryFailures.insert(item.id)
         continue
       }
-      // The item may have been pruned or parked while the model worked;
-      // the store drops a summary for an id it no longer has.
-      store.setSummary(summary, itemId: item.id, of: body)
-      wrote = true
+      written.append((itemId: item.id, summary: summary, text: body))
     }
-    // One push for the batch. Every push re-lays the whole list out, and a
-    // sweep that pushed per answer spent that cost eight times over — which
-    // is felt as the window going sticky while the model works.
-    if wrote {
-      emitState()
+    // One write and one push for the batch: the store rewrites its whole
+    // file per save, and every push re-lays the list out. A sweep that did
+    // both per answer paid each cost eight times over, which is what the
+    // window going sticky while the model works was made of. Items pruned
+    // or parked meanwhile are dropped by the store.
+    guard !written.isEmpty else {
+      return
     }
+    store.setSummaries(written)
+    emitState()
   }
 
   /// Answers what the intelligence rules are asking: a budgeted handful of
@@ -266,7 +267,7 @@ actor SyncEngine {
     }
     judging = true
     defer { judging = false }
-    var answered = false
+    var answers: [(itemId: String, rule: String, matched: Bool, question: String)] = []
     // One queue across every rule, so a rule with a long backlog can't
     // starve the others of the budget.
     let queue = asking
@@ -298,16 +299,17 @@ actor SyncEngine {
         verdictFailures.insert("\(item.id):\(rule.id)")
         continue
       }
-      store.setVerdict(matched, itemId: item.id, rule: rule.id, question: question)
-      answered = true
+      answers.append((itemId: item.id, rule: rule.id, matched: matched, question: question))
     }
-    // The answers only become labels through the rules: sweep, then
-    // publish, exactly as a condition change would — once for the batch,
-    // since both cost the whole collection.
-    if answered {
-      sweepLabels()
-      emitState()
+    // The answers only become labels through the rules: store, sweep, then
+    // publish — once for the batch, since all three cost the whole
+    // collection.
+    guard !answers.isEmpty else {
+      return
     }
+    store.setVerdicts(answers)
+    sweepLabels()
+    emitState()
   }
 
   /// Turns the row summaries on or off. Switching them on catches up at
