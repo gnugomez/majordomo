@@ -15,8 +15,33 @@ import SwiftUI
 
 /// Unread rows the box shows at most, after which it says how many more.
 private let pinnedRowCap = 3
-/// How long the light takes to travel the card's edge once.
-private let glowDuration: Double = 2.5
+/// The model's own colors, for the light that marks what it chose. The
+/// system vends no style for them, so they are named here — and only here,
+/// since nothing else in the app speaks in them.
+private let intelligenceColors: [Color] = [
+  Color(red: 1.00, green: 0.18, blue: 0.33),
+  Color(red: 0.69, green: 0.32, blue: 0.87),
+  Color(red: 0.00, green: 0.48, blue: 1.00),
+  Color(red: 0.20, green: 0.78, blue: 0.95),
+  Color(red: 1.00, green: 0.58, blue: 0.00),
+]
+
+/// Where the light comes up from: the foot of the card, in the middle.
+private let glowOrigin = UnitPoint(x: 0.5, y: 1.0)
+/// The brightest the wash ever gets. A cue, not a highlighter.
+private let glowPeak = 0.22
+
+/// How long the light takes to rise, hold, and fade away.
+private let glowRise: Double = 0.55
+private let glowHold: Double = 0.3
+private let glowFade: Double = 1.2
+
+/// What the light is doing at one instant: how far the wash has spread,
+/// and how strongly it shows.
+private struct GlowPhase {
+  var spread = 0.25
+  var opacity = 0.0
+}
 
 /// One pinned label with what it has to show right now.
 struct PinnedBox: Identifiable {
@@ -87,8 +112,13 @@ struct PinnedLabelBox: View {
       RoundedRectangle(cornerRadius: 12)
         .strokeBorder(.quaternary, lineWidth: 1)
     }
+    // Over the resting border, so the light reaches the edge too and
+    // leaves it as it found it.
     .overlay {
-      glow(box)
+      glow(onBorder: true)
+    }
+    .background {
+      glow(onBorder: false)
     }
     // The row has to report its full height when the box gains a line, or
     // the list keeps the height it first measured and clips it until
@@ -102,31 +132,61 @@ struct PinnedLabelBox: View {
     }
   }
 
-  /// The light that travels the card's edge once, when the box arrives or
-  /// its top item changes: an arc of the label's tint swept around an
-  /// angular gradient. It settles rather than pulsing — a box that glowed
+  /// The light that fills the card once, when the box arrives or its top
+  /// item changes: the model's colors washing out from inside and fading
+  /// away again. It settles rather than pulsing — a box that glowed
   /// forever would be a distraction rather than a cue. Keyframes drive it
-  /// because the angle lives inside a gradient, where an implicit
-  /// animation has nothing to interpolate.
+  /// because the values live inside gradients and frames, where an
+  /// implicit animation has nothing to interpolate.
   @ViewBuilder
-  private func glow(_ box: PinnedBox) -> some View {
+  private func glow(onBorder: Bool) -> some View {
     if reduceMotion {
       EmptyView()
     } else {
-      KeyframeAnimator(initialValue: 0.0, trigger: pulse) { angle in
-        RoundedRectangle(cornerRadius: 12)
-          .strokeBorder(
-            AngularGradient(
-              colors: [.clear, .clear, box.label.tint.color.opacity(0.75), .clear, .clear],
-              center: .center,
-              angle: .degrees(angle)
-            ),
-            lineWidth: 1.5
+      KeyframeAnimator(initialValue: GlowPhase(), trigger: pulse) { phase in
+        GeometryReader { proxy in
+          let span = max(proxy.size.width, proxy.size.height)
+          // The model's colors laid across the card, shown only where the
+          // mask lets them through: a soft circle opening from the foot of
+          // the card. Growing the mask is what makes the light rise, and
+          // the same mask over the edge is what carries it into the border.
+          let colors = LinearGradient(
+            colors: intelligenceColors, startPoint: .leading, endPoint: .trailing
           )
-          // Nothing to see before the light sets off, or after it lands.
-          .opacity(angle <= 0 || angle >= 360 ? 0 : 1)
+          let light = RadialGradient(
+            colors: [.white, .white.opacity(0.55), .clear],
+            center: glowOrigin,
+            startRadius: 0,
+            endRadius: span * phase.spread
+          )
+          Group {
+            if onBorder {
+              RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(colors, lineWidth: 1)
+                .mask { light }
+                // A line carries less color than a wash of the same alpha,
+                // so it is lit harder to read as the same light.
+                .opacity(min(1, phase.opacity * 3.4))
+            } else {
+              colors
+                .mask { light }
+                .blur(radius: 10)
+                .opacity(phase.opacity)
+            }
+          }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .allowsHitTesting(false)
       } keyframes: { _ in
-        LinearKeyframe(360.0, duration: glowDuration)
+        KeyframeTrack(\.spread) {
+          LinearKeyframe(1.0, duration: glowRise)
+          LinearKeyframe(1.35, duration: glowHold + glowFade)
+        }
+        KeyframeTrack(\.opacity) {
+          LinearKeyframe(glowPeak, duration: glowRise)
+          LinearKeyframe(glowPeak, duration: glowHold)
+          LinearKeyframe(0.0, duration: glowFade)
+        }
       }
     }
   }
@@ -193,8 +253,12 @@ struct PinnedLabelBox: View {
   private func row(_ thread: InboxThread) -> some View {
     let item = thread.lead
     return Button {
+      // Picking it is reading it: the box holds what is still unread, so
+      // the row leaves as soon as it has been looked at — the same way the
+      // spotlight empties in Mail.
       model.selectedThreadIds = [thread.id]
       model.selectedMemberId = nil
+      model.markRead(Set(thread.itemIds))
     } label: {
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 4) {
