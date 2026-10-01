@@ -93,15 +93,19 @@ reintroduces the bug:
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
 - The inbox list is nudged half a point wider, for one frame, whenever the
-  pinned box's shape changes (`InboxListView`): a List row is measured
-  once, when it arrives, and keeps that height — and the box arrives, and
+  pinned box's shape changes — which counts whether each row carries a
+  summary, since those arrive on their own sweep and are a line of height
+  (`InboxListView`): a List row is measured once, when it arrives, and
+  keeps that height — and the box arrives, and
   grows a line at a time, as the model answers, so it drew clipped. A width
   change is what makes the table measure again (dragging the column divider
   fixed it by hand); the nudge is that drag, done for the user. Nothing
   else worked: not `fixedSize`, not an explicit row height (the table
   clamps it), not a section header (and it brings a separator besides).
   Keying the list's `id` to the box also worked, but rebuilt every row —
-  which is what made opening Recent take a visible moment.
+  which is what made opening Recent take a visible moment. The nudge is set
+  from a Task, never inline: setting it during the pass that noticed the
+  change re-enters the table's layout, which AppKit warns about.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither

@@ -53,9 +53,18 @@ struct InboxListView: View {
       }
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
-      // What the spotlight takes up: a line appearing or going is what the
-      // table has to measure again.
-      let spotlightShape = pinned.map { "\($0.id):\($0.threads.count)" }.joined(separator: "|")
+      // What the spotlight takes up — down to whether each row carries a
+      // summary, since that is a line of height and the summaries arrive
+      // on their own sweep, long after the row they belong to. Counting
+      // only the rows left the box a line short of its content.
+      let spotlightShape = pinned
+        .map { box in
+          let rows = box.threads
+            .map { "\($0.id)\($0.lead.summary == nil ? "" : "+")" }
+            .joined(separator: ",")
+          return "\(box.id):\(rows)"
+        }
+        .joined(separator: "|")
       List(selection: Binding(
         get: { model.selectedThreadIds },
         set: { model.selectedThreadIds = $0 }
@@ -106,8 +115,15 @@ struct InboxListView: View {
       // — and that rebuild is what made opening Recent take a moment.
       .padding(.trailing, remeasuring ? 0.5 : 0)
       .onChange(of: spotlightShape) {
-        remeasuring = true
+        // Nothing to measure when there is no box, and never from inside
+        // the pass that noticed the change: setting this synchronously
+        // re-enters the table's own layout (AppKit says so out loud), and
+        // the pass it forces costs as much again as the one it interrupts.
+        guard !spotlightShape.isEmpty else {
+          return
+        }
         Task { @MainActor in
+          remeasuring = true
           try? await Task.sleep(for: .milliseconds(20))
           remeasuring = false
         }
