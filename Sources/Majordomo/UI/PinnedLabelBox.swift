@@ -6,10 +6,10 @@
 //
 // It rides inside the list as an unselectable first row, so it scrolls
 // away with everything else instead of permanently taking the top of the
-// column. Its rows are single-line for the same reason the list's own
-// measurements have to be honest: a row whose height depends on its width
-// is measured once, at a width the list doesn't have yet, and draws
-// clipped until something forces another pass.
+// column. Everything in it is measured the same way the list measures its
+// own rows — single-line text, no Button — because the table measures this
+// row once, at a width it doesn't have yet, and keeps whatever height that
+// gave.
 
 import SwiftUI
 
@@ -103,9 +103,17 @@ struct PinnedLabelBox: View {
     let box = boxes[min(index, boxes.count - 1)]
     VStack(alignment: .leading, spacing: 0) {
       header(box)
-      ForEach(Array(box.threads.enumerated()), id: \.element.id) { position, thread in
-        Divider()
-        row(thread)
+      // Spelled out rather than looped, and ruled with a rectangle rather
+      // than a Divider: inside a list row, both a ForEach and a Divider
+      // measure as nothing on the pass that fixes the row's height, and the
+      // box drew as a header with its rows cut off. The cap is three.
+      ForEach(0 ..< pinnedRowCap, id: \.self) { position in
+        if position < box.threads.count {
+          Rectangle()
+            .fill(.quaternary)
+            .frame(height: 1)
+          row(box.threads[position])
+        }
       }
     }
     .overlay {
@@ -252,45 +260,46 @@ struct PinnedLabelBox: View {
   /// way clicking the row below would.
   private func row(_ thread: InboxThread) -> some View {
     let item = thread.lead
-    return Button {
+    return VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 4) {
+        Image(systemName: spec(for: item.provider).symbol(for: item))
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(spec(for: item.provider).color(for: item))
+        Text(item.title)
+          .font(.system(size: 12, weight: .medium))
+          .lineLimit(1)
+          .truncationMode(.tail)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        Text(relativeTime(item.updatedAt, now: model.now))
+          .font(.system(size: 10))
+          .foregroundStyle(.secondary)
+          .fixedSize()
+      }
+      if let line = summaryLine(for: item) {
+        line
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+          // One line, like the title: a box whose rows wrap has a height
+          // that depends on its width, and the list measures the row
+          // before it knows that width.
+          .lineLimit(1)
+          .truncationMode(.tail)
+      }
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .contentShape(Rectangle())
+    // A gesture rather than a Button: a Button reports no height while the
+    // list is measuring the row it sits in, and the box drew as a header
+    // with nothing under it. The row it rides in takes no selection, so
+    // there are no table clicks for this to swallow.
+    .onTapGesture {
       // Picking it is reading it: the box holds what is still unread, so
-      // the row leaves as soon as it has been looked at — the same way the
-      // spotlight empties in Mail.
+      // the row leaves as soon as it has been looked at.
       model.selectedThreadIds = [thread.id]
       model.selectedMemberId = nil
       model.markRead(Set(thread.itemIds))
-    } label: {
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 4) {
-          Image(systemName: spec(for: item.provider).symbol(for: item))
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(spec(for: item.provider).color(for: item))
-          Text(item.title)
-            .font(.system(size: 12, weight: .medium))
-            .lineLimit(1)
-            .truncationMode(.tail)
-          Spacer(minLength: 4)
-          Text(relativeTime(item.updatedAt, now: model.now))
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-            .fixedSize()
-        }
-        if let line = summaryLine(for: item) {
-          line
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            // One line, like the title: a box whose rows wrap has a height
-            // that depends on its width, and the list measures the row
-            // before it knows that width.
-            .lineLimit(1)
-            .truncationMode(.tail)
-        }
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 7)
-      .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
     .help(item.title)
   }
 

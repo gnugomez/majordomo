@@ -50,79 +50,85 @@ struct InboxListView: View {
       }
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
-      // The pinned labels head the catch-all, above the list rather than
-      // inside it: a list row is measured once, when it is inserted, and
-      // keeps that height — the box arrives and grows a line at a time as
-      // the model answers, and drew clipped in every arrangement that made
-      // it a row. Above the list it measures itself, and the list gives up
-      // exactly the room it takes.
-      VStack(spacing: 0) {
+      List(selection: Binding(
+        get: { model.selectedThreadIds },
+        set: { model.selectedThreadIds = $0 }
+      )) {
+        // The pinned labels ride at the top of the catch-all only, inside
+        // the list so they scroll away with everything else. Unselectable:
+        // the arrows and ⌘A belong to the notifications, not to a spotlight.
         if !pinned.isEmpty {
           PinnedLabelBox(model: model, boxes: pinned)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 10, trailing: 6))
+            .selectionDisabled()
         }
-        List(selection: Binding(
-          get: { model.selectedThreadIds },
-          set: { model.selectedThreadIds = $0 }
-        )) {
-          ForEach(threads) { thread in
-            ItemRowView(
-              thread: thread,
-              now: model.now,
-              labels: labels(on: thread.items),
-              layout: model.rowLayout,
-              selected: model.selectedThreadIds.contains(thread.id),
-              expanded: expandedThreadIds.contains(thread.id)
-            ) {
-              toggleExpanded(thread.id)
-            }
-            .tag(thread.id)
-            // An unfolded thread: its members as their own selectable rows,
-            // right beneath the summary.
-            if expandedThreadIds.contains(thread.id) {
-              ForEach(thread.items) { member in
-                MemberRowView(
-                  member: member,
-                  now: model.now,
-                  layout: model.rowLayout,
-                  selected: model.selectedThreadIds.contains(member.id)
-                )
-                .tag(member.id)
-              }
+        ForEach(threads) { thread in
+          ItemRowView(
+            thread: thread,
+            now: model.now,
+            labels: labels(on: thread.items),
+            layout: model.rowLayout,
+            selected: model.selectedThreadIds.contains(thread.id),
+            expanded: expandedThreadIds.contains(thread.id)
+          ) {
+            toggleExpanded(thread.id)
+          }
+          .tag(thread.id)
+          // An unfolded thread: its members as their own selectable rows,
+          // right beneath the summary.
+          if expandedThreadIds.contains(thread.id) {
+            ForEach(thread.items) { member in
+              MemberRowView(
+                member: member,
+                now: model.now,
+                layout: model.rowLayout,
+                selected: model.selectedThreadIds.contains(member.id)
+              )
+              .tag(member.id)
             }
           }
         }
-        .listStyle(.inset)
-        // Arrows walk the inbox from the first keystroke; without this the
-        // sidebar holds the keyboard until a row is clicked.
-        .claimsInitialKeyboardFocus()
-        // Selection stays the list's own (a tap gesture on row content would
-        // swallow the clicks NSTableView needs), so ⇧/⌘-click and ⌘A come for
-        // free; double-click and the context menu arrive through the
-        // selection-typed API.
-        .contextMenu(forSelectionType: String.self) { ids in
-          let picked = resolveSelection(in: threads, ids: ids)
-          Button(picked.count > 1 ? "Open \(picked.count) in Browser" : "Open in Browser") {
-            open(picked)
-          }
-          Button("Mark as Read") {
-            model.markRead(Set(picked.flatMap(\.itemIds)))
-          }
-          .disabled(!picked.contains { !$0.read })
-          labelsMenu(for: picked.flatMap(\.items))
-        } primaryAction: { ids in
-          open(resolveSelection(in: threads, ids: ids))
-        }
-        .onKeyPress(.return) {
-          let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
-          guard !picked.isEmpty else {
-            return .ignored
-          }
+      }
+      .listStyle(.inset)
+      // The box is a row whose height the table measures once, when it is
+      // inserted, and keeps: it arrives — and grows a line at a time — as
+      // the model answers, and draws clipped to that first height until
+      // something forces another pass (resizing the column does). Keying
+      // the list to the shape of the box hands AppKit a new table to
+      // measure. It keys on the SHAPE, not the contents, so answers
+      // landing one by one don't rebuild the list under the user.
+      .id(pinned.map { "\($0.id):\($0.threads.count)" }.joined(separator: "|"))
+      // The spotlight arrives above everything else, and a list that kept
+      // its place in the content would show it already half scrolled past.
+      .defaultScrollAnchor(.top)
+      // Arrows walk the inbox from the first keystroke; without this the
+      // sidebar holds the keyboard until a row is clicked.
+      .claimsInitialKeyboardFocus()
+      // Selection stays the list's own (a tap gesture on row content would
+      // swallow the clicks NSTableView needs), so ⇧/⌘-click and ⌘A come for
+      // free; double-click and the context menu arrive through the
+      // selection-typed API.
+      .contextMenu(forSelectionType: String.self) { ids in
+        let picked = resolveSelection(in: threads, ids: ids)
+        Button(picked.count > 1 ? "Open \(picked.count) in Browser" : "Open in Browser") {
           open(picked)
-          return .handled
         }
+        Button("Mark as Read") {
+          model.markRead(Set(picked.flatMap(\.itemIds)))
+        }
+        .disabled(!picked.contains { !$0.read })
+        labelsMenu(for: picked.flatMap(\.items))
+      } primaryAction: { ids in
+        open(resolveSelection(in: threads, ids: ids))
+      }
+      .onKeyPress(.return) {
+        let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
+        guard !picked.isEmpty else {
+          return .ignored
+        }
+        open(picked)
+        return .handled
       }
     }
   }

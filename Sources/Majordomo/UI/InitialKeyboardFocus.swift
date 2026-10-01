@@ -67,7 +67,11 @@ private struct InitialKeyboardFocus: NSViewRepresentable {
     guard let window = view.window else {
       return false
     }
-    guard !ClaimedWindows.ids.contains(ObjectIdentifier(window)) else {
+    // A window claims the keyboard once — except when nobody holds it at
+    // all, which is where a rebuilt list leaves things: AppKit hands the
+    // first responder back to the window when the table holding it goes.
+    let unheld = window.firstResponder === window
+    guard unheld || !ClaimedWindows.ids.contains(ObjectIdentifier(window)) else {
       return true
     }
     // Never out of a text field: the search field may hold the keyboard by
