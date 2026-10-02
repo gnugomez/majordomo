@@ -4,12 +4,10 @@
 // rather than stacking, the way the suggestions do. The items stay in the
 // list below: the box is a spotlight, not a filing cabinet.
 //
-// It rides inside the list as an unselectable first row, so it scrolls
-// away with everything else instead of permanently taking the top of the
-// column. Everything in it is measured the same way the list measures its
-// own rows — single-line text, no Button — because the table measures this
-// row once, at a width it doesn't have yet, and keeps whatever height that
-// gave.
+// It sits above the inbox list rather than inside it, for the reason
+// InboxListView gives: a list row is measured once and this box keeps
+// changing size. Its rows are single-line so the box's own height is
+// predictable whatever width it is given.
 
 import SwiftUI
 
@@ -100,7 +98,16 @@ struct PinnedLabelBox: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    let box = boxes[min(index, boxes.count - 1)]
+    // Nothing to spotlight draws nothing: the caller leaves the box out
+    // entirely, and this keeps the view total for anyone who doesn't.
+    if boxes.isEmpty {
+      EmptyView()
+    } else {
+      card(boxes[min(index, boxes.count - 1)])
+    }
+  }
+
+  private func card(_ box: PinnedBox) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       header(box)
       // Spelled out rather than looped, and ruled with a rectangle rather

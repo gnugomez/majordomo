@@ -92,20 +92,19 @@ reintroduces the bug:
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
-- The inbox list is nudged half a point wider, for one frame, whenever the
-  pinned box's shape changes — which counts whether each row carries a
-  summary, since those arrive on their own sweep and are a line of height
+- The pinned spotlight sits ABOVE the inbox list, not inside it
   (`InboxListView`): a List row is measured once, when it arrives, and
-  keeps that height — and the box arrives, and
-  grows a line at a time, as the model answers, so it drew clipped. A width
-  change is what makes the table measure again (dragging the column divider
-  fixed it by hand); the nudge is that drag, done for the user. Nothing
-  else worked: not `fixedSize`, not an explicit row height (the table
-  clamps it), not a section header (and it brings a separator besides).
-  Keying the list's `id` to the box also worked, but rebuilt every row —
-  which is what made opening Recent take a visible moment. The nudge is set
-  from a Task, never inline: setting it during the pass that noticed the
-  change re-enters the table's layout, which AppKit warns about.
+  keeps that height — and the box arrives, grows (a summary is a line) and
+  shrinks (a read notification leaves) long after the list was built, so as
+  a row it drew clipped, or left a gap where it had shrunk, until something
+  forced another pass (resizing the column did). None of these held:
+  `fixedSize`, an explicit row height (the table clamps it), a section
+  header (and it draws a separator), keying the list's id (correct, but
+  rebuilds every row — opening Recent took a visible moment), keying the
+  row's id, a half-point width nudge, an always-present row that starts
+  empty, and AppKit's own `noteHeightOfRows(withIndexesChanged:)`, which
+  SwiftUI answers out of its own cache. Above the list the box measures
+  itself every time; the cost is that it doesn't scroll away with the rows.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither
