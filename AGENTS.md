@@ -112,7 +112,12 @@ reintroduces the bug:
   AppKit's own `noteHeightOfRows(withIndexesChanged:)`, which SwiftUI
   answers out of its own cache. The rotation and the light are held by the
   list rather than the box, because a replaced row starts its own state
-  over.
+  over. The lowered floor is also the table's row height, which the table
+  copies into its scroll view's wheel line on every tile — one notch would
+  move a point — so `wheelScrollsByRow()` (WheelLineScroll) holds the line at
+  24 pt, the table's own value without the floor, through KVO on
+  `verticalLineScroll`. Trackpads scroll by exact distances and never
+  read it.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither

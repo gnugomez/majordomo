@@ -92,7 +92,7 @@ private struct InitialKeyboardFocus: NSViewRepresentable {
 /// The row-drawing view inside this area: the list's own table, told apart
 /// from the sidebar's by where it sits.
 @MainActor
-private func tableView(in view: NSView?, within area: NSRect) -> NSTableView? {
+func tableView(in view: NSView?, within area: NSRect) -> NSTableView? {
   guard let view else {
     return nil
   }

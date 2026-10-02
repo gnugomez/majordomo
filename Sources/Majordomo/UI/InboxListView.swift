@@ -130,6 +130,9 @@ struct InboxListView: View {
         // inbox's own rows stand taller than any minimum, so lowering it
         // costs them nothing.
         .environment(\.defaultMinListRowHeight, spotlightRestHeight)
+        // That floor is also the table's row height, which sets how far a
+        // wheel notch scrolls; this keeps the notch at a row.
+        .wheelScrollsByRow()
         // Arrows walk the inbox from the first keystroke; without this the
         // sidebar holds the keyboard until a row is clicked.
         .claimsInitialKeyboardFocus()
