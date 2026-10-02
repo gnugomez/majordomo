@@ -4,6 +4,10 @@
 
 import SwiftUI
 
+/// What the spotlight's row measures when it has nothing to show. The
+/// table refuses a row of no height at all, so it rests at a hairline.
+private let spotlightRestHeight: CGFloat = 1
+
 struct InboxListView: View {
   let model: AppModel
   let threads: [InboxThread]
@@ -11,6 +15,12 @@ struct InboxListView: View {
 
   /// Threads unfolded into their member rows (the count button toggles).
   @State private var expandedThreadIds: Set<String> = []
+  /// Which pinned label the spotlight shows, and the top item its light
+  /// has already greeted. They live here because the spotlight's row is
+  /// remade whenever its shape changes (see `spotlightKey`), which would
+  /// reset anything the box held itself.
+  @State private var spotlightIndex = 0
+  @State private var spotlightGreeted = ""
 
   var body: some View {
     // Items keep showing while their account is connected, even when it
@@ -50,99 +60,132 @@ struct InboxListView: View {
       }
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
-      // The spotlight sits above the list rather than in it. A SwiftUI List
-      // row is measured once, when it arrives, and keeps that height — and
-      // this box arrives, grows and shrinks long after the list was built,
-      // as the model answers and as notifications are read. Every way of
-      // making a row re-measure was tried and none held: fixedSize, an
-      // explicit height (the table clamps it anyway), a section header (and
-      // it brings a separator the design doesn't want), keying the list,
-      // keying the row, nudging the width, and AppKit's own
-      // noteHeightOfRows, which SwiftUI answers out of its own cache. Above
-      // the list the box measures itself every time and the list takes the
-      // room that is left; the cost is that it doesn't scroll away.
-      VStack(spacing: 0) {
-        if !pinned.isEmpty {
-          PinnedLabelBox(model: model, boxes: pinned)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+      ScrollViewReader { scroll in
+        List(selection: Binding(
+          get: { model.selectedThreadIds },
+          set: { model.selectedThreadIds = $0 }
+        )) {
+          // The spotlight rides in a row of the list, so it scrolls away
+          // with the notifications. A list row is measured once, when it
+          // arrives, and keeps that height however its content changes
+          // afterwards — so the row is given an identity that spells out
+          // everything deciding how tall the box draws, and the table
+          // replaces the row, measuring the new one, whenever that
+          // changes. The row is always in the list, resting at a hairline
+          // when there is nothing to spotlight: a box arriving is then a
+          // replacement too, and a replaced row is the one case the table
+          // measures right — a plain insertion draws as a header strip
+          // with the rows cut off.
+          ForEach([spotlightKey(pinned)], id: \.self) { key in
+            if key.isEmpty {
+              // Nothing to spotlight. A row of no height at all is refused
+              // outright, so it rests as thin as the table will take.
+              Color.clear
+                .frame(height: spotlightRestHeight)
+                .listRowInsets(EdgeInsets())
+            } else {
+              PinnedLabelBox(
+                model: model,
+                boxes: pinned,
+                index: $spotlightIndex,
+                greeted: $spotlightGreeted
+              )
+              .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 2, trailing: 10))
+            }
+          }
+          // The spotlight is not one of the inbox's rows: it takes no
+          // selection, and no separator draws around it.
+          .listRowSeparator(.hidden)
+          .selectionDisabled()
+          ForEach(threads) { thread in
+            ItemRowView(
+              thread: thread,
+              now: model.now,
+              labels: labels(on: thread.items),
+              layout: model.rowLayout,
+              selected: model.selectedThreadIds.contains(thread.id),
+              expanded: expandedThreadIds.contains(thread.id)
+            ) {
+              toggleExpanded(thread.id)
+            }
+            .tag(thread.id)
+            // An unfolded thread: its members as their own selectable
+            // rows, right beneath the summary.
+            if expandedThreadIds.contains(thread.id) {
+              ForEach(thread.items) { member in
+                MemberRowView(
+                  member: member,
+                  now: model.now,
+                  layout: model.rowLayout,
+                  selected: model.selectedThreadIds.contains(member.id)
+                )
+                .tag(member.id)
+              }
+            }
+          }
         }
-        ScrollViewReader { scroll in
-          List(selection: Binding(
-            get: { model.selectedThreadIds },
-            set: { model.selectedThreadIds = $0 }
-          )) {
-            ForEach(threads) { thread in
-              ItemRowView(
-                thread: thread,
-                now: model.now,
-                labels: labels(on: thread.items),
-                layout: model.rowLayout,
-                selected: model.selectedThreadIds.contains(thread.id),
-                expanded: expandedThreadIds.contains(thread.id)
-              ) {
-                toggleExpanded(thread.id)
-              }
-              .tag(thread.id)
-              // An unfolded thread: its members as their own selectable
-              // rows, right beneath the summary.
-              if expandedThreadIds.contains(thread.id) {
-                ForEach(thread.items) { member in
-                  MemberRowView(
-                    member: member,
-                    now: model.now,
-                    layout: model.rowLayout,
-                    selected: model.selectedThreadIds.contains(member.id)
-                  )
-                  .tag(member.id)
-                }
-              }
-            }
-          }
-          .listStyle(.inset)
-          // Arrows walk the inbox from the first keystroke; without this the
-          // sidebar holds the keyboard until a row is clicked.
-          .claimsInitialKeyboardFocus()
-          // Selection stays the list's own (a tap gesture on row content
-          // would swallow the clicks NSTableView needs), so ⇧/⌘-click and
-          // ⌘A come for free; double-click and the context menu arrive
-          // through the selection-typed API.
-          .contextMenu(forSelectionType: String.self) { ids in
-            let picked = resolveSelection(in: threads, ids: ids)
-            Button(picked.count > 1 ? "Open \(picked.count) in Browser" : "Open in Browser") {
-              open(picked)
-            }
-            Button("Mark as Read") {
-              model.markRead(Set(picked.flatMap(\.itemIds)))
-            }
-            .disabled(!picked.contains { !$0.read })
-            labelsMenu(for: picked.flatMap(\.items))
-          } primaryAction: { ids in
-            open(resolveSelection(in: threads, ids: ids))
-          }
-          .onKeyPress(.return) {
-            let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
-            guard !picked.isEmpty else {
-              return .ignored
-            }
+        .listStyle(.inset)
+        // The standard floor under a row would hold the resting spotlight
+        // open as a band of blank space over the first notification. The
+        // inbox's own rows stand taller than any minimum, so lowering it
+        // costs them nothing.
+        .environment(\.defaultMinListRowHeight, spotlightRestHeight)
+        // Arrows walk the inbox from the first keystroke; without this the
+        // sidebar holds the keyboard until a row is clicked.
+        .claimsInitialKeyboardFocus()
+        // Selection stays the list's own (a tap gesture on row content
+        // would swallow the clicks NSTableView needs), so ⇧/⌘-click and
+        // ⌘A come for free; double-click and the context menu arrive
+        // through the selection-typed API.
+        .contextMenu(forSelectionType: String.self) { ids in
+          let picked = resolveSelection(in: threads, ids: ids)
+          Button(picked.count > 1 ? "Open \(picked.count) in Browser" : "Open in Browser") {
             open(picked)
-            return .handled
           }
-          // Picking a notification anywhere — the spotlight above, the tray,
-          // a banner — brings it into view here. A nil anchor scrolls the
-          // least it can, so one already on screen stays where it is.
-          .onChange(of: model.selectedThreadIds) { _, ids in
-            guard ids.count == 1, let id = ids.first else {
-              return
-            }
-            withAnimation(.snappy(duration: 0.2)) {
-              scroll.scrollTo(id, anchor: nil)
-            }
+          Button("Mark as Read") {
+            model.markRead(Set(picked.flatMap(\.itemIds)))
+          }
+          .disabled(!picked.contains { !$0.read })
+          labelsMenu(for: picked.flatMap(\.items))
+        } primaryAction: { ids in
+          open(resolveSelection(in: threads, ids: ids))
+        }
+        .onKeyPress(.return) {
+          let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
+          guard !picked.isEmpty else {
+            return .ignored
+          }
+          open(picked)
+          return .handled
+        }
+        // Picking a notification anywhere — the spotlight, the tray, a
+        // banner — brings it into view here. A nil anchor scrolls the
+        // least it can, so one already on screen stays where it is.
+        .onChange(of: model.selectedThreadIds) { _, ids in
+          guard ids.count == 1, let id = ids.first else {
+            return
+          }
+          withAnimation(.snappy(duration: 0.2)) {
+            scroll.scrollTo(id, anchor: nil)
           }
         }
       }
     }
+  }
+
+  /// The spotlight's row identity: everything that decides how tall the
+  /// box draws — which label is showing, how many rows it has, and which
+  /// of them carry a summary line. The empty string means there is nothing
+  /// to spotlight.
+  private func spotlightKey(_ pinned: [PinnedBox]) -> String {
+    guard !pinned.isEmpty else {
+      return ""
+    }
+    let box = pinned[min(spotlightIndex, pinned.count - 1)]
+    let rows = box.threads.map { thread in
+      "\(thread.id)#\(thread.lead.summary?.isEmpty == false ? 1 : 0)"
+    }
+    return "\(box.id)|\(pinned.count)|\(box.unread)|" + rows.joined(separator: ",")
   }
 
   /// The labels any of these items carries — tags only, never an inbox.

@@ -92,19 +92,27 @@ reintroduces the bug:
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
   the toolbar's add/remove notifications because selection changes re-diff
   the detail items.
-- The pinned spotlight sits ABOVE the inbox list, not inside it
-  (`InboxListView`): a List row is measured once, when it arrives, and
-  keeps that height — and the box arrives, grows (a summary is a line) and
-  shrinks (a read notification leaves) long after the list was built, so as
-  a row it drew clipped, or left a gap where it had shrunk, until something
-  forced another pass (resizing the column did). None of these held:
-  `fixedSize`, an explicit row height (the table clamps it), a section
-  header (and it draws a separator), keying the list's id (correct, but
-  rebuilds every row — opening Recent took a visible moment), keying the
-  row's id, a half-point width nudge, an always-present row that starts
-  empty, and AppKit's own `noteHeightOfRows(withIndexesChanged:)`, which
-  SwiftUI answers out of its own cache. Above the list the box measures
-  itself every time; the cost is that it doesn't scroll away with the rows.
+- The pinned spotlight is a list row keyed by its own shape
+  (`spotlightKey`, InboxListView): a List row is measured once, when it
+  arrives, and keeps that height — and the box arrives, grows (a summary is
+  a line) and shrinks (a read notification leaves) long after the list was
+  built, so a row with a stable identity drew clipped, or left a gap where
+  it had shrunk, until something forced another pass. The key spells out
+  everything that decides the box's height, so any change REPLACES the row
+  and the table measures the new one. The row is always in the list,
+  resting at a hairline when there is nothing to spotlight — hence the
+  lowered `defaultMinListRowHeight`, which would otherwise hold that row
+  open as a band of blank space over the first notification. A box arriving
+  is then a replacement too, and a replacement is the one case the table
+  measures right: a plain insertion draws as a header strip with the rows
+  cut off. Nothing else held: `fixedSize`, an explicit row height (the
+  table clamps it), a section header (and it draws a separator), keying the
+  list's id (correct, but rebuilds every row — opening Recent took a
+  visible moment), keying the row's id, a half-point width nudge, and
+  AppKit's own `noteHeightOfRows(withIndexesChanged:)`, which SwiftUI
+  answers out of its own cache. The rotation and the light are held by the
+  list rather than the box, because a replaced row starts its own state
+  over.
 - The inbox list takes the window's first responder through an AppKit
   claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither

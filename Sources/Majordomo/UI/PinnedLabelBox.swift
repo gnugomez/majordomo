@@ -4,10 +4,11 @@
 // rather than stacking, the way the suggestions do. The items stay in the
 // list below: the box is a spotlight, not a filing cabinet.
 //
-// It sits above the inbox list rather than inside it, for the reason
-// InboxListView gives: a list row is measured once and this box keeps
-// changing size. Its rows are single-line so the box's own height is
-// predictable whatever width it is given.
+// It rides in a row of the inbox list, so it scrolls away with the
+// notifications; InboxListView gives that row the identity that makes the
+// table measure it again every time the box changes size. Its rows are
+// single-line so the box's own height is predictable whatever width it is
+// given.
 
 import SwiftUI
 
@@ -87,9 +88,14 @@ func pinnedBoxes(model: AppModel, threads: [InboxThread]) -> [PinnedBox] {
 struct PinnedLabelBox: View {
   let model: AppModel
   let boxes: [PinnedBox]
+  /// Which pinned label is showing, and which top item the light has
+  /// already greeted. Both are held by the list: the box's row is thrown
+  /// away and remade whenever its shape changes, and state kept in here
+  /// would start over with it — the arrows would snap back to the first
+  /// label and the light would replay on every change.
+  @Binding var index: Int
+  @Binding var greeted: String
 
-  /// Which pinned label is showing; clamped as labels come and go.
-  @State private var index = 0
   /// Bumped to set the light off. The keyframes need a value that CHANGES
   /// to play, and the box arrives with its content already in place — so
   /// the first change has to be made here, once the view exists.
@@ -114,13 +120,17 @@ struct PinnedLabelBox: View {
       // than a Divider: inside a list row, both a ForEach and a Divider
       // measure as nothing on the pass that fixes the row's height, and the
       // box drew as a header with its rows cut off. The cap is three.
-      ForEach(0 ..< pinnedRowCap, id: \.self) { position in
-        if position < box.threads.count {
-          Rectangle()
-            .fill(.quaternary)
-            .frame(height: 1)
-          row(box.threads[position])
-        }
+      if box.threads.count > 0 {
+        rule
+        row(box.threads[0])
+      }
+      if box.threads.count > 1 {
+        rule
+        row(box.threads[1])
+      }
+      if box.threads.count > 2 {
+        rule
+        row(box.threads[2])
       }
     }
     .overlay {
@@ -135,16 +145,29 @@ struct PinnedLabelBox: View {
     .background {
       glow(onBorder: false)
     }
-    // The row has to report its full height when the box gains a line, or
-    // the list keeps the height it first measured and clips it until
-    // something else forces a pass.
+    // The card stands at the height its content asks for, whatever height
+    // the row it rides in offers it.
     .fixedSize(horizontal: false, vertical: true)
-    .task(id: "\(box.id):\(box.threads.first?.id ?? "")") {
+    // The light greets a label and its top item once. A remade row runs
+    // this again, so what it has already greeted is remembered outside.
+    .task {
+      let arrival = "\(box.id):\(box.threads.first?.id ?? "")"
+      guard greeted != arrival else {
+        return
+      }
+      greeted = arrival
       pulse += 1
     }
     .onChange(of: boxes.count) {
       index = min(index, max(0, boxes.count - 1))
     }
+  }
+
+  /// The hairline between the header and a row, and between two rows.
+  private var rule: some View {
+    Rectangle()
+      .fill(.quaternary)
+      .frame(height: 1)
   }
 
   /// The light that fills the card once, when the box arrives or its top
