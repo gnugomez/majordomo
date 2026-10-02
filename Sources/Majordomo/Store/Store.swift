@@ -16,10 +16,6 @@ import os
 
 private let log = Logger(subsystem: "dev.majordomo.app", category: "store")
 
-/// Read items vanish this long after upstream last mentioned them.
-private let retainReadSeconds: TimeInterval = 30 * 24 * 60 * 60
-/// Hard cap on the collection; oldest (read first) beyond it are dropped.
-private let itemsCap = 500
 /// A removed account's record and items stay parked this long, so adding
 /// it back resumes where it left off; past it, everything of its is dropped.
 private let retainRemovedSeconds: TimeInterval = 90 * 24 * 60 * 60
@@ -762,16 +758,14 @@ final class Store {
     }
   }
 
-  /// Retention, in three passes. Parked accounts past retainRemovedSeconds
-  /// go with everything of theirs (as do items whose account record is
-  /// gone). Read live items go 30 days after upstream last mentioned them.
-  /// Then the cap trims the live collection (oldest by updatedAt first, read
-  /// before unread). Parked items sit out the last two passes — they are
-  /// being kept precisely for their read state.
+  /// Retention covers removed accounts only: parked ones past
+  /// retainRemovedSeconds go with everything of theirs, as do items whose
+  /// account record is gone. A connected account's items are kept for
+  /// good, read or not, so search and the date filter reach its whole
+  /// history.
   func prune() {
     var changed = false
-    let now = Date()
-    let removedCutoff = now.addingTimeInterval(-retainRemovedSeconds)
+    let removedCutoff = Date().addingTimeInterval(-retainRemovedSeconds)
     for (id, account) in data.accounts {
       if let removedAt = account.removedAt, removedAt < removedCutoff {
         data.accounts.removeValue(forKey: id)
@@ -780,28 +774,6 @@ final class Store {
     }
     for (id, item) in data.items where data.accounts[item.accountId] == nil {
       data.items.removeValue(forKey: id)
-      changed = true
-    }
-    let readCutoff = now.addingTimeInterval(-retainReadSeconds)
-    for (id, item) in data.items
-    where isConnected(item.accountId) && item.read && item.lastSeenUpstreamAt < readCutoff {
-      data.items.removeValue(forKey: id)
-      changed = true
-    }
-    let live = getItems()
-    let excess = live.count - itemsCap
-    if excess > 0 {
-      let victims = live
-        .sorted { a, b in
-          if a.read != b.read {
-            return a.read
-          }
-          return a.updatedAt < b.updatedAt
-        }
-        .prefix(excess)
-      for victim in victims {
-        data.items.removeValue(forKey: victim.id)
-      }
       changed = true
     }
     if changed {
