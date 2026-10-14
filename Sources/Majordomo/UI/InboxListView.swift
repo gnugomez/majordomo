@@ -39,6 +39,12 @@ struct InboxListView: View {
           title: "No results",
           caption: "Nothing here matches \u{201C}\(model.searchText)\u{201D}."
         )
+      } else if model.unreadOnly {
+        EmptyStateView(
+          symbol: "checkmark.circle",
+          title: "You're all caught up",
+          caption: "Nothing here is unread. Turn off Unread Only in the toolbar's filter to see the rest."
+        )
       } else if let window = model.activityWindow {
         EmptyStateView(
           symbol: "calendar",

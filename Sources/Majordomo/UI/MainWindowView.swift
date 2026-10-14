@@ -31,14 +31,19 @@ struct MainWindowView: View {
     let specs = categories(for: labels)
     // The sidebar layout decides what is selectable: an inbox hidden there
     // or gone from the tree falls back to Recent (always first in specs,
-    // never hidden). The search and date filters apply to every category
-    // alike; the sidebar's badges stay unfiltered (SidebarView counts on
-    // its own).
+    // never hidden). The search, date, and unread filters apply to every
+    // category alike; the sidebar's badges stay unfiltered (SidebarView
+    // counts on its own).
     let narrowed = matchingWindow(matchingSearch(items, model.searchText), model.activityWindow, now: model.now)
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
     let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
-    return Scope(account: account, category: category, threads: groupIntoThreads(category.items))
+    let threads = groupIntoThreads(category.items)
+    return Scope(
+      account: account,
+      category: category,
+      threads: model.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
+    )
   }
 
   var body: some View {
@@ -117,7 +122,7 @@ struct MainWindowView: View {
   /// a non-template image already painted in the accent color is how the
   /// active state shows.
   private static func filterGlyph(active: Bool) -> NSImage {
-    let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "Filter by date")!
+    let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "Filter")!
     guard active,
           let painted = glyph.withSymbolConfiguration(.init(paletteColors: [.controlAccentColor])) else {
       return glyph
@@ -147,16 +152,16 @@ struct MainWindowView: View {
     }
     .frame(minWidth: 360)
     // Mark-read and Open are always present, disabled while nothing is
-    // selected: the toolbar then has one shape, so the date filter keeps
-    // the same distance from the search field either way, and the detail
+    // selected: the toolbar then has one shape, so the filter keeps the
+    // same distance from the search field either way, and the detail
     // section is never empty (an empty one sends the list column's items
     // to the window's far corner).
     // They sit at the leading edge of the detail section
     // (the search field owns the trailing edge) and only while something
     // is selected; the invisible item covers the empty case so the detail
     // section (which anchors the list column's items) never disappears.
-    // The date filter is declared last so it is the item nearest the
-    // search field; MainWindowController then moves the toolbar's trailing
+    // The filter is declared last so it is the item nearest the search
+    // field; MainWindowController then moves the toolbar's trailing
     // spacer ahead of it, which SwiftUI offers no placement for.
     .toolbar {
       ToolbarItem {
@@ -166,16 +171,25 @@ struct MainWindowView: View {
         openButton(for: actionTargets)
       }
       ToolbarItem {
-        activityFilterMenu
+        filterMenu
       }
     }
   }
 
-  /// The date filter: a pull-down of rolling windows behind the plain
-  /// filter glyph (no menu chevron), accent-colored while one is active.
-  private var activityFilterMenu: some View {
-    let active = model.activityWindow != nil
+  /// The filter: Unread Only, then a pull-down of rolling date windows,
+  /// behind the plain filter glyph (no menu chevron), accent-colored while
+  /// either narrows the list.
+  private var filterMenu: some View {
+    let active = model.unreadOnly || model.activityWindow != nil
     return Menu {
+      Toggle(
+        "Unread Only",
+        isOn: Binding(
+          get: { model.unreadOnly },
+          set: { model.setUnreadOnly($0) }
+        )
+      )
+      Divider()
       Picker(
         "Show",
         selection: Binding(
@@ -192,10 +206,21 @@ struct MainWindowView: View {
       .pickerStyle(.inline)
     } label: {
       Image(nsImage: Self.filterGlyph(active: active))
-        .accessibilityLabel("Filter by date")
+        .accessibilityLabel("Filter")
     }
     .menuIndicator(.hidden)
-    .help(model.activityWindow.map { "Showing the \($0.label.lowercased()) — filter by date" } ?? "Filter by date")
+    .help(filterHelp)
+  }
+
+  /// The filter's tooltip: what the list is narrowed to right now.
+  private var filterHelp: String {
+    let window = model.activityWindow?.label.lowercased()
+    switch (model.unreadOnly, window) {
+    case (false, nil): return "Filter by unread or date"
+    case (true, nil): return "Showing unread"
+    case (false, let window?): return "Showing the \(window)"
+    case (true, let window?): return "Showing unread from the \(window)"
+    }
   }
 
   private func markReadButton(for selectedThreads: [InboxThread]) -> some View {

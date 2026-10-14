@@ -178,6 +178,16 @@ func matchingWindow(_ items: [InboxItem], _ window: ActivityWindow?, now: Date) 
   return items.filter { $0.updatedAt >= cutoff }
 }
 
+/// The toolbar's unread filter over threads: the unread ones, plus any
+/// holding an item in `kept` — read while the filter showed it, and left
+/// where it was rather than taken out from under the pointer. Works on
+/// threads, not items, so an unread thread keeps its read members.
+func matchingUnread(_ threads: [InboxThread], kept: Set<String>) -> [InboxThread] {
+  threads.filter { thread in
+    !thread.read || thread.items.contains { kept.contains($0.id) }
+  }
+}
+
 /// What the sidebar selects: a category id, optionally scoped to one
 /// account — nil is the aggregated "All Inboxes" section.
 struct SidebarSelection: Hashable, Sendable {

@@ -13,7 +13,10 @@ private let minSize = NSSize(width: 800, height: 420)
 
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate {
+  private let model: AppModel
+
   init(model: AppModel) {
+    self.model = model
     let host = NSHostingController(rootView: MainWindowView(model: model))
     // SwiftUI installs the window's NSToolbar and title from the view's
     // .toolbar / .navigationTitle modifiers.
@@ -137,8 +140,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
   /// SwiftUI lays the toolbar's trailing end out as
   /// [detail items…][flexible space][search field], with no placement
-  /// that lands an item after the spacer. The date filter (the last
-  /// detail item) belongs flush against the search field, the way Music
+  /// that lands an item after the spacer. The filter (the last detail
+  /// item) belongs flush against the search field, the way Music
   /// pairs its filter with search — so the spacer moves ahead of it.
   /// Idempotent: once paired, the item before the search field is no
   /// longer the spacer and nothing happens.
@@ -169,8 +172,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     return found
   }
 
-  // Back to a pure menu-bar presence.
+  // Back to a pure menu-bar presence. The next open is a fresh look, so
+  // the unread filter lets go of the rows it held read.
   func windowWillClose(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
+    model.releaseKeptReads()
   }
 }

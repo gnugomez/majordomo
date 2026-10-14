@@ -70,7 +70,7 @@ reintroduces the bug:
   disabled when nothing is selected (MainWindowView): an empty detail
   section sends the list column's toolbar items to the window's far corner
   (a `ToolbarSpacer` instead draws a stray separator stub), and a section
-  whose item count changes shifts the date filter a few points relative to
+  whose item count changes shifts the filter a few points relative to
   the search field, because a real item carries a glass background and a
   hidden placeholder does not.
 - `NSHostingController.sizingOptions = []` on the main window
@@ -86,7 +86,7 @@ reintroduces the bug:
   cooperative activation can deny the focus steal and the window would open
   buried.
 - `pairFilterWithSearch()` (MainWindowController) moves the toolbar's
-  trailing flexible space ahead of the date-filter item: SwiftUI lays the
+  trailing flexible space ahead of the filter item: SwiftUI lays the
   trailing end out as [items][flexible space][search] and offers no
   placement after the spacer (`.primaryAction`, `ToolbarSpacer`, and
   `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
@@ -124,7 +124,7 @@ reintroduces the bug:
   `defaultFocus` on the split view nor a `FocusState` on the content column
   moves it — the arrow keys would walk the sidebar until a row is clicked.
   It fires once per window and never out of a text field.
-- The date-filter glyph is an `NSImage` painted via a symbol configuration
+- The filter glyph is an `NSImage` painted via a symbol configuration
   (MainWindowView.filterGlyph): the toolbar draws item images itself as
   templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
   a non-template image keeps its color.

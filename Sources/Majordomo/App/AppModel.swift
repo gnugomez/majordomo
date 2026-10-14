@@ -74,10 +74,21 @@ final class AppModel {
     didSet {
       UserDefaults.standard.set(sidebarSelection.category, forKey: "sidebarCategory")
       UserDefaults.standard.set(sidebarSelection.account, forKey: "sidebarAccount")
+      // Another inbox is a fresh look: the unread filter starts over.
+      if sidebarSelection != oldValue {
+        releaseKeptReads()
+      }
     }
   }
   /// The toolbar's date filter, remembered across launches; nil is any time.
   private(set) var activityWindow: ActivityWindow? = AppModel.loadActivityWindow()
+  /// The toolbar's unread filter, remembered across launches.
+  private(set) var unreadOnly = UserDefaults.standard.bool(forKey: "unreadOnly")
+  /// Items read while the unread filter was on. Their threads stay in the
+  /// filtered list, drawn as read, until the user moves on — another
+  /// inbox, the filter switched, the window closed — so reading a row
+  /// never pulls it out from under the pointer.
+  private(set) var keptReadIds: Set<String> = []
   /// Which new items notify, and with what sound (settings → Notifications).
   private(set) var notifyScope: NotifyScope = NotifyScope(
     rawValue: UserDefaults.standard.string(forKey: "notifyScope") ?? ""
@@ -113,6 +124,9 @@ final class AppModel {
   var hasAccounts: Bool { !accounts.isEmpty }
 
   func apply(_ state: AppState) {
+    if unreadOnly {
+      keepNewlyRead(state.items)
+    }
     items = state.items
     accounts = state.accounts
     labels = state.labels
@@ -171,6 +185,30 @@ final class AppModel {
   func setActivityWindow(_ window: ActivityWindow?) {
     activityWindow = window
     UserDefaults.standard.set(window?.rawValue, forKey: "activityWindow")
+  }
+
+  func setUnreadOnly(_ on: Bool) {
+    unreadOnly = on
+    releaseKeptReads()
+    UserDefaults.standard.set(on, forKey: "unreadOnly")
+  }
+
+  /// Lets the unread filter drop the rows it has been holding read.
+  func releaseKeptReads() {
+    if !keptReadIds.isEmpty {
+      keptReadIds = []
+    }
+  }
+
+  /// Notes the items a push turns read, so the unread filter keeps their
+  /// rows. Every read lands here, wherever it was made — the inbox, the
+  /// tray, a banner, or the provider's own site.
+  private func keepNewlyRead(_ incoming: [InboxItem]) {
+    let unread = Set(items.lazy.filter { !$0.read }.map(\.id))
+    let newlyRead = incoming.filter { $0.read && unread.contains($0.id) }.map(\.id)
+    if !newlyRead.isEmpty {
+      keptReadIds.formUnion(newlyRead)
+    }
   }
 
   func setNotifyScope(_ scope: NotifyScope) {
