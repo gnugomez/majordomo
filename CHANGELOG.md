@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.2.0](https://github.com/gnugomez/majordomo/compare/v1.1.0...v1.2.0) (2026-10-14)
+
+
+### Features
+
+* a glow in the model's colors, and a spotlight that dismisses on click ([b5181cc](https://github.com/gnugomez/majordomo/commit/b5181cc746ef8427fba41cd6aa103ac645c0a8d8))
+* a Window menu and the standard hide commands ([093bffb](https://github.com/gnugomez/majordomo/commit/093bffbc607993c8016c6e2b25a0ae47fd6c549a))
+* an Apple Intelligence summary on each inbox row ([527beb4](https://github.com/gnugomez/majordomo/commit/527beb4a80719ce4ce16c4422cc88e997bedc2c7))
+* an Intelligence tab, and rules that move items rather than copy them ([6a71704](https://github.com/gnugomez/majordomo/commit/6a717042ca02aff413e3fbb2beb1b0005b1897ff))
+* an Unread Only filter that keeps read rows where they are ([ae712b6](https://github.com/gnugomez/majordomo/commit/ae712b6a0a79a075fd1eeeea770fce57e80bd2e9))
+* choose what inbox rows show, and in what order ([430f35b](https://github.com/gnugomez/majordomo/commit/430f35b09057e25d61b7cc451b61ce732294e718))
+* deep sync on manual refresh and hourly ([e1a5a38](https://github.com/gnugomez/majordomo/commit/e1a5a387835c3e1a317b1a4a0ea231af337ad4c9))
+* draft rules in your own words and suggest labels from patterns ([ad369c3](https://github.com/gnugomez/majordomo/commit/ad369c36b499005682fd7a8bad8db3ae8b88aa04))
+* nothing at the sidebar's foot but sync activity ([7ab8725](https://github.com/gnugomez/majordomo/commit/7ab87254621541e87295ce97cb6f4c4fc30054ce))
+* order the inbox by activity time and filter it by date ([1d74dc8](https://github.com/gnugomez/majordomo/commit/1d74dc8fd98245a16dc32ed3b4b27986adc939eb))
+* organize the inbox with labels, custom inboxes, and rules ([21a4b01](https://github.com/gnugomez/majordomo/commit/21a4b013f6cda69a93c511086d251b320a07e49d))
+* rename the Pulls category to Pull requests ([a792247](https://github.com/gnugomez/majordomo/commit/a7922470ffaf18a6ae3947e866232c7e222e3ac2))
+* rules the on-device model judges, and a box for what they catch ([43c6f14](https://github.com/gnugomez/majordomo/commit/43c6f149ddb0843d2a3a11d183b6da0a547402dc))
+* thread same-target notifications and searchable inbox ([88d3d89](https://github.com/gnugomez/majordomo/commit/88d3d897ba44faabbaf40799b4584536f1d9d049))
+* update tokens in place and keep read state across account removal ([6389f0c](https://github.com/gnugomez/majordomo/commit/6389f0c4079cbb29a29b147d5ce362ac5d9ddcdb))
+
+
+### Bug Fixes
+
+* a mouse wheel scrolls the inbox a row per notch ([0b9823b](https://github.com/gnugomez/majordomo/commit/0b9823b210dab3b3e4f77abb3bda0273e1e1bb24))
+* arrow keys walk the inbox instead of the sidebar ([86bf978](https://github.com/gnugomez/majordomo/commit/86bf9789967ec8928c3e5acecdf5317a08fbae69))
+* keep every notification so search reaches old ones ([9116bec](https://github.com/gnugomez/majordomo/commit/9116bec1f3446c1547a6e67226287a4bf7fca191))
+* the date filter keeps its place whether or not a row is selected ([0d115ca](https://github.com/gnugomez/majordomo/commit/0d115cab795fcc80dc16ce98d730309682b8a2e8))
+* unread items sort above read in every list ([9942ea9](https://github.com/gnugomez/majordomo/commit/9942ea928bbd5581712f271857747b28dea711d0))
+
+
+### Refactoring
+
+* one catalog owns the full label and rule set ([9b8c41e](https://github.com/gnugomez/majordomo/commit/9b8c41e349a034b9a610bea488ae81ab0ec44732))
+
 ## [1.1.0](https://github.com/gnugomez/majordomo/compare/v1.0.2...v1.1.0) (2026-09-08)
 
 
