@@ -79,6 +79,14 @@ Add accounts from Settings (⌘,) by pasting a personal access token:
 | GitHub | `notifications` (classic token) |
 | GitLab (self-hosted) | `read_api` |
 
+Selecting a notification previews its issue, pull request, or merge request:
+the comment that raised it, the description, and the latest comments. On
+GitLab, `read_api` covers all of it. On GitHub, public repositories preview
+with the `notifications` scope alone; private ones also need `repo`. GitHub
+offers no read-only scope for private repositories, so `repo` grants write
+access too. Majordomo never writes; add `repo` only if you want those
+previews.
+
 Tokens are stored AES-GCM encrypted in the app's data file; the key is a
 single Keychain item.
 

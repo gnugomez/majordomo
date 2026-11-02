@@ -735,6 +735,23 @@ actor SyncEngine {
     emitState()
   }
 
+  /// One item's target in full, for the preview: fetched on demand through
+  /// its account's client, and never stored. Demo mode answers from the
+  /// fixtures, offline like the rest of it.
+  func fetchDetail(itemId: String) async throws -> ItemDetail? {
+    guard let stored = store.getItems().first(where: { $0.id == itemId }) else {
+      return nil
+    }
+    let item = store.inboxItem(stored)
+    if isDemo {
+      return DemoData.detail(for: item)
+    }
+    guard let config = store.getAccount(item.accountId)?.config, let client = clients[item.provider] else {
+      throw ProviderError(message: "This account's token can't be read right now — check it in Settings → Accounts.")
+    }
+    return try await client.fetchDetail(config, item: item)
+  }
+
   /// Kicks off the first sync and the 60s interval.
   func start() {
     guard timer == nil else { return }

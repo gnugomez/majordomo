@@ -71,6 +71,60 @@ private struct GHSubject: Decodable {
   let labels: [Label]?
 }
 
+/// The fields the preview reads off an issue — or a pull request, which
+/// GitHub serves through the issues API too.
+private struct GHIssue: Decodable {
+  let body: String?
+  /// How many comments the conversation holds.
+  let comments: Int?
+}
+
+private struct GHComment: Decodable {
+  struct User: Decodable {
+    let login: String?
+  }
+
+  let id: Int
+  let user: User?
+  let created_at: String
+  let body: String?
+}
+
+/// Where an item's target sits in the API, read back off the web url
+/// htmlUrl derived from it: the repository, the number, and the comment
+/// the notification pointed at, if it pointed at one.
+private struct GHTarget {
+  let repo: String
+  let number: String
+  let commentId: String?
+}
+
+private func detailTarget(_ url: String) -> GHTarget? {
+  guard let match = url.firstMatch(
+    of: #/^https://github\.com/([^/]+/[^/]+)/(?:issues|pull)/(\d+)(?:#issuecomment-(\d+))?$/#
+  ) else {
+    return nil
+  }
+  return GHTarget(repo: String(match.1), number: String(match.2), commentId: match.3.map(String.init))
+}
+
+private func toDetailComment(_ comment: GHComment) -> DetailComment? {
+  guard let createdAt = ISODate.parse(comment.created_at) else { return nil }
+  return DetailComment(
+    id: String(comment.id),
+    author: comment.user?.login,
+    createdAt: createdAt,
+    body: truncatedBody(comment.body, limit: detailTextLimit) ?? ""
+  )
+}
+
+/// True when the token can read private repositories. GitHub reports a
+/// classic token's scopes on every response, failures included.
+private func grantsPrivateRepos(_ http: HTTPURLResponse) -> Bool {
+  let scopes = http.value(forHTTPHeaderField: "X-OAuth-Scopes") ?? ""
+  return scopes.split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "repo" }
+}
+
 /// What one subject lookup teaches us; cached per thread id + updated_at.
 private struct Enrichment: Sendable {
   var state: String?
@@ -231,6 +285,83 @@ actor GitHubClient: ProviderClient {
 
     let items = await enrichStates(config: config, entries: entries)
     return FetchResult(items: items, complete: complete)
+  }
+
+  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail? {
+    // Discussions and alerts link to the repository itself: nothing to show.
+    guard let target = detailTarget(item.url),
+          let issueUrl = URL(string: "https://api.github.com/repos/\(target.repo)/issues/\(target.number)") else {
+      return nil
+    }
+    let issue: GHIssue = try await getDetail(issueUrl, token: config.token)
+    let count = issue.comments ?? 0
+    let comments = count > 0
+      ? await latestComments(of: issueUrl, count: count, token: config.token)
+      : []
+    // The comment the notification points at is usually the newest one;
+    // an older one costs a lookup of its own.
+    var trigger = target.commentId.flatMap { id in comments.first { $0.id == id } }
+    if trigger == nil, let id = target.commentId,
+       let commentUrl = URL(string: "https://api.github.com/repos/\(target.repo)/issues/comments/\(id)") {
+      let comment: GHComment? = try? await getDetail(commentUrl, token: config.token)
+      trigger = comment.flatMap(toDetailComment)
+    }
+    return ItemDetail(
+      description: truncatedBody(issue.body, limit: detailTextLimit),
+      trigger: trigger,
+      comments: comments,
+      commentCount: count
+    )
+  }
+
+  /// The latest comments, oldest first. GitHub lists a conversation from
+  /// its start, so this reads the last page, and the one before when the
+  /// last falls short of the limit. A failure leaves the conversation out
+  /// rather than failing the whole preview.
+  private func latestComments(of issueUrl: URL, count: Int, token: String) async -> [DetailComment] {
+    let lastPage = (count + detailCommentLimit - 1) / detailCommentLimit
+    let pages = count % detailCommentLimit != 0 && lastPage > 1 ? [lastPage - 1, lastPage] : [lastPage]
+    var comments: [GHComment] = []
+    for page in pages {
+      var components = URLComponents(url: issueUrl.appending(path: "comments"), resolvingAgainstBaseURL: false)
+      components?.queryItems = [
+        URLQueryItem(name: "per_page", value: String(detailCommentLimit)),
+        URLQueryItem(name: "page", value: String(page)),
+      ]
+      guard let url = components?.url,
+            let batch: [Failable<GHComment>] = try? await getDetail(url, token: token) else {
+        return []
+      }
+      comments += batch.compactMap(\.value)
+    }
+    return comments.suffix(detailCommentLimit).compactMap(toDetailComment)
+  }
+
+  /// One GET for the preview, decoded. GitHub answers 404 both for what is
+  /// gone and for a private repository the token can't see, so the token's
+  /// scopes on the response decide which message it gets; an organization
+  /// enforcing single sign-on answers 403 until the token is authorized.
+  private func getDetail<T: Decodable>(_ url: URL, token: String) async throws -> T {
+    let (data, http) = try await send(request(url, token: token), ctx: githubContext)
+    if http.statusCode == 403, http.value(forHTTPHeaderField: "X-GitHub-SSO") != nil {
+      throw ProviderError(
+        message: "This repository's organization uses single sign-on — authorize the token for it on GitHub (Settings → Developer settings → Personal access tokens), then try again."
+      )
+    }
+    if http.statusCode == 404 {
+      throw ProviderError(
+        message: grantsPrivateRepos(http)
+          ? "GitHub couldn't find this one — it may have been deleted or moved."
+          : "GitHub didn't share this one. Previews from private repositories need the token's repo scope: add it on GitHub, then paste the token again in Settings → Accounts."
+      )
+    }
+    guard (200 ..< 300).contains(http.statusCode) else {
+      throw ProviderError(message: statusMessage(http.statusCode, githubContext))
+    }
+    guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+      throw ProviderError(message: invalidJsonMessage(githubContext))
+    }
+    return decoded
   }
 
   /// Fills in `state`/`author`/`body` on the fetched items by looking up

@@ -1,8 +1,9 @@
-// Right pane of the main window: everything AppModel already knows about
-// the selected thread. Deliberately no provider fetches — bodies and
-// comments need extra token scopes, so the browser is one click away
-// instead. A multi-member thread stacks its messages as cards under the
-// shared header.
+// Right pane of the main window: everything AppModel knows about the
+// selected thread, then its target in full — the comment that raised the
+// notification, the description, the latest comments — fetched from the
+// provider once the selection settles and held in memory only. A
+// multi-member thread stacks its messages as cards under the shared
+// header.
 
 import SwiftUI
 
@@ -101,17 +102,39 @@ struct PreviewView: View {
           }
           .font(.system(size: 12))
 
+          let load = model.detail(for: item)
+          let detail = loadedDetail(load)
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
               messageCard(member, providerSpec: providerSpec)
             }
-          } else if let bodyView = providerSpec.bodyView(for: item) {
+          } else if let trigger = detail?.trigger {
+            TriggerCard(comment: trigger, now: model.now)
+          } else if detail == nil, let bodyView = providerSpec.bodyView(for: item) {
+            // The notification's own excerpt stands in until the target
+            // is in, or when it can't be.
             Divider()
             bodyView
+          }
+          DetailStatusRow(load: load)
+          if let detail {
+            targetSections(detail, of: thread, providerSpec: providerSpec)
           }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      // The target in full, asked for once the selection settles, so
+      // arrowing down the list doesn't send a request per row it passes. A
+      // target already held shows at once.
+      .task(id: "\(item.id)@\(item.updatedAt.timeIntervalSinceReferenceDate)") {
+        if model.detail(for: item) == nil {
+          try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard !Task.isCancelled else {
+          return
+        }
+        await model.loadDetail(for: item)
       }
       // The pane goes slightly gray so the white message cards read as
       // cards. Single notifications keep the plain page look — there's no
@@ -131,6 +154,40 @@ struct PreviewView: View {
         .containerRelativeFrame(.vertical)
       }
     }
+  }
+
+  /// The target's description and latest comments, under what the
+  /// notification itself says.
+  @ViewBuilder
+  private func targetSections(_ detail: ItemDetail, of thread: InboxThread, providerSpec: any ProviderSpec) -> some View {
+    let item = thread.lead
+    if detail.description != nil || !detail.comments.isEmpty {
+      Divider()
+    }
+    if let description = detail.description {
+      // A fresh look at another target starts collapsed again.
+      DescriptionSection(text: description)
+        .id(item.id)
+    }
+    if !detail.comments.isEmpty {
+      ConversationSection(
+        comments: detail.comments,
+        // Only a single notification's card shows the comment it came from.
+        triggerId: thread.items.count == 1 ? detail.trigger?.id : nil,
+        reason: providerSpec.reasonLabel(item.reason),
+        commentCount: detail.commentCount,
+        providerName: item.provider.displayName,
+        url: URL(string: item.url),
+        now: model.now
+      )
+    }
+  }
+
+  private func loadedDetail(_ load: AppModel.DetailLoad?) -> ItemDetail? {
+    if case .loaded(let detail) = load {
+      return detail
+    }
+    return nil
   }
 
   /// One thread member as a message card: why it arrived, from whom, when

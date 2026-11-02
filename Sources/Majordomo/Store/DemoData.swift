@@ -286,4 +286,74 @@ enum DemoData {
       suggestions: suggestions
     )
   }
+
+  /// What the preview fetches for a fixture item: a written-out target for
+  /// a few of them — a mention with its comment, a review with a
+  /// conversation — and for the rest just the description the item carries.
+  static func detail(for item: InboxItem) -> ItemDetail? {
+    let now = Date()
+    func comment(_ id: String, _ author: String, minutesAgo: Double, _ body: String) -> DetailComment {
+      DetailComment(id: id, author: author, createdAt: now.addingTimeInterval(-minutesAgo * 60), body: body)
+    }
+
+    switch item.id {
+    case "\(github):26":
+      let trigger = comment("c4", "hubot", minutesAgo: 26, """
+        @octocat this is the file from your report — it dies the moment the \
+        mapping starts. Could you check whether the streaming branch fixes it \
+        on your machine?
+        """)
+      return ItemDetail(
+        description: item.body,
+        trigger: trigger,
+        comments: [
+          comment("c1", "kim", minutesAgo: 3 * 24 * 60, "Same here with a 2.4 GB export from Figma."),
+          comment("c2", "mona", minutesAgo: 2 * 24 * 60, """
+            Confirmed on main. Peak memory tracks file size exactly:
+
+            | File | Peak |
+            | --- | --- |
+            | 800 MB | 1.1 GB |
+            | 2.3 GB | crash |
+            """),
+          comment("c3", "sasha", minutesAgo: 90, "- [x] repro on macOS\n- [ ] repro on Linux"),
+          trigger,
+        ],
+        commentCount: 7
+      )
+    case "\(github):4":
+      return ItemDetail(
+        description: """
+          <!-- Describe the change and link the issue it closes. -->
+          ## Summary
+
+          \(item.body ?? "")
+
+          ## Checklist
+
+          - [x] Tests for the retry path
+          - [x] Benchmarks against the multipart path
+          - [ ] Remove the old code path
+          """,
+        comments: [
+          comment("p1", "hubot", minutesAgo: 30, "Benchmarks look great — **3× less memory** on the 1 GB fixture."),
+        ],
+        commentCount: 1
+      )
+    case "\(gitlab):49":
+      return ItemDetail(
+        description: """
+          Exports request, error, and latency counters on `/stats`, one \
+          series per provider.
+
+          Closes #212.
+          """,
+        trigger: comment("n7", "kim", minutesAgo: 49, item.body ?? ""),
+        comments: [],
+        commentCount: 0
+      )
+    default:
+      return ItemDetail(description: item.body, commentCount: 0)
+    }
+  }
 }

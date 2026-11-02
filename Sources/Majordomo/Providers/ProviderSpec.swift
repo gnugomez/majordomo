@@ -37,6 +37,10 @@ protocol ProviderSpec: Sendable {
   var needsBaseUrl: Bool { get }
   /// One-line hint under the token field in the add-account sheet.
   var tokenHint: String { get }
+  /// What the token needs beyond `tokenHint` for previews to show
+  /// everything, said plainly when that grants more than reading. nil when
+  /// the hint's scope covers previews too.
+  var previewScopeNote: String? { get }
   func makeClient() -> any ProviderClient
   /// Best-effort avatar for a username when the API's URL is unknown.
   func fallbackAvatarURL(username: String) -> URL?
@@ -67,6 +71,8 @@ protocol ProviderSpec: Sendable {
 }
 
 extension ProviderSpec {
+  var previewScopeNote: String? { nil }
+
   func bodyView(for item: InboxItem) -> AnyView? {
     item.body.map { AnyView(MarkdownBody(text: $0)) }
   }

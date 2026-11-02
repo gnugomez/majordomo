@@ -19,6 +19,10 @@ enum NotifyScope: String, CaseIterable, Sendable {
   case none
 }
 
+/// Targets the preview keeps fetched at most; looking back at a recent
+/// one is instant, and nothing builds up over a long session.
+private let detailCacheLimit = 40
+
 /// True when running from a real .app bundle. SMAppService and
 /// UNUserNotificationCenter require one; a bare `swift run` executable
 /// must skip them instead of crashing.
@@ -113,6 +117,28 @@ final class AppModel {
   /// True while the toolbar search field is active; set it to move focus
   /// there (⌘F does).
   var searchPresented = false
+
+  /// Where the preview's fetch of an item's target stands.
+  enum DetailLoad: Sendable {
+    case loading
+    /// nil when the item points at nothing the provider can describe.
+    case loaded(ItemDetail?)
+    /// The provider's message, fit to show verbatim.
+    case failed(String)
+  }
+
+  /// One fetch held for the preview, and the activity it was made for.
+  private struct HeldDetail {
+    /// Which fetch owns the entry, so a superseded one can't write to it.
+    let ticket: UUID
+    let updatedAt: Date
+    var load: DetailLoad
+  }
+
+  /// What the preview has fetched about items' targets, by item id — in
+  /// memory only, the most recent `detailCacheLimit` of them.
+  private var details: [String: HeldDetail] = [:]
+  @ObservationIgnored private var detailOrder: [String] = []
 
   @ObservationIgnored var engine: SyncEngine?
   /// Chrome updates after every state push: tray dot, dock badge.
@@ -441,6 +467,56 @@ final class AppModel {
     }
     Task {
       await engine?.markRead(ids: Array(ids))
+    }
+  }
+
+  // MARK: Previews
+
+  /// What is known about the item's target as of its latest activity; nil
+  /// when nothing current was asked for.
+  func detail(for item: InboxItem) -> DetailLoad? {
+    guard let held = details[item.id], held.updatedAt >= item.updatedAt else {
+      return nil
+    }
+    return held.load
+  }
+
+  /// Fetches the item's target unless it is already held for the item's
+  /// latest activity. A failure is tried again on the next look; a fetch
+  /// whose task was cancelled — the selection moved on — leaves nothing
+  /// behind.
+  func loadDetail(for item: InboxItem) async {
+    if case .loaded = detail(for: item) {
+      return
+    }
+    guard let engine else {
+      return
+    }
+    let ticket = UUID()
+    hold(item.id, HeldDetail(ticket: ticket, updatedAt: item.updatedAt, load: .loading))
+    let load: DetailLoad
+    do {
+      load = .loaded(try await engine.fetchDetail(itemId: item.id))
+    } catch {
+      load = .failed((error as? ProviderError)?.message ?? error.localizedDescription)
+    }
+    guard details[item.id]?.ticket == ticket else {
+      return
+    }
+    if Task.isCancelled {
+      details[item.id] = nil
+    } else {
+      details[item.id]?.load = load
+    }
+  }
+
+  /// Keeps a fetch, letting go of the oldest beyond the cache limit.
+  private func hold(_ id: String, _ held: HeldDetail) {
+    details[id] = held
+    detailOrder.removeAll { $0 == id }
+    detailOrder.append(id)
+    while detailOrder.count > detailCacheLimit {
+      details[detailOrder.removeFirst()] = nil
     }
   }
 

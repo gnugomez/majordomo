@@ -54,6 +54,12 @@ struct AddAccountSheet: View {
       Text(chosenSpec.tokenHint)
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
+      if let note = chosenSpec.previewScopeNote {
+        Label(note, systemImage: "exclamationmark.triangle")
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       if let error = displayError {
         Text(error)

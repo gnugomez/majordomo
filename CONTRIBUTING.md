@@ -65,10 +65,13 @@ own, so the built-ins-first ordering is decided once.
 Adding a provider means:
 
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
-   tokens (errors as human-readable `ProviderError` strings — they render
-   verbatim in the UI);
+   tokens, and fetches an item's target in full (`fetchDetail`: the
+   description and latest comments, as Markdown) when the preview asks —
+   errors as human-readable `ProviderError` strings, which render verbatim
+   in the UI, a missing token scope named as such;
 2. a `ProviderSpec` with the presentation for those tokens and its built-in
-   labels and rules (`GitForgeBuckets` builds the git-forge set);
+   labels and rules (`GitForgeBuckets` builds the git-forge set), plus a
+   `previewScopeNote` when previews need a scope beyond the token hint's;
 3. one registration line in `providerSpecs`.
 
 Any number of accounts per provider can be connected; accounts are keyed by

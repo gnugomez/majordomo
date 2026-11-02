@@ -57,6 +57,65 @@ private struct GLTodo: Decodable {
   }
 }
 
+/// The fields the preview reads off an issue or merge request.
+private struct GLIssuable: Decodable {
+  let description: String?
+  /// Comments by people, GitLab's own system notes left out.
+  let user_notes_count: Int?
+}
+
+private struct GLNote: Decodable {
+  let id: Int
+  let body: String?
+  let author: GLTodo.GLAuthor?
+  let created_at: String
+  /// GitLab's own entries ("added 1 commit", "changed the description").
+  let system: Bool?
+}
+
+/// Notes a detail fetch reads to find the latest comments: system notes
+/// crowd a busy merge request, so it reads past them.
+private let detailNotePage = 50
+
+/// Where an item's target sits in the API, read off its web url
+/// (`{origin}/{project}/-/issues/{iid}#note_{id}`): the project, the
+/// collection and number, and the note the todo pointed at, if any.
+private struct GLTargetRef {
+  let project: String
+  let collection: String
+  let iid: String
+  let noteId: String?
+
+  /// The target's API url under the instance origin. GitLab addresses a
+  /// project by its whole path, slashes encoded.
+  func apiUrl(origin: String) -> String {
+    let project = project.replacingOccurrences(of: "/", with: "%2F")
+    return "\(origin)/api/v4/projects/\(project)/\(collection)/\(iid)"
+  }
+}
+
+private func detailTarget(_ url: String, origin: String) -> GLTargetRef? {
+  guard url.hasPrefix(origin + "/"),
+        let match = url.dropFirst(origin.count + 1).firstMatch(
+          of: #/^(.+?)/-/(issues|merge_requests)/(\d+)(?:#note_(\d+))?$/#
+        ) else {
+    return nil
+  }
+  return GLTargetRef(
+    project: String(match.1), collection: String(match.2), iid: String(match.3), noteId: match.4.map(String.init)
+  )
+}
+
+private func toDetailComment(_ note: GLNote) -> DetailComment? {
+  guard let createdAt = ISODate.parse(note.created_at) else { return nil }
+  return DetailComment(
+    id: String(note.id),
+    author: note.author?.username,
+    createdAt: createdAt,
+    body: truncatedBody(note.body, limit: detailTextLimit) ?? ""
+  )
+}
+
 /// Normalizes and validates the user-supplied base URL. Throws a UI-ready message.
 private func resolveBaseUrl(_ config: AccountConfig) throws -> String {
   let raw = (config.baseUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -237,5 +296,61 @@ struct GitLabClient: ProviderClient {
       }
     }
     return FetchResult(items: items, complete: complete)
+  }
+
+  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail? {
+    let baseUrl = try resolveBaseUrl(config)
+    let ctx = context(baseUrl)
+    guard let target = detailTarget(item.url, origin: baseUrl),
+          let targetUrl = URL(string: target.apiUrl(origin: baseUrl)) else {
+      return nil
+    }
+    let issuable: GLIssuable = try await getDetail(targetUrl, token: config.token, ctx: ctx)
+    let comments = await latestComments(of: targetUrl, token: config.token, ctx: ctx)
+    var trigger = target.noteId.flatMap { id in comments.first { $0.id == id } }
+    if trigger == nil, let id = target.noteId {
+      let note: GLNote? = try? await getDetail(targetUrl.appending(path: "notes/\(id)"), token: config.token, ctx: ctx)
+      trigger = note.flatMap(toDetailComment)
+    }
+    return ItemDetail(
+      description: truncatedBody(issuable.description, limit: detailTextLimit),
+      trigger: trigger,
+      comments: comments,
+      commentCount: issuable.user_notes_count
+    )
+  }
+
+  /// The latest comments by people, oldest first; a failure leaves the
+  /// conversation out rather than failing the whole preview.
+  private func latestComments(of targetUrl: URL, token: String, ctx: RequestContext) async -> [DetailComment] {
+    var components = URLComponents(url: targetUrl.appending(path: "notes"), resolvingAgainstBaseURL: false)
+    components?.queryItems = [
+      URLQueryItem(name: "sort", value: "desc"),
+      URLQueryItem(name: "order_by", value: "created_at"),
+      URLQueryItem(name: "per_page", value: String(detailNotePage)),
+    ]
+    guard let url = components?.url,
+          let notes: [Failable<GLNote>] = try? await getDetail(url, token: token, ctx: ctx) else {
+      return []
+    }
+    let people = notes.compactMap(\.value).filter { $0.system != true }
+    return people.prefix(detailCommentLimit).reversed().compactMap(toDetailComment)
+  }
+
+  /// One GET for the preview, decoded. `read_api` reads everything the
+  /// preview shows, so a 404 here means the target is gone or out of the
+  /// account's reach — not a missing scope.
+  private func getDetail<T: Decodable>(_ url: URL, token: String, ctx: RequestContext) async throws -> T {
+    let (data, http) = try await send(request(url, token: token), ctx: ctx)
+    if http.statusCode == 404 {
+      throw ProviderError(message: "GitLab couldn't find this one — it may have been deleted, or your account no longer has access.")
+    }
+    guard (200 ..< 300).contains(http.statusCode) else {
+      throw ProviderError(message: statusMessage(http.statusCode, ctx))
+    }
+    guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+      throw ProviderError(message: invalidJsonMessage(ctx))
+    }
+    return decoded
   }
 }

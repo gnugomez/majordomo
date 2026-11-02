@@ -2,9 +2,12 @@
 // the bodyView contract itself is arbitrary SwiftUI. Foundation's parser
 // reports block structure as PresentationIntent runs; laying those out is
 // this view's job (code blocks in a monospaced card, quotes behind a bar,
-// headings, list items) with inline styles riding along on the runs. Real
-// forge content is full of fenced code and quotes, so inline-only parsing
-// reads as broken — and a rendering dependency stays off the table.
+// headings, list items and task checkboxes, a table row to a line) with
+// inline styles riding along on the runs. The parser hands raw HTML
+// through as text, so its tags and comments are dropped here. Real forge
+// content is full of fenced code, quotes, and template HTML, so
+// inline-only parsing reads as broken — and a rendering dependency stays
+// off the table.
 
 import SwiftUI
 
@@ -32,41 +35,120 @@ struct MarkdownBody: View {
       case code
       case quote
       case listItem(marker: String)
+      case task(done: Bool)
+      case tableRow(header: Bool)
       case divider
     }
 
     let id: Int
-    let kind: Kind
+    var kind: Kind
     var content: AttributedString
+  }
+
+  /// What groups runs into one block: their intent — except that a table
+  /// row's cells, each with an intent of its own, share their row's.
+  private enum BlockKey: Equatable {
+    case intent(PresentationIntent?)
+    case row(Int)
   }
 
   private var blocks: [Block] {
     let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    guard let parsed = try? AttributedString(markdown: text, options: options) else {
-      return [Block(id: 0, kind: .paragraph, content: AttributedString(text))]
+    // HTML comments are template boilerplate ("Describe your change…"),
+    // written for whoever fills the template in, never for its readers.
+    let source = text.replacing(/<!--[\s\S]*?-->/, with: "")
+    guard let parsed = try? AttributedString(markdown: source, options: options) else {
+      return [Block(id: 0, kind: .paragraph, content: AttributedString(source))]
     }
 
     var result: [Block] = []
-    var lastIntent: PresentationIntent??
+    var lastKey: BlockKey?
+    var lastCell: Int?
     for run in parsed.runs {
-      var piece = AttributedString(parsed[run.range])
-      guard !piece.characters.isEmpty else { continue }
+      let intent = run.presentationIntent
+      let code = isCode(kind(of: intent)) || run.inlinePresentationIntent?.contains(.code) == true
+      guard var piece = readable(AttributedString(parsed[run.range]), htmlBlock: intent == nil, code: code) else {
+        continue
+      }
       piece.presentationIntent = nil
-      // Runs of one block share one intent; a change starts the next block.
-      if lastIntent == run.presentationIntent, !result.isEmpty {
+      let key = tableRowIdentity(intent).map(BlockKey.row) ?? .intent(intent)
+      let cell = tableCellIdentity(intent)
+      // Runs of one block share one key; a change starts the next block.
+      if key == lastKey, !result.isEmpty {
+        if let cell, cell != lastCell {
+          result[result.count - 1].content += AttributedString("  ·  ")
+        }
         result[result.count - 1].content += piece
       } else {
-        lastIntent = run.presentationIntent
-        result.append(Block(id: result.count, kind: kind(of: run.presentationIntent), content: piece))
+        lastKey = key
+        result.append(Block(id: result.count, kind: kind(of: intent), content: piece))
       }
+      lastCell = cell
     }
-    // Code blocks keep their inner newlines; the trailing one just pads.
-    for index in result.indices where isCode(result[index].kind) {
-      while result[index].content.characters.last == "\n" {
-        result[index].content.characters.removeLast()
+    for index in result.indices {
+      // Code blocks keep their inner newlines; the trailing one just pads.
+      if isCode(result[index].kind) {
+        while result[index].content.characters.last == "\n" {
+          result[index].content.characters.removeLast()
+        }
       }
+      markTask(&result[index])
     }
     return result
+  }
+
+  /// A run as it should read. Raw HTML — a tag on its own, or a block of
+  /// it — gives up its tags and keeps its text, a line break staying one;
+  /// code keeps every character. nil when nothing is left to show.
+  private func readable(_ piece: AttributedString, htmlBlock: Bool, code: Bool) -> AttributedString? {
+    guard !piece.characters.isEmpty else {
+      return nil
+    }
+    let raw = String(piece.characters)
+    guard !code, raw.contains("<"), htmlBlock || raw.wholeMatch(of: /\s*(<[^<>]+>\s*)+/) != nil else {
+      return piece
+    }
+    let text = raw
+      .replacing(/<br\s*\/?>/.ignoresCase(), with: "\n")
+      .replacing(/<[^<>]+>/, with: "")
+    let kept = htmlBlock ? text.trimmingCharacters(in: .whitespacesAndNewlines) : text
+    return kept.isEmpty ? nil : AttributedString(kept)
+  }
+
+  /// A list item written as a task ("[ ] ", "[x] ") reads as a checkbox.
+  private func markTask(_ block: inout Block) {
+    guard case .listItem = block.kind else {
+      return
+    }
+    let text = String(block.content.characters)
+    let done: Bool
+    if text.hasPrefix("[ ] ") {
+      done = false
+    } else if text.hasPrefix("[x] ") || text.hasPrefix("[X] ") {
+      done = true
+    } else {
+      return
+    }
+    block.kind = .task(done: done)
+    block.content.characters.removeFirst(4)
+  }
+
+  private func tableRowIdentity(_ intent: PresentationIntent?) -> Int? {
+    intent?.components.first { component in
+      switch component.kind {
+      case .tableHeaderRow, .tableRow: true
+      default: false
+      }
+    }?.identity
+  }
+
+  private func tableCellIdentity(_ intent: PresentationIntent?) -> Int? {
+    intent?.components.first { component in
+      if case .tableCell = component.kind {
+        return true
+      }
+      return false
+    }?.identity
   }
 
   private func isCode(_ kind: Block.Kind) -> Bool {
@@ -91,6 +173,10 @@ struct MarkdownBody: View {
         return .code
       case .header(let level):
         return .heading(level: level)
+      case .tableHeaderRow:
+        return .tableRow(header: true)
+      case .tableRow:
+        return .tableRow(header: false)
       case .listItem(let n):
         ordinal = n
       case .orderedList:
@@ -148,6 +234,19 @@ struct MarkdownBody: View {
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
       }
+    case .task(let done):
+      HStack(alignment: .firstTextBaseline, spacing: 5) {
+        Image(systemName: done ? "checkmark.square" : "square")
+          .font(.system(size: 11))
+          .foregroundStyle(.tertiary)
+        Text(content)
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+      }
+    case .tableRow(let header):
+      Text(content)
+        .font(.system(size: 12, weight: header ? .semibold : .regular))
+        .foregroundStyle(.secondary)
     case .divider:
       Divider()
     }

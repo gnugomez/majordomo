@@ -58,11 +58,18 @@ struct ProviderProfile: Sendable {
   var avatarUrl: String?
 }
 
+/// Comments a detail fetch brings back at most: the latest ones, enough to
+/// see where a conversation stands. The rest are a click away.
+let detailCommentLimit = 10
+/// Characters a detail's description or comment keeps at most — whole
+/// descriptions, but not whole build logs.
+let detailTextLimit = 20_000
+
 /// Implemented once per provider; one instance serves every account of it.
 ///
 /// Rules every implementation must follow:
-/// - `validate` and `fetchItems` throw `ProviderError`s with human-readable
-///   messages — the strings surface verbatim in the UI's Accounts pane.
+/// - `validate`, `fetchItems`, and `fetchDetail` throw `ProviderError`s with
+///   human-readable messages — the strings surface verbatim in the UI.
 /// - One malformed remote entry must never fail the whole fetch: skip it.
 /// - No sorting — the UI orders items for display.
 /// - `externalId` is unique and stable within the account across fetches;
@@ -74,6 +81,11 @@ protocol ProviderClient: Sendable {
   func validate(_ config: AccountConfig) async throws -> ProviderProfile
   /// Returns the account's current inbox, reaching as deep as `depth` asks.
   func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult
+  /// The item's target in full — its description and latest comments —
+  /// for the preview, on demand. nil when the item points at nothing the
+  /// provider can describe (a repository-level alert). A failure's message
+  /// should say what would fix it, a missing token scope above all.
+  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail?
 }
 
 /// Caps provider-supplied body text at fetch time — a description can carry
