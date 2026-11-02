@@ -84,6 +84,10 @@ final class AppModel {
   private(set) var activityWindow: ActivityWindow? = AppModel.loadActivityWindow()
   /// The toolbar's unread filter, remembered across launches.
   private(set) var unreadOnly = UserDefaults.standard.bool(forKey: "unreadOnly")
+  /// What the pills under the toolbar narrow the inbox to, one value per
+  /// facet. Kept for the session only: a pick names one author or
+  /// repository, which a later launch may no longer have.
+  private(set) var facetPicks: [Facet: String] = [:]
   /// Items read while the unread filter was on. Their threads stay in the
   /// filtered list, drawn as read, until the user moves on — another
   /// inbox, the filter switched, the window closed — so reading a row
@@ -191,6 +195,11 @@ final class AppModel {
     unreadOnly = on
     releaseKeptReads()
     UserDefaults.standard.set(on, forKey: "unreadOnly")
+  }
+
+  /// Narrows the inbox to one value of a facet; nil lets it show any.
+  func setFacet(_ facet: Facet, to value: String?) {
+    facetPicks[facet] = value
   }
 
   /// Lets the unread filter drop the rows it has been holding read.

@@ -11,6 +11,8 @@ struct MainWindowView: View {
 
   @State private var columnVisibility: NavigationSplitViewVisibility =
     UserDefaults.standard.bool(forKey: "sidebarHidden") ? .doubleColumn : .all
+  /// How tall the floating filter pills stand; the list's rows start below.
+  @State private var pillBarHeight: CGFloat = 0
 
   /// Everything the sidebar selection resolves to for one render pass.
   private struct Scope {
@@ -20,6 +22,8 @@ struct MainWindowView: View {
     var category: Category
     /// The category's items grouped into threads: one row per target.
     var threads: [InboxThread]
+    /// The pills under the toolbar, each with what its menu offers.
+    var facets: [FacetChoices]
   }
 
   private func resolveScope() -> Scope {
@@ -38,12 +42,36 @@ struct MainWindowView: View {
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
     let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
-    let threads = groupIntoThreads(category.items)
+    // The pills narrow the category last. Each pill's menu lists what the
+    // other pills and filters leave, so every value it offers shows rows.
+    let picks = model.facetPicks
+    let facets = offeredFacets(for: account).map { facet in
+      let pool = listedThreads(matchingFacets(category.items, picks, except: facet)).flatMap(\.items)
+      return facetChoices(facet, in: pool, picked: picks[facet])
+    }
     return Scope(
       account: account,
       category: category,
-      threads: model.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
+      threads: listedThreads(matchingFacets(category.items, picks)),
+      facets: facets
     )
+  }
+
+  /// Items as the list shows them: one row per thread, and while the unread
+  /// filter is on, only the unread ones and those read in place.
+  private func listedThreads(_ items: [InboxItem]) -> [InboxThread] {
+    let threads = groupIntoThreads(items)
+    return model.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
+  }
+
+  /// The pills a scope offers. Provider can only narrow a scope spanning
+  /// accounts on more than one provider, so it shows just then — or while
+  /// it holds a pick, which must stay clearable.
+  private func offeredFacets(for account: AccountState?) -> [Facet] {
+    let providers = Set((account.map { [$0] } ?? model.accounts).map(\.provider))
+    return Facet.allCases.filter { facet in
+      facet != .provider || providers.count > 1 || model.facetPicks[.provider] != nil
+    }
   }
 
   var body: some View {
@@ -78,7 +106,21 @@ struct MainWindowView: View {
         }
       }
     } content: {
-      InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id)
+      let pillRoom = model.hasAccounts ? pillBarHeight : 0
+      InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id, topInset: pillRoom)
+        // The filter pills float over the list, just under the toolbar.
+        // An overlay rather than a safe-area inset or bar: either of those
+        // extends the toolbar's edge effect down over the pills, fading the
+        // rows out beneath them, where floating they sit on the rows
+        // themselves, seen through the glass. The list leaves room their
+        // height above its first row. They stay up when the filters empty
+        // the list, so they can be undone.
+        .overlay(alignment: .top) {
+          if model.hasAccounts {
+            FilterPillBar(model: model, facets: scope.facets)
+              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
+          }
+        }
         // The suggestion panel floats over the foot of the list, and only
         // while the model has something to offer.
         .overlay(alignment: .bottom) {

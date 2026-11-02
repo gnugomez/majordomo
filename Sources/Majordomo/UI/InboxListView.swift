@@ -12,6 +12,9 @@ struct InboxListView: View {
   let model: AppModel
   let threads: [InboxThread]
   let categoryId: String
+  /// Room above the first row for what floats over the list's top edge
+  /// (the filter pills); the rows scroll on beneath it.
+  var topInset: CGFloat = 0
 
   /// Threads unfolded into their member rows (the count button toggles).
   @State private var expandedThreadIds: Set<String> = []
@@ -38,6 +41,12 @@ struct InboxListView: View {
           symbol: "magnifyingglass",
           title: "No results",
           caption: "Nothing here matches \u{201C}\(model.searchText)\u{201D}."
+        )
+      } else if !model.facetPicks.isEmpty {
+        EmptyStateView(
+          symbol: "line.3.horizontal.decrease",
+          title: "No matches",
+          caption: "Nothing here matches the filters above. Set one back to Any to see the rest."
         )
       } else if model.unreadOnly {
         EmptyStateView(
@@ -71,6 +80,17 @@ struct InboxListView: View {
           get: { model.selectedThreadIds },
           set: { model.selectedThreadIds = $0 }
         )) {
+          // The room for the floating pills: a list ignores content
+          // margins, so it is a clear row of their height. Keyed by that
+          // height, for the reason the spotlight is keyed by its shape: a
+          // row is measured once, and only a replaced row is measured again.
+          ForEach([max(topInset, spotlightRestHeight)], id: \.self) { height in
+            Color.clear
+              .frame(height: height)
+              .listRowInsets(EdgeInsets())
+          }
+          .listRowSeparator(.hidden)
+          .selectionDisabled()
           // The spotlight rides in a row of the list, so it scrolls away
           // with the notifications. A list row is measured once, when it
           // arrives, and keeps that height however its content changes

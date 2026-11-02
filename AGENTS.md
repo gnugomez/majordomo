@@ -128,3 +128,13 @@ reintroduces the bug:
   (MainWindowView.filterGlyph): the toolbar draws item images itself as
   templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
   a non-template image keeps its color.
+- The filter pills float over the inbox as an overlay (MainWindowView), not
+  a `safeAreaInset` or `safeAreaBar`: either pulls the toolbar's scroll edge
+  effect down over the pills, fading the rows beneath them and drawing a
+  hard line at its foot. A List ignores `contentMargins` on macOS, so the
+  room above the first row is a clear spacer row (InboxListView), keyed by
+  its height for the spotlight's reason — a row is measured once, and only
+  a replaced row is measured again.
+- Each pill draws its own `glassEffect` over a `.plain`-styled menu
+  (FilterPillBar): a `Menu` given the `.glass` button style draws a flat
+  gray fill, and inside a bar keeps only its label's icon.
