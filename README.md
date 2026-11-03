@@ -18,8 +18,9 @@ the SDK.
 - 🔔 Get notified when someone mentions you or asks for a review
 - 🗂 One list for everything, with per-account sections and configurable
   inboxes — connect as many GitHub or GitLab accounts as you like
-- 🎛 Arrange the rows to taste — repo, author, time, labels, an excerpt of
-  the text: show what you want, in the order you want it
+- 🎛 Arrange the rows to taste — repo, author, time, labels, where review,
+  checks, and merging stand, an excerpt of the text: show what you want, in
+  the order you want it
 - 🧠 Apple Intelligence sums up what a notification says in the line under
   it — on device, and switchable off
 - 🎯 Rules that read rather than match: describe what matters in your own

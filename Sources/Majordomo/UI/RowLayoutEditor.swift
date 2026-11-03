@@ -22,7 +22,8 @@ struct RowLayoutEditor: View {
           thread: sample,
           now: model.now,
           labels: labels(on: sample),
-          layout: model.rowLayout
+          layout: model.rowLayout,
+          targetStatus: model.targetStatus(for: sample)
         )
         .padding(.horizontal, 10)
         .padding(.vertical, 2)
@@ -40,17 +41,22 @@ struct RowLayoutEditor: View {
         }
       }
       .listStyle(.bordered)
-      .frame(height: 212)
+      .frame(height: 242)
 
-      SettingsHint(text: "Drag to arrange what each row shows; switch off whatever you'd rather not see. Labels and the status capsule ride the right end of the line, so a field dragged behind them lands there too. The excerpt is a line of its own under the rest.")
+      SettingsHint(text: "Drag to arrange what each row shows; switch off whatever you'd rather not see. Labels, the status capsule, and the review and checks marks ride the right end of the line, so a field dragged behind them lands there too; hover a mark for what it means. The excerpt is a line of its own under the rest.")
     }
   }
 
-  /// A thread to try the arrangement on — one with text to excerpt when
-  /// the inbox holds one. Nothing to show before the first sync.
+  /// A thread to try the arrangement on — one with text to excerpt and
+  /// marks for where its target stands, or as close to that as the inbox
+  /// holds. Nothing to show before the first sync.
   private var sample: InboxThread? {
     let threads = groupIntoThreads(model.items)
-    return threads.first { $0.lead.body != nil } ?? threads.first
+    let marked = threads.filter { thread in
+      model.targetStatus(for: thread).map { !$0.rowMarks.isEmpty } ?? false
+    }
+    return marked.first { $0.lead.body != nil } ?? marked.first
+      ?? threads.first { $0.lead.body != nil } ?? threads.first
   }
 
   /// The sample's labels, picked the way the list picks a row's.

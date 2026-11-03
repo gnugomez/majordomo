@@ -1,9 +1,13 @@
 // The inbox rows. ItemRowView is a thread's summary row: an unread dot,
 // title line with the kind glyph, then a meta line assembled from whichever
 // fields the user's RowLayout shows, in the order it puts them — where and
-// who, when, the provider hint, the label pills, the capsule — plus a
+// who, when, the provider hint, the label pills, the capsule, and the marks
+// for where the target's review, checks, and merging stand — plus a
 // tappable member count that unfolds the thread, and an optional excerpt of
 // the item's text under the rest.
+// Once its target has been refreshed, the row reads the target's current
+// state rather than the one the notification carried: the kind glyph and
+// the capsule show a pull request merged since as merged.
 // The excerpt line is the model's one-line summary when it has written
 // one, marked with the glyph that stands for a generated line; the item's
 // own text stands in until then.
@@ -32,6 +36,7 @@ private enum MetaPiece {
   case mark(ProviderId)
   case labels([InboxLabel])
   case status(InboxItem)
+  case target(TargetStatus)
 
   var isText: Bool {
     if case .text = self {
@@ -42,7 +47,7 @@ private enum MetaPiece {
 
   var isBadge: Bool {
     switch self {
-    case .labels, .status: true
+    case .labels, .status, .target: true
     case .text, .mark: false
     }
   }
@@ -55,6 +60,9 @@ struct ItemRowView: View {
   var labels: [InboxLabel] = []
   /// What the row shows, and in what order.
   var layout: RowLayout = .default
+  /// Where the thread's target stands; nil until a refresh has described
+  /// it, or when it points at nothing tracked.
+  var targetStatus: TargetStatus?
   var selected = false
   var expanded = false
   var onToggleExpand: (() -> Void)?
@@ -62,7 +70,7 @@ struct ItemRowView: View {
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
   var body: some View {
-    let item = thread.lead
+    let item = targetStatus?.presenting(thread.lead) ?? thread.lead
     let pieces = metaPieces(for: item)
     let excerpt = excerptLine(for: item, layout: layout, terms: highlightTerms)
     // Two lines center against the dot; with an excerpt the row runs to
@@ -85,7 +93,9 @@ struct ItemRowView: View {
             .lineLimit(1)
             .truncationMode(.tail)
         }
-        if !pieces.isEmpty || thread.items.count > 1 {
+        // A layout showing the target's marks keeps the line even while
+        // they have yet to come, so the row's height never waits on them.
+        if !pieces.isEmpty || thread.items.count > 1 || layout.shows(.target) {
           metaLine(pieces)
         }
         if let excerpt {
@@ -106,12 +116,20 @@ struct ItemRowView: View {
   /// behind the badges lands there with them.
   private func metaLine(_ pieces: [MetaPiece]) -> some View {
     let badges = pieces.firstIndex(where: \.isBadge) ?? pieces.count
-    return HStack(spacing: 4) {
-      metaRun(Array(pieces[..<badges]))
-      Spacer(minLength: 6)
-      metaRun(Array(pieces[badges...]))
-      if thread.items.count > 1 {
-        memberCount
+    // The hidden line of text holds the line at a text line's height
+    // whatever is on it: the target's marks come and go with refreshes,
+    // and a list row keeps the height it was first measured at.
+    return ZStack(alignment: .leading) {
+      Text(verbatim: " ")
+        .font(.system(size: 11))
+        .hidden()
+      HStack(spacing: 4) {
+        metaRun(Array(pieces[..<badges]))
+        Spacer(minLength: 6)
+        metaRun(Array(pieces[badges...]))
+        if thread.items.count > 1 {
+          memberCount
+        }
       }
     }
   }
@@ -154,6 +172,10 @@ struct ItemRowView: View {
       }
     case .status(let item):
       ItemCapsule(item: item, selected: selected)
+    case .target(let status):
+      // Glyphs only, fewer when the line runs short; their words are in
+      // the tooltips.
+      TargetBadges(status: status, density: .compact, selected: selected)
     }
   }
 
@@ -182,6 +204,10 @@ struct ItemRowView: View {
         }
       case .status:
         pieces.append(.status(item))
+      case .target:
+        if let targetStatus, !targetStatus.rowMarks.isEmpty {
+          pieces.append(.target(targetStatus))
+        }
       case .excerpt:
         // A line of its own, under the rest.
         break

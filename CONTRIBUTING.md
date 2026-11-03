@@ -68,9 +68,9 @@ Adding a provider means:
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
    tokens, and refreshes the targets boards and previews are built from
    (`fetchTargets`, at most `targetBatchLimit` per round: state,
-   assignees, reviewers, review and checks tokens, the latest commenter,
-   and for the keys it is asked to, the description and latest comments
-   as Markdown). The engine asks after new activity first, then fills in
+   assignees, reviewers, review, checks, and merge tokens, the latest
+   commenter, and for the keys it is asked to, the description and latest
+   comments as Markdown). The engine asks after new activity first, then fills in
    the conversations it lacks; a target the provider won't show comes
    back unreadable with the reason, and keys left out of the answer are
    asked again next round. Errors are human-readable `ProviderError`
@@ -81,8 +81,11 @@ Adding a provider means:
    `previewScopeNote` when previews need a scope beyond the token hint's,
    and the board hooks: which target an item is about (`boardKey`), the
    comment it points at (`triggerCommentId`), which states are finished,
-   the review and checks badges, and the token vocabulary the board editor
-   offers;
+   the review, checks, and merge badges (marked `needsAction` when they
+   say something must be done — what a cramped inbox row keeps), and the
+   token vocabulary the board editor offers. The badges draw on board
+   cards and, through `TargetBadges`, on inbox rows, whose glyph and
+   capsule read the target's current state once it has been refreshed;
 3. one registration line in `providerSpecs`.
 
 Boards (`Model/Board.swift`) are columns of rules over cards — one card per

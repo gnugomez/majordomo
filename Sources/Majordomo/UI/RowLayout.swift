@@ -1,7 +1,7 @@
 // What an inbox row shows, and in what order. The fields name structural
 // parts of a row — where an item is, who wrote it, when it moved, its
-// badges, its text — never a provider's vocabulary, so the arrangement
-// stays generic. The user makes it in Settings → General; it is remembered
+// badges, where its target stands, its text — never a provider's
+// vocabulary, so the arrangement stays generic. The user makes it in Settings → General; it is remembered
 // in UserDefaults like the rest of the view state.
 
 import Foundation
@@ -20,6 +20,8 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
   case labels
   /// The state-or-reason capsule.
   case status
+  /// Where the target's review, checks, and merging stand.
+  case target
   /// A couple of lines of the item's text.
   case excerpt
 
@@ -34,6 +36,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
     case .provider: "Provider mark"
     case .labels: "Labels"
     case .status: "Status"
+    case .target: "Review & checks"
     case .excerpt: "Excerpt"
     }
   }
@@ -47,6 +50,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
     case .provider: "Where it came from"
     case .labels: "The labels it carries"
     case .status: "Its state or reason"
+    case .target: "Where review, checks, and merging stand"
     case .excerpt: "Its summary, or a couple of lines of its text"
     }
   }
@@ -55,7 +59,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
   /// gap; the rest reads inline from the left.
   var isBadge: Bool {
     switch self {
-    case .labels, .status: true
+    case .labels, .status, .target: true
     case .repo, .author, .time, .provider, .excerpt: false
     }
   }
@@ -69,8 +73,9 @@ struct RowLayout: Codable, Equatable, Sendable {
   var hidden: Set<RowField>
 
   /// The row as it reads out of the box: where and who, then when, then
-  /// the badges, then the excerpt — which costs a line of height and earns
-  /// it, since it carries the model's summary wherever there is one.
+  /// the badges and where the target stands, then the excerpt — which
+  /// costs a line of height and earns it, since it carries the model's
+  /// summary wherever there is one.
   static let `default` = RowLayout(order: RowField.allCases, hidden: [])
 
   func shows(_ field: RowField) -> Bool {
@@ -101,14 +106,20 @@ struct RowLayout: Codable, Equatable, Sendable {
 
 extension RowLayout {
   /// A stored layout, normalized: fields the app no longer has are
-  /// dropped, and fields it has gained since drop in at the end — an
-  /// older arrangement still opens, rather than losing a row's parts.
+  /// dropped, and fields it has gained since come in shown, right after
+  /// the field they follow out of the box — an older arrangement still
+  /// opens, rather than losing a row's parts, and a new part lands where
+  /// it reads best.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let stored = try container.decodeIfPresent([String].self, forKey: .order) ?? []
     let storedHidden = try container.decodeIfPresent([String].self, forKey: .hidden) ?? []
     var fields = stored.compactMap(RowField.init(rawValue:))
-    fields.append(contentsOf: RowField.allCases.filter { !fields.contains($0) })
+    for (index, field) in RowField.allCases.enumerated() where !fields.contains(field) {
+      let predecessor = RowField.allCases[..<index].last(where: fields.contains)
+      let position = predecessor.flatMap(fields.firstIndex(of:)).map { $0 + 1 } ?? 0
+      fields.insert(field, at: position)
+    }
     order = fields
     hidden = Set(storedHidden.compactMap(RowField.init(rawValue:)))
   }

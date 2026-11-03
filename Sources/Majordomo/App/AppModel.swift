@@ -658,6 +658,21 @@ final class AppModel {
     }
   }
 
+  // MARK: Targets
+
+  /// Where a thread's target stands, as its row draws it: the snapshot's
+  /// tokens, and whether it waits on a review from the account the thread
+  /// came through. nil when the thread points at nothing tracked, or no
+  /// refresh has described it yet.
+  func targetStatus(for thread: InboxThread) -> TargetStatus? {
+    let lead = thread.lead
+    guard let key = spec(for: lead.provider).boardKey(for: lead), let snapshot = targets[key]?.snapshot else {
+      return nil
+    }
+    let login = accounts.first { $0.id == lead.accountId }?.username
+    return TargetStatus(provider: lead.provider, snapshot: snapshot, ownLogins: login.map { [$0] } ?? [])
+  }
+
   // MARK: Previews
 
   /// The conversation of the item's target, as the preview shows it; nil

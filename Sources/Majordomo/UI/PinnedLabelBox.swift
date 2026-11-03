@@ -285,11 +285,14 @@ struct PinnedLabelBox: View {
     .foregroundStyle(.secondary)
   }
 
-  /// One spotlit thread: its title and whatever line the rows show —
-  /// the model's summary when it has written one. Clicking picks it, the
-  /// way clicking the row below would.
+  /// One spotlit thread: its title, the marks for where its target stands,
+  /// and whatever line the rows show — the model's summary when it has
+  /// written one. The marks share the title's line, so they never change
+  /// the box's height. Clicking picks it, the way clicking the row below
+  /// would.
   private func row(_ thread: InboxThread) -> some View {
-    let item = thread.lead
+    let status = model.targetStatus(for: thread)
+    let item = status?.presenting(thread.lead) ?? thread.lead
     return VStack(alignment: .leading, spacing: 2) {
       HStack(spacing: 4) {
         GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
@@ -299,6 +302,9 @@ struct PinnedLabelBox: View {
           .lineLimit(1)
           .truncationMode(.tail)
           .frame(maxWidth: .infinity, alignment: .leading)
+        if let status, !status.rowMarks.isEmpty {
+          TargetBadges(status: status, density: .compact)
+        }
         Text(relativeTime(item.updatedAt, now: model.now))
           .font(.system(size: 10))
           .foregroundStyle(.secondary)

@@ -138,6 +138,7 @@ struct InboxListView: View {
               now: model.now,
               labels: labels(on: thread.items),
               layout: model.rowLayout,
+              targetStatus: model.targetStatus(for: thread),
               selected: model.selectedThreadIds.contains(thread.id),
               expanded: expandedThreadIds.contains(thread.id)
             ) {
