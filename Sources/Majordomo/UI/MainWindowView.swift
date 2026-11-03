@@ -87,7 +87,8 @@ struct MainWindowView: View {
   private func offeredValues(for facet: Facet) -> [String] {
     let picks = model.facetPicks
     if let board = model.selectedBoard {
-      let pool = model.placement(of: board, search: model.searchText, picks: picks, except: facet).allCards
+      let pool = model.placement(of: board, search: model.searchText, picks: picks, except: facet, filtered: true)
+        .allCards
       return facetValues(facet, in: pool, picked: picks[facet])
     }
     let category = resolveScope().category
@@ -224,9 +225,9 @@ struct MainWindowView: View {
 
   // MARK: Board
 
-  /// The board's cards, narrowed by the search and the pills.
+  /// The board's cards, narrowed by the search, the pills, and the filter.
   private func boardPlacement(_ board: Board) -> BoardPlacement {
-    model.placement(of: board, search: model.searchText, picks: model.facetPicks)
+    model.placement(of: board, search: model.searchText, picks: model.facetPicks, filtered: true)
   }
 
   /// The card the board has selected, while it is on the board.
@@ -345,9 +346,10 @@ struct MainWindowView: View {
   /// selected, so the toolbar keeps one shape. Over a board they go —
   /// opening and marking read live on the cards there (a double-click, the
   /// context menu), and a board is for looking across — and the board's
-  /// menu stands in for the filter. The pills stand over both, after the
-  /// items that come and go: everything past them keeps its width from the
-  /// inbox to a board, so switching leaves them where they are.
+  /// menu takes their place. The pills, the filter, and the preview toggle
+  /// stand over both, after the items that come and go: everything past
+  /// them keeps its width from the inbox to a board, so switching leaves
+  /// them where they are.
   @ToolbarContentBuilder
   private func contentToolbar(actionTargets: [InboxThread], pills: [PillState]) -> some ToolbarContent {
     ToolbarItem {
@@ -361,8 +363,12 @@ struct MainWindowView: View {
       ToolbarItem {
         openButton(for: actionTargets)
       }
-      ToolbarSpacer(.fixed)
+    } else {
+      ToolbarItem {
+        BoardToolbarControls(model: model)
+      }
     }
+    ToolbarSpacer(.fixed)
     if model.hasAccounts {
       // Toolbar items rather than a row under the toolbar: once the
       // preview has slid in, the toolbar draws a backdrop of its own that
@@ -382,11 +388,7 @@ struct MainWindowView: View {
       ToolbarSpacer(.fixed)
     }
     ToolbarItem {
-      if model.selectedBoard != nil {
-        BoardToolbarControls(model: model)
-      } else {
-        filterMenu
-      }
+      filterMenu
     }
     ToolbarSpacer(.fixed)
     ToolbarItem {

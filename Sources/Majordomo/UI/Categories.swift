@@ -167,6 +167,11 @@ enum ActivityWindow: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
+  /// The oldest activity the window still shows, counted back from `now`.
+  func cutoff(from now: Date) -> Date {
+    now.addingTimeInterval(-TimeInterval(days) * 24 * 60 * 60)
+  }
+
   /// Rolling, in days — "last month" is 30 of them.
   var days: Int {
     switch self {
@@ -184,8 +189,15 @@ enum ActivityWindow: String, CaseIterable, Identifiable, Sendable {
 /// neither touches the sidebar badges.
 func matchingWindow(_ items: [InboxItem], _ window: ActivityWindow?, now: Date) -> [InboxItem] {
   guard let window else { return items }
-  let cutoff = now.addingTimeInterval(-TimeInterval(window.days) * 24 * 60 * 60)
+  let cutoff = window.cutoff(from: now)
   return items.filter { $0.updatedAt >= cutoff }
+}
+
+/// Cards whose latest activity — the target's own, or a notification's
+/// when that came later — is no older than `cutoff`; nil passes them all.
+func matchingWindow(_ cards: [BoardCard], since cutoff: Date?) -> [BoardCard] {
+  guard let cutoff else { return cards }
+  return cards.filter { $0.activityAt >= cutoff }
 }
 
 /// The toolbar's unread filter over threads: the unread ones, plus any
@@ -195,6 +207,14 @@ func matchingWindow(_ items: [InboxItem], _ window: ActivityWindow?, now: Date) 
 func matchingUnread(_ threads: [InboxThread], kept: Set<String>) -> [InboxThread] {
   threads.filter { thread in
     !thread.read || thread.items.contains { kept.contains($0.id) }
+  }
+}
+
+/// The unread filter over a board: cards with an unread notification, plus
+/// any holding one read while the filter showed it — the threads' rule.
+func matchingUnread(_ cards: [BoardCard], kept: Set<String>) -> [BoardCard] {
+  cards.filter { card in
+    card.unread || card.items.contains { kept.contains($0.id) }
   }
 }
 

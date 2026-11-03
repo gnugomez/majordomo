@@ -580,6 +580,11 @@ final class AppModel {
     let board: BoardId
     let search: String
     let picks: [Facet: String]
+    /// The date filter's cutoff, to the minute; nil for any time.
+    let since: Date?
+    /// Whether only unread cards show, and the reads they keep showing.
+    let unreadOnly: Bool
+    let kept: Set<String>
   }
 
   /// Placements already narrowed for the current ones. The board, each
@@ -589,24 +594,37 @@ final class AppModel {
 
   /// A board's cards as the engine placed them, narrowed by the search
   /// and by the pills — all of them but `except`'s, for that pill's own
-  /// menu. Narrowing never moves a card: each is placed on its own, so
-  /// leaving some out changes nothing for the rest.
+  /// menu — and, when `filtered`, by the toolbar's filter: the date
+  /// window and Unread Only, as over the inbox. The sidebar's badge asks
+  /// unfiltered, as the inbox's badges count everything. Narrowing never
+  /// moves a card: each is placed on its own, so leaving some out changes
+  /// nothing for the rest.
   func placement(
-    of board: Board, search: String = "", picks: [Facet: String] = [:], except: Facet? = nil
+    of board: Board, search: String = "", picks: [Facet: String] = [:], except: Facet? = nil,
+    filtered: Bool = false
   ) -> BoardPlacement {
     // Read on every call, a narrowed placement too: the views asking
     // observe what they read, and one that stopped reading the placements
     // would never hear that they changed.
     let placed = placements[board.id] ?? BoardPlacement()
     let narrowing = picks.filter { $0.key != except }
-    guard !narrowing.isEmpty || !search.trimmingCharacters(in: .whitespaces).isEmpty else {
+    let since = filtered ? activityWindow.map { minute($0.cutoff(from: now)) } : nil
+    let unread = filtered && unreadOnly
+    let searching = !search.trimmingCharacters(in: .whitespaces).isEmpty
+    guard !narrowing.isEmpty || searching || since != nil || unread else {
       return placed
     }
-    let key = NarrowingKey(board: board.id, search: search, picks: narrowing)
+    let keptReads = unread ? keptReadIds : []
+    let key = NarrowingKey(
+      board: board.id, search: search, picks: narrowing, since: since, unreadOnly: unread, kept: keptReads
+    )
     if let held = narrowedPlacements[key] {
       return held
     }
-    let kept = matchingFacets(matchingSearch(placed.allCards, search), narrowing)
+    var kept = matchingWindow(matchingFacets(matchingSearch(placed.allCards, search), narrowing), since: since)
+    if unread {
+      kept = matchingUnread(kept, kept: keptReads)
+    }
     let narrowed = placed.narrowed(to: Set(kept.map(\.id)))
     // Every search keystroke is a new key; a handful is all one screen
     // ever needs at once.
@@ -615,6 +633,12 @@ final class AppModel {
     }
     narrowedPlacements[key] = narrowed
     return narrowed
+  }
+
+  /// A moment to the minute: the clock ticks every half minute, and a
+  /// cutoff held that coarse lets a narrowed placement be reused.
+  private func minute(_ date: Date) -> Date {
+    Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
   }
 
   func setBoards(_ boards: [Board]) {
