@@ -452,7 +452,7 @@ private struct PreviewToggle: View {
         }
       }
     } label: {
-      Label("Preview", systemImage: "info.circle")
+      Label("Preview", systemImage: "sidebar.trailing")
     }
     .keyboardShortcut("i", modifiers: [.command, .option])
     .disabled(onBoard && model.selectedCardId == nil)
