@@ -22,9 +22,10 @@ the SDK.
   the text: show what you want, in the order you want it
 - 🧠 Apple Intelligence sums up what a notification says in the line under
   it — on device, and switchable off
-- 🎯 Rules that read rather than match: describe what matters in your own
-  words and the model judges each notification against it; what it picks
-  can ride at the top of the inbox in a box of its own
+- 🎯 Rules that read as well as match: conditions in and/or groups, and
+  checks in your own words that the model answers on device — in labels,
+  inboxes, and board columns alike; what a rule picks can ride at the top
+  of the inbox in a box of its own
 - 🧭 Boards: one card per issue or pull request across every project,
   sorted into columns by the same rules — whose move it is, what waits on
   others, what's in progress — with review, CI, and new comments at a

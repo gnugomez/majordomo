@@ -13,12 +13,21 @@ and RELEASING.md.
   are opaque strings. ALL presentation (glyphs, colors, capsule labels) and
   the sidebar buckets come from the provider's `ProviderSpec`, registered in
   `providerSpecs`. Buckets are built-in labels plus the rules that fill
-  them (`builtinLabels`/`builtinRules`), run by the same `LabelEngine` as
+  them (`builtinLabels`/`builtinRules`), run by the same `RuleEngine` as
   the user's labels and rules; they list read-only in settings and hide
   from the Inboxes page. `LabelCatalog.current` is the ONE place the full
   set is assembled (built-ins first, then the user's) — read it from
   `AppModel.catalog` or the engine's `catalog()` rather than composing
   unions at a call site. Never interpret provider tokens in core/UI code.
+- **One filter model, one sweep**: label rules, board scopes, and board
+  columns all hold a `RuleFilter` (groups of conditions, all/any at both
+  levels; an Apple Intelligence check is a `.question` condition), edited
+  by the one `FilterEditor`. The sync engine's `sweep()` compiles them once
+  and works out the labels AND every board's placement off the main actor;
+  `AppModel` only narrows a published placement by search and pills. Any
+  engine mutation that changes what a filter reads ends in a sweep. Model
+  answers are keyed by question (`RuleEngine.questionKey`), per item and
+  per target.
 - **Style**: strict Swift 6 concurrency, 2-space indent, one type per file
   where sensible; extract well-named helpers over clever one-liners.
   Provider errors are human-readable strings — they render verbatim.
@@ -30,7 +39,10 @@ and RELEASING.md.
   other menu" earns its place; "rather than the Electron port's popover"
   does not. When a change makes a nearby comment wrong, fix the comment in
   the same commit. Git and CHANGELOG.md are where history lives.
-- **Checks**: `make build` (`swift build`) must pass with zero warnings.
+- **Checks**: `make build` (`swift build`) must pass with zero warnings,
+  and `make test` (`swift test`, Swift Testing in `Tests/MajordomoTests`,
+  `@testable import Majordomo`) must stay green — the filters, placement,
+  and every stored shape's decoding are covered there.
   `make bundle` → dist/Majordomo.app (release, ad-hoc signed unless
   `CODESIGN_IDENTITY` is set — it passes through make); `make install`
   installs it. `make help` lists the rest; the targets are thin wrappers
