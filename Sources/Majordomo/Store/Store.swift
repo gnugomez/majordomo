@@ -6,12 +6,14 @@
 // items linger for a while so adding the same account back resumes with the
 // read state intact — nothing upstream holds a copy of that. The user's
 // labels and rules live here too, next to the per-item assignments they
-// govern, as do the summaries the on-device model writes — keyed by the
-// text they were made from, so they survive relaunches and go stale only
-// when that text changes. Boards live here as well, with the targets they
-// are built from: what each issue or pull request looked like at its last
-// refresh. The targets' conversations sit beside the store, a file each
-// (ConversationFiles): together they outweigh everything else here.
+// govern, as do the summaries the on-device model writes and its answers to
+// the rules' questions — kept with the text they were made from, so they
+// survive relaunches and go stale only when that text changes. Boards live
+// here as well, with the targets they are built from: what each issue or
+// pull request looked like at its last refresh, and what the model
+// answered about it. The targets' conversations sit beside the store, a
+// file each (ConversationFiles): together they outweigh everything else
+// here.
 
 import CryptoKit
 import Foundation
@@ -23,17 +25,25 @@ private let log = Logger(subsystem: "dev.majordomo.app", category: "store")
 /// it back resumes where it left off; past it, everything of its is dropped.
 private let retainRemovedSeconds: TimeInterval = 90 * 24 * 60 * 60
 
-/// The model's answer for one intelligence rule on one item. Both
-/// fingerprints matter and they go stale differently: a rewritten question
-/// throws the answer away (it was given to a different question), while
-/// changed text only queues a fresh one — the last answer keeps standing
-/// until the model has given a new one.
+/// The model's answer to one question about one item or target, kept under
+/// the question's key (RuleEngine.questionKey) — which `question` repeats,
+/// so the answers re-key themselves on reading. The two fingerprints go
+/// stale differently: a reworded question is a different key, and its
+/// answers go once no rule or board asks it (pruneVerdicts), while changed
+/// text only queues a fresh answer — the last one keeps standing until the
+/// model has given a new one.
 struct RuleVerdict: Codable, Sendable, Hashable {
   var matched: Bool
   /// Fingerprint of the question that was asked.
   var question: String
   /// Fingerprint of the text it was asked about.
   var text: String
+}
+
+/// Answers keyed by their own question fingerprint: what a stored map
+/// reads as, whatever it was keyed by when written.
+private func keyedByQuestion(_ verdicts: [String: RuleVerdict]) -> [String: RuleVerdict] {
+  Dictionary(verdicts.values.map { ($0.question, $0) }) { first, _ in first }
 }
 
 /// A FetchedItem the app has adopted into its own collection. The transient
@@ -70,8 +80,15 @@ struct StoredItem: Codable, Sendable {
   var labelOverrides: LabelOverrides = [:]
   /// Labels the target carries at the provider, as last reported.
   var upstreamLabels: [String]?
-  /// What the model answered for each intelligence rule, by rule id.
+  /// What the model answered about the item, by question key.
   var verdicts: [String: RuleVerdict] = [:]
+
+  /// What the model's answers about the item are given for: the title and
+  /// the body together, so a comment arriving on a known item is judged
+  /// afresh.
+  var judgedText: String {
+    "\(title)\n\(body ?? "")"
+  }
 
   /// The published shape, with the effective label set resolved against
   /// the labels that exist.
@@ -90,7 +107,8 @@ struct StoredItem: Codable, Sendable {
 
 extension StoredItem {
   /// Items written before labels existed lack the label keys; they decode
-  /// with empty assignments instead of failing the whole store.
+  /// with empty assignments instead of failing the whole store. Answers
+  /// stored by the id of the rule that asked come back by question key.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
@@ -115,7 +133,7 @@ extension StoredItem {
     hiddenFrom = try container.decodeIfPresent(Set<LabelId>.self, forKey: .hiddenFrom) ?? []
     labelOverrides = try container.decodeIfPresent(LabelOverrides.self, forKey: .labelOverrides) ?? [:]
     upstreamLabels = try container.decodeIfPresent([String].self, forKey: .upstreamLabels)
-    verdicts = try container.decodeIfPresent([String: RuleVerdict].self, forKey: .verdicts) ?? [:]
+    verdicts = keyedByQuestion(try container.decodeIfPresent([String: RuleVerdict].self, forKey: .verdicts) ?? [:])
   }
 }
 
@@ -152,6 +170,10 @@ struct StoreFile: Codable {
   var seeded: Bool = false
   /// The targets boards are built from, by key.
   var targets: [String: TrackedTarget] = [:]
+  /// What the model answered about each target, by target key and then
+  /// question key — a board's questions are put to a card, not to the
+  /// notifications on it.
+  var targetVerdicts: [String: [String: RuleVerdict]] = [:]
   /// The user's boards, in sidebar order.
   var boards: [Board] = []
   /// Whether the starter board was ever added — the same once-only rule.
@@ -171,15 +193,19 @@ extension StoreFile {
     suggestions = try container.decodeIfPresent([Suggestion].self, forKey: .suggestions) ?? []
     seeded = try container.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
     targets = try container.decodeIfPresent([String: TrackedTarget].self, forKey: .targets) ?? [:]
+    targetVerdicts = try container.decodeIfPresent(
+      [String: [String: RuleVerdict]].self, forKey: .targetVerdicts
+    ) ?? [:]
     boards = try container.decodeIfPresent([Board].self, forKey: .boards) ?? []
     boardsSeeded = try container.decodeIfPresent(Bool.self, forKey: .boardsSeeded) ?? false
   }
 }
 
-/// What a stored summary was made from. Truncated: it only ever has to
-/// tell the same text from different text, and the store is a file the app
-/// rewrites whole.
-private func textFingerprint(_ text: String) -> String {
+/// What a stored summary or answer was made from, and the key a question's
+/// answers are kept under. Truncated: it only ever has to tell the same
+/// text from different text, and the store is a file the app rewrites
+/// whole.
+func textFingerprint(_ text: String) -> String {
   let digest = SHA256.hash(data: Data(text.utf8))
   return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
 }
@@ -538,40 +564,55 @@ final class Store {
 
   // MARK: Verdicts
 
-  /// Items this rule has no current answer for, worst-missed first: unread
-  /// before read, newest before oldest. An item whose text changed since
-  /// the answer comes back here too — the standing answer keeps showing
-  /// until this returns a new one.
-  func itemsNeedingVerdict(rule: String, question: String, limit: Int) -> [StoredItem] {
-    let asked = textFingerprint(question)
-    let queue = getItems()
-      .filter { item in
-        guard let verdict = item.verdicts[rule] else {
-          return true
-        }
-        return verdict.question != asked || verdict.text != textFingerprint(itemText(item))
-      }
-      .sorted { a, b in
-        if a.read != b.read {
-          return b.read
-        }
-        return a.updatedAt > b.updatedAt
-      }
-    return Array(queue.prefix(limit))
+  /// One live item as stored.
+  func item(_ id: String) -> StoredItem? {
+    data.items[id].flatMap { isConnected($0.accountId) ? $0 : nil }
   }
 
-  /// Files a sweep's answers against the question asked and the text each
-  /// was asked about, in one write — see setSummaries.
-  func setVerdicts(_ updates: [(itemId: String, rule: String, matched: Bool, question: String)]) {
+  /// Whether the item lacks a current answer to the question: never asked,
+  /// or asked about text that has changed since — the standing answer
+  /// keeps showing until a new one comes.
+  func itemNeedsVerdict(_ id: String, question key: String) -> Bool {
+    guard let item = item(id) else {
+      return false
+    }
+    guard let verdict = item.verdicts[key] else {
+      return true
+    }
+    return verdict.text != textFingerprint(item.judgedText)
+  }
+
+  /// The same for a target, judged on `text` (see SyncEngine's judgedText).
+  func targetNeedsVerdict(_ key: String, question: String, text: String) -> Bool {
+    guard let verdict = data.targetVerdicts[key]?[question] else {
+      return true
+    }
+    return verdict.text != textFingerprint(text)
+  }
+
+  /// Every target's answers, by target key and question key.
+  func targetVerdicts() -> [String: [String: Bool]] {
+    data.targetVerdicts.mapValues { $0.mapValues(\.matched) }
+  }
+
+  /// Files a sweep's answers, items' and targets' alike, against the
+  /// question asked and the text each was asked about, in one write — see
+  /// setSummaries. Items pruned or parked meanwhile are dropped.
+  func setVerdicts(
+    items: [(id: String, question: String, matched: Bool, text: String)],
+    targets: [(key: String, question: String, matched: Bool, text: String)]
+  ) {
     var changed = false
-    for update in updates {
-      guard let item = data.items[update.itemId] else {
-        continue
-      }
-      data.items[update.itemId]?.verdicts[update.rule] = RuleVerdict(
-        matched: update.matched,
-        question: textFingerprint(update.question),
-        text: textFingerprint(itemText(item))
+    for answer in items where data.items[answer.id] != nil {
+      data.items[answer.id]?.verdicts[answer.question] = RuleVerdict(
+        matched: answer.matched, question: answer.question, text: textFingerprint(answer.text)
+      )
+      changed = true
+    }
+    // A target's answers go with the target (pruneTargets).
+    for answer in targets {
+      data.targetVerdicts[answer.key, default: [:]][answer.question] = RuleVerdict(
+        matched: answer.matched, question: answer.question, text: textFingerprint(answer.text)
       )
       changed = true
     }
@@ -580,11 +621,30 @@ final class Store {
     }
   }
 
-  /// What a rule is asked about: the title and the body together, so a
-  /// comment arriving on a known item is judged afresh.
-  private func itemText(_ item: StoredItem) -> String {
-    "\(item.title)\n\(item.body ?? "")"
+  /// Lets go of the answers to questions nothing asks any more: an answer
+  /// belongs to the question it was given for, and a reworded one is
+  /// another question.
+  func pruneVerdicts(keeping asked: Set<String>) {
+    var changed = false
+    for (id, item) in data.items {
+      let kept = item.verdicts.filter { asked.contains($0.key) }
+      if kept.count != item.verdicts.count {
+        data.items[id]?.verdicts = kept
+        changed = true
+      }
+    }
+    for (key, verdicts) in data.targetVerdicts {
+      let kept = verdicts.filter { asked.contains($0.key) }
+      if kept.count != verdicts.count {
+        data.targetVerdicts[key] = kept.isEmpty ? nil : kept
+        changed = true
+      }
+    }
+    if changed {
+      save()
+    }
   }
+
 
   func markRead(_ ids: [String]) {
     var changed = false
@@ -633,23 +693,10 @@ final class Store {
     data.rules
   }
 
-  /// Replaces the rule set. An answer belongs to the question it was
-  /// given for: a rule that is gone, or one whose question was rewritten,
-  /// leaves its answers behind rather than carrying a verdict on wording
-  /// nobody asked.
+  /// Replaces the rule set. The answers its questions were given stay
+  /// until nothing asks them (pruneVerdicts).
   func setRules(_ rules: [LabelRule]) {
     data.rules = rules
-    let asked = rules.reduce(into: [String: String]()) { asked, rule in
-      if let question = rule.question {
-        asked[rule.id] = textFingerprint(question)
-      }
-    }
-    for (id, item) in data.items {
-      let kept = item.verdicts.filter { asked[$0.key] == $0.value.question }
-      if kept.count != item.verdicts.count {
-        data.items[id]?.verdicts = kept
-      }
-    }
     save()
   }
 
@@ -800,11 +847,16 @@ final class Store {
   }
 
   /// Drops the targets no live notification points at any more, with
-  /// their conversations and the pins of the cards that went with them.
+  /// their conversations, the model's answers about them, and the pins of
+  /// the cards that went with them.
   func pruneTargets(keeping keys: Set<String>) {
     var changed = false
     for key in data.targets.keys where !keys.contains(key) {
       data.targets.removeValue(forKey: key)
+      changed = true
+    }
+    for key in data.targetVerdicts.keys where !keys.contains(key) {
+      data.targetVerdicts.removeValue(forKey: key)
       changed = true
     }
     if changed || !conversationsSwept {

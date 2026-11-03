@@ -75,7 +75,7 @@ struct TrackedTarget: Codable, Hashable, Sendable {
 /// A board's card: one target and every notification pointing at it.
 /// What sorting and placing read over and over is worked out once, when
 /// the card is made: a board sorts and places thousands of them.
-struct BoardCard: Identifiable, Sendable {
+struct BoardCard: Identifiable, Equatable, Sendable {
   /// The target's key.
   let id: String
   /// The notifications on it, newest first; the lead fronts the card.
@@ -83,17 +83,23 @@ struct BoardCard: Identifiable, Sendable {
   let target: TrackedTarget?
   /// The logins of the accounts its notifications came through.
   let ownLogins: [String]
+  /// What the on-device model answered about the target, by question key
+  /// — the card's own answers, not its notifications'.
+  let verdicts: [String: Bool]
   /// The latest activity anyone reported: the target's own, or a
   /// notification's when that came later.
   let activityAt: Date
   /// Whether any of its notifications is unread.
   let unread: Bool
 
-  init(id: String, items: [InboxItem], target: TrackedTarget?, ownLogins: [String]) {
+  init(
+    id: String, items: [InboxItem], target: TrackedTarget?, ownLogins: [String], verdicts: [String: Bool] = [:]
+  ) {
     self.id = id
     self.items = items
     self.target = target
     self.ownLogins = ownLogins
+    self.verdicts = verdicts
     activityAt = max(target?.snapshot?.updatedAt ?? .distantPast, items[0].updatedAt)
     unread = items.contains { !$0.read }
   }
@@ -145,7 +151,7 @@ extension BoardCard: RuleSubject {
     case .checks: return [snapshot?.checks ?? ""]
     case .milestone: return [snapshot?.milestone ?? ""]
     case .lastCommenter: return [snapshot?.lastCommenter ?? ""]
-    case .mention, .unread: return []
+    case .mention, .unread, .question: return []
     }
   }
 
@@ -155,5 +161,9 @@ extension BoardCard: RuleSubject {
     case .unread: unread
     default: false
     }
+  }
+
+  func verdict(for question: String) -> Bool? {
+    verdicts[question]
   }
 }

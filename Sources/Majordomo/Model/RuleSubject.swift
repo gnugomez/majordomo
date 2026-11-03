@@ -1,7 +1,7 @@
 // What rule conditions read. A notification is one subject; a board's card
 // — a target with every notification about it — is another. Both answer
-// the same fields, so one engine and one condition editor serve labels and
-// board columns alike.
+// the same fields, so one engine and one filter editor serve labels and
+// boards alike.
 
 import Foundation
 
@@ -15,6 +15,10 @@ protocol RuleSubject {
   func flag(_ field: RuleField) -> Bool
   /// The logins `@me` stands for; empty when the subject can't tell.
   var ownLogins: [String] { get }
+  /// What the on-device model answered to a question about this subject,
+  /// by the question's key (RuleEngine.questionKey); nil while it hasn't
+  /// been asked.
+  func verdict(for question: String) -> Bool?
 }
 
 extension InboxItem: RuleSubject {
@@ -32,7 +36,7 @@ extension InboxItem: RuleSubject {
     case .provider: [provider.rawValue]
     case .account: [accountId]
     case .upstreamLabel: upstreamLabels
-    case .assignee, .reviewer, .review, .checks, .milestone, .lastCommenter, .mention, .unread: []
+    case .assignee, .reviewer, .review, .checks, .milestone, .lastCommenter, .mention, .unread, .question: []
     }
   }
 
@@ -46,5 +50,9 @@ extension InboxItem: RuleSubject {
 
   var ownLogins: [String] {
     []
+  }
+
+  func verdict(for question: String) -> Bool? {
+    verdicts[question]
   }
 }

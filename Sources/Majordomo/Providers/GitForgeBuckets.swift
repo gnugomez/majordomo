@@ -51,7 +51,7 @@ enum GitForgeBuckets {
   }
 
   private static func rule(_ id: String, name: String, _ conditions: [RuleCondition], label: LabelId) -> LabelRule {
-    LabelRule(id: id, name: name, conditions: conditions, labelIds: [label])
+    LabelRule(id: id, name: name, filter: RuleFilter(conditions: conditions), labelIds: [label])
   }
 
   private static func reason(_ token: String) -> RuleCondition {

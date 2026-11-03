@@ -20,9 +20,10 @@ private let suggestionSweepInterval: TimeInterval = 6 * 60 * 60
 /// second or two, so a pass takes the rows the user is looking at and
 /// leaves the rest to the next one.
 private let summaryBudget = 8
-/// Verdicts a sweep collects at most, across every intelligence rule. The
-/// same bargain as the summaries: the rows in front of the user first, the
-/// rest on the next pass.
+/// Answers a verdict sweep collects at most, across every question the
+/// rules and boards ask, about items and targets alike. The same bargain
+/// as the summaries: what is in front of the user first, the rest on the
+/// next pass.
 private let verdictBudget = 8
 /// An open target is refreshed again this long after its last refresh; a
 /// finished one only when new activity arrives.
@@ -72,9 +73,20 @@ actor SyncEngine {
   private var summaryFailures: Set<String> = []
   /// True while a verdict sweep is out with the model.
   private var judging = false
-  /// "item:rule" pairs the model wouldn't answer this run, for the same
-  /// reason as the summary failures.
+  /// Subject-and-question pairs the model wouldn't answer this run, for
+  /// the same reason as the summary failures.
   private var verdictFailures: Set<String> = []
+  /// What the last sweep worked out, published with every state push:
+  /// each board's placement, by board id.
+  private var placements: [BoardId: BoardPlacement] = [:]
+  /// The cards the last sweep built, by target key — for the questions
+  /// about them.
+  private var cards: [String: BoardCard] = [:]
+  /// The questions the last sweep found worth asking, by item id and by
+  /// target key, and each question's wording by key.
+  private var openItemQuestions: RuleEngine.OpenQuestions = [:]
+  private var openTargetQuestions: RuleEngine.OpenQuestions = [:]
+  private var questionTexts: [String: String] = [:]
   /// When the last sweep ran, so the next one waits its turn.
   private var lastSuggestionSweepAt: Date?
   /// True while a board refresh is out with the providers.
@@ -123,7 +135,7 @@ actor SyncEngine {
       items: items, accounts: accounts, lastSyncAt: lastSyncAt, syncing: syncing,
       labels: store.labels(), rules: store.rules(), sidebar: sidebarLayout(),
       suggestions: store.suggestions().filter { !$0.dismissed },
-      boards: store.boards(), targets: store.targets()
+      boards: store.boards(), targets: store.targets(), placements: placements
     )
   }
 
@@ -173,7 +185,7 @@ actor SyncEngine {
       store.setLabels(store.labels() + [target])
     }
     store.setRules(store.rules() + [validated.rule])
-    sweepLabels()
+    sweep()
     reconcileSidebar()
     emitState()
   }
@@ -262,66 +274,170 @@ actor SyncEngine {
       return
     }
     store.setSummaries(written)
-    emitState()
+    // The cards carry their notifications, summaries and all.
+    sweepAndEmit(relabel: false)
   }
 
-  /// Answers what the intelligence rules are asking: a budgeted handful of
-  /// item-and-question pairs per pass, newest unread first, each one
-  /// published as it lands so a label fills in rather than appearing all at
-  /// once. Runs after every sync and whenever the rules change.
+  /// One question the model is asked about one item or one target, with
+  /// what the answer is filed against.
+  private struct Ask {
+    enum Subject: Hashable {
+      case item(String)
+      case target(String)
+    }
+
+    let subject: Subject
+    /// The question's key.
+    let question: String
+    let unread: Bool
+    let activityAt: Date
+
+    /// What a failure is remembered by.
+    var failureKey: String {
+      switch subject {
+      case .item(let id): "item:\(id)|\(question)"
+      case .target(let key): "target:\(key)|\(question)"
+      }
+    }
+  }
+
+  /// Answers what the last sweep found worth asking — the questions whose
+  /// answers could move an item into a label or a card into a column — a
+  /// budgeted handful per pass across items and targets alike, newest
+  /// unread first. Runs after every sync and whenever the rules or the
+  /// boards change.
   func sweepVerdicts() async {
     guard intelligenceEnabled, intelligence.availability().isAvailable, !judging else {
       return
     }
-    let asking = store.rules().filter { $0.enabled && $0.question != nil }
-    guard !asking.isEmpty else {
+    let queue = verdictQueue()
+    guard !queue.isEmpty else {
       return
     }
     judging = true
     defer { judging = false }
-    var answers: [(itemId: String, rule: String, matched: Bool, question: String)] = []
-    // One queue across every rule, so a rule with a long backlog can't
-    // starve the others of the budget.
-    let queue = asking
-      .flatMap { rule -> [(item: StoredItem, rule: LabelRule, question: String)] in
-        guard let question = rule.question else {
-          return []
+    var itemAnswers: [(id: String, question: String, matched: Bool, text: String)] = []
+    var targetAnswers: [(key: String, question: String, matched: Bool, text: String)] = []
+    for (ask, question) in queue {
+      switch ask.subject {
+      case .item(let id):
+        guard let item = store.item(id) else {
+          continue
         }
-        return store.itemsNeedingVerdict(rule: rule.id, question: question, limit: verdictBudget)
-          .map { (item: $0, rule: rule, question: question) }
-      }
-      .filter { !verdictFailures.contains("\($0.item.id):\($0.rule.id)") }
-      .sorted { a, b in
-        if a.item.read != b.item.read {
-          return b.item.read
+        let request = VerdictRequest(
+          question: question, title: item.title, repo: item.repo, author: item.author,
+          body: item.body, isMention: item.isMention
+        )
+        if let matched = await answer(request, for: ask) {
+          itemAnswers.append((id: id, question: ask.question, matched: matched, text: item.judgedText))
         }
-        return a.item.updatedAt > b.item.updatedAt
+      case .target(let key):
+        guard let card = cards[key] else {
+          continue
+        }
+        let text = judgedText(card)
+        if let matched = await answer(verdictRequest(question, about: card), for: ask) {
+          targetAnswers.append((key: key, question: ask.question, matched: matched, text: text))
+        }
       }
-      .prefix(verdictBudget)
-    for (item, rule, question) in queue {
-      let request = VerdictRequest(
-        question: question,
-        title: item.title,
-        repo: item.repo,
-        author: item.author,
-        body: item.body,
-        isMention: item.isMention
-      )
-      guard let matched = try? await intelligence.evaluate(request) else {
-        verdictFailures.insert("\(item.id):\(rule.id)")
-        continue
-      }
-      answers.append((itemId: item.id, rule: rule.id, matched: matched, question: question))
     }
-    // The answers only become labels through the rules: store, sweep, then
-    // publish — once for the batch, since all three cost the whole
-    // collection.
-    guard !answers.isEmpty else {
+    // The answers only become labels and columns through the sweep:
+    // store, sweep, then publish — once for the batch, since all three
+    // cost the whole collection.
+    guard !itemAnswers.isEmpty || !targetAnswers.isEmpty else {
       return
     }
-    store.setVerdicts(answers)
-    sweepLabels()
-    emitState()
+    store.setVerdicts(items: itemAnswers, targets: targetAnswers)
+    sweepAndEmit(relabel: !itemAnswers.isEmpty)
+  }
+
+  /// The model's answer, or nil. A failure is remembered for the rest of
+  /// the run — unless the model was only busy, which says nothing about
+  /// the text.
+  private func answer(_ request: VerdictRequest, for ask: Ask) async -> Bool? {
+    do {
+      return try await intelligence.evaluate(request)
+    } catch {
+      if (error as? IntelligenceError)?.retryable != true {
+        verdictFailures.insert(ask.failureKey)
+      }
+      return nil
+    }
+  }
+
+  /// The next budget's worth of questions, with their wording: one queue
+  /// across every question and subject, so neither a long backlog of
+  /// notifications nor a board full of cards starves the other. Only what
+  /// lacks a current answer is asked — never answered, or answered about
+  /// text that has changed since.
+  private func verdictQueue() -> [(ask: Ask, question: String)] {
+    var asks: [Ask] = []
+    for (id, keys) in openItemQuestions {
+      guard let item = store.item(id) else {
+        continue
+      }
+      for key in keys {
+        asks.append(Ask(subject: .item(id), question: key, unread: !item.read, activityAt: item.updatedAt))
+      }
+    }
+    for (key, questions) in openTargetQuestions {
+      guard let card = cards[key] else {
+        continue
+      }
+      for question in questions {
+        asks.append(Ask(subject: .target(key), question: question, unread: card.unread, activityAt: card.activityAt))
+      }
+    }
+    let ordered = asks
+      .filter { !verdictFailures.contains($0.failureKey) }
+      .sorted { a, b in
+        if a.unread != b.unread {
+          return a.unread
+        }
+        return a.activityAt > b.activityAt
+      }
+    var queue: [(ask: Ask, question: String)] = []
+    for ask in ordered where queue.count < verdictBudget {
+      guard let question = questionTexts[ask.question], needsAnswer(ask) else {
+        continue
+      }
+      queue.append((ask, question))
+    }
+    return queue
+  }
+
+  private func needsAnswer(_ ask: Ask) -> Bool {
+    switch ask.subject {
+    case .item(let id):
+      return store.itemNeedsVerdict(id, question: ask.question)
+    case .target(let key):
+      guard let card = cards[key] else {
+        return false
+      }
+      return store.targetNeedsVerdict(key, question: ask.question, text: judgedText(card))
+    }
+  }
+
+  /// What a card's answers are given for: its title, its latest
+  /// notification, and the conversation stored for it — any of them
+  /// changing queues a fresh answer.
+  private func judgedText(_ card: BoardCard) -> String {
+    let conversation = card.target?.conversationAt.map { ISODate.format($0) } ?? ""
+    return "\(card.title)\n\(card.lead.body ?? "")\n\(conversation)"
+  }
+
+  /// A card put to the model as its target: the title, and the target's
+  /// own description when its conversation is in — else what its latest
+  /// notification says.
+  private func verdictRequest(_ question: String, about card: BoardCard) -> VerdictRequest {
+    VerdictRequest(
+      question: question,
+      title: card.title,
+      repo: card.lead.repo,
+      author: card.snapshot?.author ?? card.lead.author,
+      body: store.conversation(for: card.id)?.description ?? card.lead.body,
+      isMention: card.flag(.mention)
+    )
   }
 
   /// Turns the row summaries on or off. Switching them on catches up at
@@ -363,7 +479,8 @@ actor SyncEngine {
       kind: suggestion.targetKind
     )
     let rule = LabelRule(
-      id: UUID().uuidString, name: suggestion.name, conditions: suggestion.conditions, labelIds: [target.id]
+      id: UUID().uuidString, name: suggestion.name, filter: RuleFilter(conditions: suggestion.conditions),
+      labelIds: [target.id]
     )
     applyRule(ValidatedRule(rule: rule, newTarget: existing == nil ? target : nil))
     store.removeSuggestion(id)
@@ -401,6 +518,13 @@ actor SyncEngine {
 
   private func emitState() {
     emit(getState())
+  }
+
+  /// What every change to something a rule or a board reads ends with:
+  /// the sweep, then the push. See sweep for `relabel`.
+  private func sweepAndEmit(relabel: Bool = true) {
+    sweep(relabel: relabel)
+    emitState()
   }
 
   private func doSync(depth: FetchDepth) async {
@@ -456,9 +580,6 @@ actor SyncEngine {
         if seededAccounts.contains(accountId) {
           newIds.append(contentsOf: added)
         }
-        // Rules run over the refreshed items right away, so the state pushed
-        // at the end of the sync — and any banner — carries their labels.
-        sweepLabels(accountId: accountId)
 
         // Items upstream stopped returning (GitHub's /notifications only
         // lists unread threads, for one) were handled there: mark them read
@@ -480,6 +601,10 @@ actor SyncEngine {
         errors[accountId] = errorMessage(error)
       }
     }
+
+    // Rules run over the refreshed items right away, so the state pushed at
+    // the end of the sync — and any banner — carries their labels.
+    sweep()
 
     if !newIds.isEmpty {
       let byId = Dictionary(uniqueKeysWithValues: store.inboxItems().map { ($0.id, $0) })
@@ -536,7 +661,7 @@ actor SyncEngine {
     return Date().timeIntervalSince(lastSuggestionSweepAt) >= suggestionSweepInterval
   }
 
-  // MARK: Labels
+  // MARK: Sweep
 
   /// Everything that exists right now: the providers' built-ins plus the
   /// user's, read fresh from the store so a rule or label edit is in it.
@@ -544,40 +669,88 @@ actor SyncEngine {
     .current(user: store.labels(), userRules: store.rules())
   }
 
-  /// Recomputes the rules' assignments for the live items — one account's,
-  /// or every account's — and persists only the sets that changed, in one
-  /// save. The providers' built-in rules and labels (the sidebar buckets)
-  /// run alongside the user's. Parked accounts' items are not live and
-  /// stay as they were.
-  private func sweepLabels(accountId: AccountId? = nil) {
-    let stored = store.getItems().filter { accountId == nil || $0.accountId == accountId }
+  /// Runs every rule and every board over what the store holds now, from
+  /// one compiled set: the live items' labels first — the providers'
+  /// built-in rules alongside the user's, and only the sets that changed
+  /// persisted, in one save — then the cards, built from the items as
+  /// labeled, and where each board places them; along the way, the
+  /// questions worth putting to the model. Parked accounts' items are not
+  /// live and stay as they were.
+  ///
+  /// `relabel: false` leaves the labels as the last sweep left them, for a
+  /// change no label rule reads — read state, a pin, a target's refresh,
+  /// an account's login — so a click on a card waits on the cards alone.
+  private func sweep(relabel: Bool = true) {
     let catalog = catalog()
     // "Hide from everywhere" means every inbox in the sidebar, the
     // catch-all included — that is what makes a moved item disappear from
     // Recent as well.
     let everyInbox = [catchAllInboxId] + catalog.labels.map(\.id)
-    let assigned = LabelEngine.assign(
-      stored.map { store.inboxItem($0) },
-      rules: catalog.rules,
-      labels: catalog.labels,
-      everyInbox: everyInbox
+    let compiled = RuleEngine.compile(rules: catalog.rules, boards: store.boards(), everyInbox: everyInbox)
+
+    var items = store.inboxItems()
+    if relabel {
+      items = relabeled(items, rules: compiled.rules, existing: catalog.ids)
+    }
+    let cards = BoardEngine.cards(
+      items: items, targets: store.targets(), logins: accountLogins(), verdicts: store.targetVerdicts()
     )
-    let updates = stored.compactMap { item -> (id: String, labels: Set<LabelId>, hiddenFrom: Set<LabelId>)? in
-      let result = assigned[item.id] ?? LabelEngine.Assignment()
+    let now = Date()
+    var placements: [BoardId: BoardPlacement] = [:]
+    var openTargets: RuleEngine.OpenQuestions = [:]
+    for board in compiled.boards {
+      let placing = BoardEngine.place(cards, on: board, now: now, isFinished: BoardEngine.isFinished)
+      placements[board.board.id] = placing.placement
+      openTargets.merge(placing.open) { $0.union($1) }
+    }
+    self.placements = placements
+    self.cards = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
+    openTargetQuestions = openTargets
+    questionTexts = compiled.questions
+  }
+
+  /// Runs the label rules over the items and stores what changed; hands
+  /// back the items as labeled now. Notes the questions about them worth
+  /// asking on the way.
+  private func relabeled(_ items: [InboxItem], rules: [CompiledRule], existing: Set<LabelId>) -> [InboxItem] {
+    let labeling = RuleEngine.assign(items, rules: rules, existing: existing)
+    openItemQuestions = labeling.open
+    let updates = store.getItems().compactMap { item -> (id: String, labels: Set<LabelId>, hiddenFrom: Set<LabelId>)? in
+      let result = labeling.assignments[item.id] ?? RuleEngine.Assignment()
       if result.labels == item.autoLabels, result.hiddenFrom == item.hiddenFrom {
         return nil
       }
       return (id: item.id, labels: result.labels, hiddenFrom: result.hiddenFrom)
     }
+    guard !updates.isEmpty else {
+      return items
+    }
     store.applyAutoLabels(updates)
+    return store.inboxItems()
   }
+
+  /// Each connected account's login, for `@me` on its cards.
+  private func accountLogins() -> [AccountId: String] {
+    var logins: [AccountId: String] = [:]
+    for account in store.accounts() {
+      logins[account.id] = account.username
+    }
+    return logins
+  }
+
+  /// Lets go of the answers to questions no rule or board asks any more.
+  private func pruneVerdicts() {
+    store.pruneVerdicts(keeping: RuleEngine.questionKeys(rules: store.rules(), boards: store.boards()))
+  }
+
+  // MARK: Labels
 
   /// Replaces the label set and re-sweeps: a deleted label leaves every
   /// item and rule (Store.setLabels), and the rest reassign under the new
   /// set. The sidebar picks up new labels and drops deleted ones.
   func setLabels(_ labels: [InboxLabel]) {
     store.setLabels(labels)
-    sweepLabels()
+    sweep()
     reconcileSidebar()
     emitState()
   }
@@ -609,44 +782,51 @@ actor SyncEngine {
     emitState()
   }
 
-  /// Replaces the rules and re-sweeps every live item. A rewritten
-  /// question drops the answers it was given (Store.setRules), so the
+  /// Replaces the rules and re-sweeps every live item. A reworded
+  /// question is a new one: the answers to the old wording go, so the
   /// labels it fed empty here and fill again as the model catches up.
   func setRules(_ rules: [LabelRule]) {
     store.setRules(rules)
-    verdictFailures = []
-    sweepLabels()
-    emitState()
-    Task {
-      await self.sweepVerdicts()
-    }
+    questionsChanged()
   }
 
   /// The user's hand on one item's label: forced on, forced off, or (nil)
   /// back to whatever the rules say.
   func setLabelOverride(itemId: String, labelId: LabelId, on: Bool?) {
     store.setLabelOverride(itemId: itemId, labelId: labelId, on: on)
-    emitState()
+    sweepAndEmit(relabel: false)
+  }
+
+  /// After the rules or the boards change: the answers nothing asks for
+  /// go, everything is swept again — the labels too, when the rules did —
+  /// and the model hears what is new.
+  private func questionsChanged(relabel: Bool = true) {
+    pruneVerdicts()
+    verdictFailures = []
+    sweepAndEmit(relabel: relabel)
+    Task {
+      await self.sweepVerdicts()
+    }
   }
 
   // MARK: Boards
 
   func setBoards(_ boards: [Board]) {
     store.setBoards(boards)
-    emitState()
+    questionsChanged(relabel: false)
   }
 
   /// Puts a card in a column by hand, noting the state it is in; nil
-  /// hands it back to the rules.
+  /// hands it back to the filters.
   func setPin(board: BoardId, card: String, column: String?, state: String?) {
     store.setPin(board: board, card: card, pin: column.map { BoardPin(column: $0, state: state) })
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   /// The user had the card open: what is new on it counts from now.
   func markTargetSeen(_ key: String, provider: ProviderId) {
     store.markTargetSeen(key, provider: provider, at: Date())
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   /// Refreshes the targets that are due, most pressing first: those with
@@ -716,7 +896,7 @@ actor SyncEngine {
       return conversation
     }
     if store.forgetConversation(key) {
-      emitState()
+      sweepAndEmit(relabel: false)
     }
     return nil
   }
@@ -791,7 +971,7 @@ actor SyncEngine {
     }
     store.applyTargetRefresh(answer, providers: providers, at: date)
     if !answer.refreshed.isEmpty || !answer.unreadable.isEmpty {
-      emitState()
+      sweepAndEmit(relabel: false)
     }
     return failure
   }
@@ -835,7 +1015,7 @@ actor SyncEngine {
       store.setAccount(id, provider: provider, config: config, profile: profile)
       store.clearUnreadableTargets()
       errors[id] = nil
-      emitState()
+      sweepAndEmit()
       // Deep from the start: a new account seeds its whole backlog (and
       // silently — see doSync's seeding rule); a revived one catches up on
       // whatever arrived while it was away.
@@ -869,7 +1049,7 @@ actor SyncEngine {
       store.setAccount(id, provider: account.provider, config: config, profile: profile)
       store.clearUnreadableTargets()
       errors[id] = nil
-      emitState()
+      sweepAndEmit()
       // A dead token may have kept this account from syncing for days:
       // catch up everywhere, not just the recent pages.
       Task {
@@ -887,7 +1067,7 @@ actor SyncEngine {
   func disconnectAccount(_ id: AccountId) {
     store.removeAccount(id)
     errors[id] = nil
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   /// Opens the item in the browser and marks it read.
@@ -908,17 +1088,17 @@ actor SyncEngine {
       }
     }
     store.markRead(ids)
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   func markRead(ids: [String]) {
     store.markRead(ids)
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   func markAllRead() {
     store.markAllRead()
-    emitState()
+    sweepAndEmit(relabel: false)
   }
 
   /// Kicks off the first sync and the 60s interval.
@@ -929,7 +1109,7 @@ actor SyncEngine {
       // network, and the UI must not sit empty while they run. Rules run
       // over it before it ships, so folders are right from the first frame
       // (and the fixtures never need hand-computed assignments).
-      self.sweepLabels()
+      self.sweep()
       self.reconcileSidebar()
       self.emitState()
       // Summarizing is local work on text already in the store, so it runs
@@ -967,7 +1147,7 @@ actor SyncEngine {
       changed = true
     }
     if changed {
-      emitState()
+      sweepAndEmit(relabel: false)
     }
   }
 }

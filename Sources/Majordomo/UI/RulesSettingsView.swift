@@ -1,22 +1,21 @@
 // The Rules settings page: what the on-device model suggests, a field for
 // describing a rule in a sentence, and the rules themselves — the
 // providers' built-in ones (the sidebar buckets, read-only), the user's
-// with their switches, and the editor for the selected one: how it decides
-// (conditions of field, test and value, or a question the on-device model
-// answers), what it applies, and a live preview of the items it matches
-// right now. Edits commit whole user rules through the model; text commits
-// on submit or blur.
+// with their switches, and the editor for the selected one: its filter
+// (groups of conditions, Apple Intelligence checks among them — the board
+// editor's own FilterEditor), what it applies, and a live preview of the
+// items it matches right now. Edits commit whole user rules through the
+// model; text commits on submit or blur.
 
 import SwiftUI
 
 /// The editor's fixed height, shared with its placeholder so the page
 /// never resizes on selection.
 private let editorHeight: CGFloat = 430
-/// The conditions box grows with its rows up to this many, then scrolls —
-/// a built-in rule carries four, and a partly visible fifth row is the
-/// scroll cue.
-private let visibleConditionRows = 4
-private let conditionRowHeight: CGFloat = 28
+/// The filter box grows with what it holds up to this height, then
+/// scrolls — a built-in rule's four conditions fit, and a partly visible
+/// row below is the scroll cue.
+private let filterBoxMaxHeight: CGFloat = 220
 /// Rows the match preview shows at most; the header carries the true count.
 private let previewCap = 50
 /// The match preview never shrinks below this, however tall the rule is.
@@ -71,10 +70,8 @@ struct RulesSettingsView: View {
           .padding(.vertical, 2)
         }
         ForEach(model.rules) { rule in
-          RuleListRow(rule: rule, summary: summary(rule)) { updated in
-            replace(updated)
-          }
-          .tag(rule.id)
+          RuleListRow(rule: committing(rule), summary: summary(rule))
+            .tag(rule.id)
         }
         if model.rules.isEmpty {
           Text("No rules yet")
@@ -87,11 +84,11 @@ struct RulesSettingsView: View {
 
       ControlGroup {
         Menu {
-          Button("Conditions Rule") {
-            add(judge: .conditions)
+          Button("Rule") {
+            add(name: "New Rule", condition: RuleCondition(field: .title, op: .contains))
           }
           Button("Apple Intelligence Rule") {
-            add(judge: .intelligence)
+            add(name: "New Intelligence Rule", condition: .question(""))
           }
         } label: {
           Image(systemName: "plus")
@@ -109,12 +106,10 @@ struct RulesSettingsView: View {
       .fixedSize()
 
       if let rule = selected {
-        RuleEditor(model: model, rule: rule) { updated in
-          replace(updated)
-        }
+        RuleEditor(model: model, rule: committing(rule))
       } else if let rule = selectedBuiltin {
         // Read-only: the conditions as they are, nothing to change.
-        RuleEditor(model: model, rule: rule, definedBy: providerName(defining: rule)) { _ in }
+        RuleEditor(model: model, rule: .constant(rule), definedBy: providerName(defining: rule))
       } else {
         VStack {
           Text(model.rules.isEmpty ? "Add a rule to label items automatically." : "Select a rule to edit its conditions and labels.")
@@ -151,18 +146,11 @@ struct RulesSettingsView: View {
     providerSpecs.first { spec in spec.builtinRules.contains { $0.id == rule.id } }?.displayName ?? ""
   }
 
-  /// "2 conditions → Urgent, Infra" for the list row — "any of 2
-  /// conditions" when one holding is enough, "a question" when the model
-  /// is the one deciding.
+  /// "2 conditions → Urgent, Infra" for the list row — "any of 2 groups"
+  /// when the filter has several, "a question" when the model alone
+  /// decides (see summarize).
   private func summary(_ rule: LabelRule) -> String {
-    let count = rule.conditions.count
-    var conditions = count == 1 ? "1 condition" : "\(count) conditions"
-    if rule.match == .any, count > 1 {
-      conditions = "any of \(conditions)"
-    }
-    if rule.judge == .intelligence {
-      conditions = rule.question == nil ? "no question yet" : "a question"
-    }
+    let conditions = summarize(rule.filter)
     let names = rule.labelIds.compactMap { model.label($0)?.name }
     guard !names.isEmpty else {
       return conditions
@@ -175,15 +163,17 @@ struct RulesSettingsView: View {
     model.setRules(model.rules.map { $0.id == updated.id ? updated : $0 })
   }
 
-  private func add(judge: RuleJudge) {
+  /// A user rule as a binding whose every change commits the whole rule.
+  private func committing(_ rule: LabelRule) -> Binding<LabelRule> {
+    Binding(get: { rule }, set: { replace($0) })
+  }
+
+  /// A new rule opening on one condition to fill in — a blank question for
+  /// an Apple Intelligence rule, since the whole of it is the user's
+  /// wording.
+  private func add(name: String, condition: RuleCondition) {
     let rule = LabelRule(
-      id: UUID().uuidString,
-      name: judge == .intelligence ? "New Intelligence Rule" : "New Rule",
-      judge: judge,
-      // A conditions rule opens on an empty condition to fill in; a
-      // question starts blank, since the whole of it is the user's wording.
-      conditions: judge == .conditions ? [RuleCondition(field: .title, op: .contains, value: "")] : [],
-      labelIds: []
+      id: UUID().uuidString, name: name, filter: RuleFilter(conditions: [condition]), labelIds: []
     )
     model.setRules(model.rules + [rule])
     selection = rule.id
@@ -226,25 +216,15 @@ private struct BuiltinRuleRow: View {
 
 /// One user rule in the list: its switch, name, and a one-line summary.
 private struct RuleListRow: View {
-  let rule: LabelRule
+  /// Every change hands the whole rule back, which commits it.
+  @Binding var rule: LabelRule
   let summary: String
-  let onChange: (LabelRule) -> Void
 
   var body: some View {
     HStack(spacing: 8) {
-      Toggle(
-        "Enabled",
-        isOn: Binding(
-          get: { rule.enabled },
-          set: { enabled in
-            var updated = rule
-            updated.enabled = enabled
-            onChange(updated)
-          }
-        )
-      )
-      .labelsHidden()
-      .toggleStyle(.checkbox)
+      Toggle("Enabled", isOn: $rule.enabled)
+        .labelsHidden()
+        .toggleStyle(.checkbox)
       Text(rule.name.isEmpty ? "Untitled" : rule.name)
         .font(.system(size: 13))
         .foregroundStyle(rule.enabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
@@ -258,23 +238,29 @@ private struct RuleListRow: View {
   }
 }
 
-/// The selected rule: name, conditions, labels, and a live preview of what
-/// it matches. A built-in rule (`definedBy` names its provider) shows the
+/// The selected rule: name, filter, labels, and a live preview of what it
+/// matches. A built-in rule (`definedBy` names its provider) shows the
 /// same, with every control disabled — the preview stays readable.
 private struct RuleEditor: View {
   let model: AppModel
-  let rule: LabelRule
+  /// Every change hands the whole rule back, which commits it.
+  @Binding var rule: LabelRule
   var definedBy: String?
-  let onChange: (LabelRule) -> Void
+
+  /// The filter editor's own height, as laid out; the box around it takes
+  /// that much, up to filterBoxMaxHeight.
+  @State private var filterHeight: CGFloat = 0
 
   private var readOnly: Bool { definedBy != nil }
 
   var body: some View {
+    // Compiled once per draw, for the preview and its header alike.
+    let matches = inboxOrder(RuleEngine.matching(rule.filter, among: model.items))
     VStack(alignment: .leading, spacing: 8) {
       editingControls
         .disabled(readOnly)
 
-      Text(matchHeader)
+      Text(matchHeader(matches))
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(.secondary)
         .lineLimit(1)
@@ -290,38 +276,36 @@ private struct RuleEditor: View {
       }
       .listStyle(.bordered)
       // The preview takes whatever the rest of the editor leaves: the
-      // conditions box grows with its rows, and the slack belongs here
-      // rather than as dead space under the page.
+      // filter box grows with its rows, and the slack belongs here rather
+      // than as dead space under the page.
       .frame(minHeight: previewMinHeight, maxHeight: .infinity)
     }
     .frame(maxHeight: .infinity, alignment: .top)
   }
 
-  /// Name, conditions, and labels — everything a user rule lets you change.
+  /// Name, filter, and labels — everything a user rule lets you change.
   private var editingControls: some View {
     VStack(alignment: .leading, spacing: 8) {
       CommitTextField("Rule name", text: rule.name) { name in
-        var updated = rule
-        updated.name = name.isEmpty ? "Untitled" : name
-        onChange(updated)
+        rule.name = name.isEmpty ? "Untitled" : name
       }
       .textFieldStyle(.roundedBorder)
 
-      // What decides. Switching keeps both sides, so a rule tried one way
-      // and then the other finds its conditions — or its question — where
-      // it left them.
-      Picker("Decides by", selection: judgeBinding) {
-        Text("Conditions").tag(RuleJudge.conditions)
-        Text("Apple Intelligence").tag(RuleJudge.intelligence)
+      ScrollView {
+        FilterEditor(
+          filter: $rule.filter,
+          accounts: model.accounts,
+          fields: RuleField.itemFields,
+          emptyText: "No conditions: the rule matches nothing yet.",
+          questionHint: questionHint(model, subject: "notification")
+        )
+        .padding(8)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { filterHeight = $0 }
       }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-
-      if rule.judge == .intelligence {
-        questionControls
-      } else {
-        conditionControls
-      }
+      // A rule of its own each time: the box opens scrolled to the top.
+      .id(rule.id)
+      .frame(height: min(max(filterHeight, 44), filterBoxMaxHeight))
+      .settingsCard()
 
       Text("Apply to")
         .font(.system(size: 11, weight: .medium))
@@ -345,112 +329,12 @@ private struct RuleEditor: View {
     }
   }
 
-  /// The conditions half of the editor: the match mode, the rows, and the
-  /// button that adds one.
-  private var conditionControls: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      // "When [all|any] of these hold": the rule's match mode, in the
-      // words rule editors conventionally use for it.
-      HStack(spacing: 4) {
-        Text("When")
-        Picker(
-          "Match",
-          selection: Binding(
-            get: { rule.match },
-            set: { match in
-              var updated = rule
-              updated.match = match
-              onChange(updated)
-            }
-          )
-        ) {
-          Text("all").tag(RuleMatch.all)
-          Text("any").tag(RuleMatch.any)
-        }
-        .labelsHidden()
-        .controlSize(.small)
-        .fixedSize()
-        Text("of these hold")
-      }
-      .font(.system(size: 11, weight: .medium))
-      .foregroundStyle(.secondary)
-      ScrollView {
-        VStack(spacing: 6) {
-          ForEach(Array(rule.conditions.enumerated()), id: \.offset) { index, condition in
-            ConditionRow(condition: condition, accounts: model.accounts) { updated in
-              var conditions = rule.conditions
-              conditions[index] = updated
-              commit(conditions: conditions)
-            } onRemove: {
-              var conditions = rule.conditions
-              conditions.remove(at: index)
-              commit(conditions: conditions)
-            }
-          }
-          if rule.conditions.isEmpty {
-            Text("No conditions")
-              .font(.system(size: 12))
-              .foregroundStyle(.secondary)
-              .frame(maxWidth: .infinity)
-              .padding(.top, 8)
-          }
-        }
-        .padding(8)
-      }
-      .frame(height: conditionsBoxHeight)
-      .settingsCard()
-      Button("Add Condition") {
-        commit(conditions: rule.conditions + [RuleCondition(field: .title, op: .contains, value: "")])
-      }
-      .controlSize(.small)
-    }
-  }
-
-  /// The question half: what the model is asked about each notification,
-  /// in the user's own words, with what it costs said plainly.
-  private var questionControls: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 4) {
-        Image(systemName: "apple.intelligence")
-        Text("When the answer to this is yes")
-      }
-      .font(.system(size: 11, weight: .medium))
-      .foregroundStyle(.secondary)
-      CommitTextEditor(
-        prompt: "Describe what this rule should catch, the way you would say it out loud.",
-        text: rule.prompt
-      ) { prompt in
-        var updated = rule
-        updated.prompt = prompt
-        onChange(updated)
-      }
-      .frame(height: 76)
-      Text(questionHint)
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  /// What the user needs to know about the question they are writing: that
-  /// it is answered per notification, on this Mac, and that an unavailable
-  /// model means nothing gets answered at all.
-  private var questionHint: String {
-    if let reason = model.intelligence.reason {
-      return reason
-    }
-    if !model.intelligenceEnabled {
-      return "Apple Intelligence is switched off in Settings, so nothing is being judged."
-    }
-    return "Every notification is judged once against this question, on this Mac, and the answer is kept until the question or the notification changes."
-  }
-
   /// Whether a matching item is moved rather than copied. Moved means it
   /// shows where this rule applies it and nowhere else — no further
   /// choice to make.
   private var moveControl: some View {
     VStack(alignment: .leading, spacing: 2) {
-      Toggle(isOn: movesBinding) {
+      Toggle(isOn: $rule.movesItems) {
         Text("Show only here")
           .font(.system(size: 12))
       }
@@ -468,7 +352,7 @@ private struct RuleEditor: View {
   /// the same label share one.
   private var pinControl: some View {
     VStack(alignment: .leading, spacing: 2) {
-      Toggle(isOn: pinsBinding) {
+      Toggle(isOn: $rule.pinsToTop) {
         Text("Show at the top of Recent")
           .font(.system(size: 12))
       }
@@ -481,100 +365,42 @@ private struct RuleEditor: View {
     }
   }
 
-  /// Sized to the rows, one row minimum, scrolling past visibleConditionRows.
-  private var conditionsBoxHeight: CGFloat {
-    CGFloat(max(1, min(rule.conditions.count, visibleConditionRows))) * conditionRowHeight + 12
-  }
-
-  private func commit(conditions: [RuleCondition]) {
-    var updated = rule
-    updated.conditions = conditions
-    onChange(updated)
-  }
-
+  /// Whether the rule applies one inbox or label.
   private func labelBinding(_ id: LabelId) -> Binding<Bool> {
     Binding(
       get: { rule.labelIds.contains(id) },
       set: { on in
-        var updated = rule
-        updated.labelIds.removeAll { $0 == id }
+        var labelIds = rule.labelIds.filter { $0 != id }
         if on {
-          updated.labelIds.append(id)
+          labelIds.append(id)
         }
-        onChange(updated)
+        rule.labelIds = labelIds
       }
     )
   }
 
-  /// The move switch.
-  private var movesBinding: Binding<Bool> {
-    Binding(
-      get: { rule.movesItems },
-      set: { on in
-        var updated = rule
-        updated.movesItems = on
-        onChange(updated)
-      }
-    )
-  }
-
-  /// The conditions-or-question switch.
-  private var judgeBinding: Binding<RuleJudge> {
-    Binding(
-      get: { rule.judge },
-      set: { judge in
-        var updated = rule
-        updated.judge = judge
-        onChange(updated)
-      }
-    )
-  }
-
-  /// The top-box switch.
-  private var pinsBinding: Binding<Bool> {
-    Binding(
-      get: { rule.pinsToTop },
-      set: { on in
-        var updated = rule
-        updated.pinsToTop = on
-        onChange(updated)
-      }
-    )
-  }
-
-  /// What the rule would label right now, newest first — the fastest way
-  /// to see whether a condition is written right. The engine's own
-  /// evaluation, so all/any and the empty-rule case agree with the sweep.
-  private var matches: [InboxItem] {
-    inboxOrder(model.items.filter { LabelEngine.matches(rule, $0) })
-  }
-
-  private var matchHeader: String {
-    if rule.judge == .intelligence {
-      guard rule.question != nil else {
-        return "Write a question — a rule that asks nothing matches nothing"
-      }
-      return [matchedCount, judgedCount, stateNote].compactMap { $0 }.joined(separator: " · ")
-    }
-    guard !rule.conditions.isEmpty else {
+  /// What the preview's header says: how much the rule takes now, how
+  /// much is still waiting on the model — without that, a half-judged
+  /// rule looks like a broken one — and why it might be doing nothing.
+  private func matchHeader(_ matches: [InboxItem]) -> String {
+    guard !rule.filter.isEmpty else {
       return "Add a condition — an empty rule matches nothing"
     }
-    return [matchedCount, stateNote].compactMap { $0 }.joined(separator: " · ")
-  }
-
-  private var matchedCount: String {
-    switch matches.count {
+    let matched = switch matches.count {
     case 0: "No items match yet"
     case 1: "Matches 1 item now"
     default: "Matches \(matches.count) items now"
     }
+    return [matched, awaitingNote, stateNote].compactMap { $0 }.joined(separator: " · ")
   }
 
-  /// How far the model has got through the inbox with this question —
-  /// without it, a half-judged rule looks like a broken one.
-  private var judgedCount: String {
-    let judged = model.items.count { $0.verdicts[rule.id] != nil }
-    return judged == model.items.count ? "all judged" : "\(judged) of \(model.items.count) judged"
+  /// How many items wait on an answer before the rule can place them.
+  private var awaitingNote: String? {
+    let waiting = RuleEngine.awaitingModel(rule.filter, among: model.items)
+    guard waiting > 0 else {
+      return nil
+    }
+    return "\(waiting) waiting on Apple Intelligence"
   }
 
   /// Why the rule might be doing nothing, when that isn't its own doing.
@@ -586,14 +412,13 @@ private struct RuleEditor: View {
   }
 
   private var emptyPreview: String {
-    if rule.judge == .intelligence {
-      return rule.question == nil
-        ? "The preview fills in once you write a question."
-        : "Nothing has been judged a match yet."
+    if rule.filter.isEmpty {
+      return "The preview fills in as you add conditions."
     }
-    return rule.conditions.isEmpty
-      ? "The preview fills in as you add conditions."
-      : "Nothing in the inbox matches these conditions."
+    if rule.filter.asksModel {
+      return "Nothing matches yet — Apple Intelligence may still have answers to give."
+    }
+    return "Nothing in the inbox matches these conditions."
   }
 }
 

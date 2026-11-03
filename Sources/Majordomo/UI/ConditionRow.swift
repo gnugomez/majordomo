@@ -1,12 +1,14 @@
-// One condition in an editor: the field, the test (operator and negation
-// folded into one menu so it reads as a sentence), and the value control
-// the field calls for. The Rules page offers the fields a notification
-// carries; a board's columns offer every field, the target's own included.
+// One condition in a filter editor: the field, the test (operator and
+// negation folded into one menu so it reads as a sentence), and the value
+// control the field calls for. The Rules page offers the fields a
+// notification carries; a board offers every field, the target's own
+// included. An Apple Intelligence check has a row of its own
+// (QuestionRow): the question is a sentence, not a value.
 
 import SwiftUI
 
 struct ConditionRow: View {
-  let condition: RuleCondition
+  @Binding var condition: RuleCondition
   let accounts: [AccountState]
   /// The fields the field picker offers.
   var fields: [RuleField] = RuleField.itemFields
@@ -14,7 +16,6 @@ struct ConditionRow: View {
   /// a commit on blur would miss the value still being typed when Save is
   /// clicked.
   var live = false
-  let onChange: (RuleCondition) -> Void
   let onRemove: () -> Void
 
   var body: some View {
@@ -40,27 +41,21 @@ struct ConditionRow: View {
       valueControl
 
       Spacer(minLength: 0)
-      Button {
-        onRemove()
-      } label: {
-        Image(systemName: "minus.circle")
-          .foregroundStyle(.secondary)
-      }
-      .buttonStyle(.plain)
-      .help("Remove this condition")
+      RemoveButton(help: "Remove this condition", action: onRemove)
     }
   }
 
   // MARK: Bindings
 
+  /// A new field changes the condition whole, in one write: a
+  /// picker-valued field needs a value from its own vocabulary, and a text
+  /// field starts blank rather than inheriting an id.
   private var fieldBinding: Binding<RuleField> {
     Binding(
       get: { condition.field },
       set: { field in
         var updated = condition
         updated.field = field
-        // A picker-valued field needs a value from its own vocabulary;
-        // a text field starts blank rather than inheriting an id.
         switch field {
         case .provider:
           updated.value = providerSpecs[0].id.rawValue
@@ -76,11 +71,12 @@ struct ConditionRow: View {
             updated.value = ""
           }
         }
-        onChange(updated)
+        condition = updated
       }
     )
   }
 
+  /// Operator and negation, set together.
   private var testBinding: Binding<ConditionTest> {
     Binding(
       get: { ConditionTest(op: condition.op, negated: condition.negated) },
@@ -88,18 +84,7 @@ struct ConditionRow: View {
         var updated = condition
         updated.op = test.op
         updated.negated = test.negated
-        onChange(updated)
-      }
-    )
-  }
-
-  private var valueBinding: Binding<String> {
-    Binding(
-      get: { condition.value },
-      set: { value in
-        var updated = condition
-        updated.value = value
-        onChange(updated)
+        condition = updated
       }
     )
   }
@@ -119,7 +104,7 @@ struct ConditionRow: View {
   private var valueControl: some View {
     switch condition.field {
     case .provider:
-      Picker("Provider", selection: valueBinding) {
+      Picker("Provider", selection: $condition.value) {
         ForEach(providerSpecs, id: \.id) { spec in
           Text(spec.displayName).tag(spec.id.rawValue)
         }
@@ -133,7 +118,7 @@ struct ConditionRow: View {
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
       } else {
-        Picker("Account", selection: valueBinding) {
+        Picker("Account", selection: $condition.value) {
           ForEach(accounts) { account in
             Text(accountDescriptor(account)).tag(account.id)
           }
@@ -148,10 +133,10 @@ struct ConditionRow: View {
       HStack(spacing: 2) {
         Group {
           if live {
-            TextField(placeholder, text: valueBinding)
+            TextField(placeholder, text: $condition.value)
           } else {
             CommitTextField(placeholder, text: condition.value) { value in
-              valueBinding.wrappedValue = value
+              condition.value = value
             }
           }
         }
@@ -162,7 +147,7 @@ struct ConditionRow: View {
           Menu {
             ForEach(suggestions, id: \.self) { value in
               Button(value) {
-                valueBinding.wrappedValue = value
+                condition.value = value
               }
             }
           } label: {
@@ -211,7 +196,72 @@ struct ConditionRow: View {
     case .review: return "approved"
     case .checks: return "failure"
     case .milestone: return "v2.0"
-    case .provider, .account, .mention, .unread: return ""
+    case .provider, .account, .mention, .unread, .question: return ""
     }
+  }
+}
+
+/// An Apple Intelligence check: the question, in the user's own words, and
+/// whether a yes or a no from the model satisfies it.
+struct QuestionRow: View {
+  @Binding var condition: RuleCondition
+  /// See ConditionRow.live.
+  var live = false
+  /// Who answers the question, and when — or why nothing is answering.
+  let hint: String
+  let onRemove: () -> Void
+
+  private let prompt = "Describe what this should catch, the way you would say it out loud."
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(spacing: 4) {
+        Image(systemName: "apple.intelligence")
+          .foregroundStyle(.secondary)
+        Text("Apple Intelligence answers")
+        Picker("Answer", selection: $condition.negated) {
+          Text("yes").tag(false)
+          Text("no").tag(true)
+        }
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        Text("to")
+        Spacer(minLength: 0)
+        RemoveButton(help: "Remove this check", action: onRemove)
+      }
+      .font(.system(size: 12))
+      Group {
+        if live {
+          TextField(prompt, text: $condition.value, axis: .vertical)
+        } else {
+          CommitTextField(prompt, text: condition.value, axis: .vertical) { question in
+            condition.value = question
+          }
+        }
+      }
+      .lineLimit(2 ... 5)
+      .textFieldStyle(.roundedBorder)
+      .controlSize(.small)
+      Text(hint)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+}
+
+/// The minus at a row's end.
+private struct RemoveButton: View {
+  let help: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "minus.circle")
+        .foregroundStyle(.secondary)
+    }
+    .buttonStyle(.plain)
+    .help(help)
   }
 }

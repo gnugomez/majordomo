@@ -80,7 +80,7 @@ func pinnedBoxes(model: AppModel, threads: [InboxThread]) -> [PinnedBox] {
       label: label,
       threads: Array(unread.prefix(pinnedRowCap)),
       unread: unread.count,
-      byModel: rules.contains { $0.judge == .intelligence }
+      byModel: rules.contains { $0.filter.asksModel }
     )
   }
 }

@@ -10,5 +10,10 @@ let package = Package(
       path: "Sources/Majordomo",
       resources: [.process("Resources")]
     ),
+    .testTarget(
+      name: "MajordomoTests",
+      dependencies: ["Majordomo"],
+      path: "Tests/MajordomoTests"
+    ),
   ]
 )

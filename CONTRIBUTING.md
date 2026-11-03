@@ -11,13 +11,14 @@ dependencies — SwiftPM with the SDK only.
 
 ```sh
 make build      # compile (debug); must stay warning-free
+make test       # the Swift Testing suite in Tests/MajordomoTests
 make bundle     # release build → dist/Majordomo.app (ad-hoc signed)
 make install    # same, then installed to /Applications
 make demo       # run on fixture data — no accounts, network, or Keychain
 ```
 
 (`make help` lists everything; the targets are thin wrappers over
-`swift build` and `scripts/`.)
+`swift build`, `swift test`, and `scripts/`.)
 
 A bare `swift run` works for quick iteration, but launch-at-login and
 notifications need a real bundle, so those are disabled outside
@@ -39,10 +40,13 @@ Layers, lower never importing higher:
 - `Sources/Majordomo/Store/` — the JSON persistence and token encryption,
   and the targets' conversations, a file each beside the store.
 - `Sources/Majordomo/Sync/` — the sync engine (an actor): fetch, reconcile,
-  publish state.
+  sweep the rules and boards, publish state.
 - `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
   windows, notifications, main menu.
 - `Sources/Majordomo/UI/` — the SwiftUI views.
+
+`Tests/MajordomoTests/` holds the Swift Testing suite, which reaches the
+app target through `@testable import Majordomo`.
 
 ## The provider contract
 
@@ -52,7 +56,7 @@ how a provider's items look and read — glyphs, colors, capsule labels,
 sidebar buckets and their wording — comes from the provider's `ProviderSpec`
 implementation (in code, not from the API). The buckets are built-in labels
 (`builtinLabels`) and the rules that fill them (`builtinRules`), evaluated
-by the same `LabelEngine` as the user's own labels and rules: they show as
+by the same `RuleEngine` as the user's own labels and rules: they show as
 folders, list read-only in the Labels and Rules settings, and can be hidden
 from the Inboxes page.
 
@@ -88,12 +92,27 @@ Adding a provider means:
    capsule read the target's current state once it has been refreshed;
 3. one registration line in `providerSpecs`.
 
-Boards (`Model/Board.swift`) are columns of rules over cards — one card per
-target, built by `BoardEngine` from the notifications pointing at it and
-the target's stored snapshot. Their conditions are the label rules' own
-(`RuleCondition`, compiled by `LabelEngine`), tested against a card instead
-of a notification through `RuleSubject`; the fields only a target has
-(assignee, review, checks…) are offered to board columns alone.
+Label rules, a board's scope, and each board column all hold one kind of
+filter (`RuleFilter`, `Model/RuleFilter.swift`): groups of conditions, each
+group holding when all or any of its conditions do, joined by the filter's
+own all or any. A condition can be an Apple Intelligence check — a question
+in the user's words (`RuleField.question`) whose answer the on-device model
+gives once per subject and the store keeps under the question's key, so the
+same question asked by a rule and by a column shares its answers. One
+editor (`FilterEditor`) edits them all, on the Rules page and in the board
+editor.
+
+Boards (`Model/Board.swift`) place cards — one per target, built by
+`BoardEngine` from the notifications pointing at it and the target's stored
+snapshot — into the first column whose filter holds. Filters are compiled
+by `RuleEngine` (`Sync/RuleEngine.swift`) and tested against a notification
+or a card alike through `RuleSubject`; the fields only a target has
+(assignee, review, checks…) are offered to boards alone. The sync engine
+runs one sweep over everything a filter reads, whenever any of it changes:
+the items' labels and every board's placement from one compiled set,
+published with the state, plus the questions whose answers could still move
+something — the only ones the model is asked, a budgeted few per pass. The
+views only narrow a placement by the search and the pills.
 
 Any number of accounts per provider can be connected; accounts are keyed by
 `AccountId`, never by provider.

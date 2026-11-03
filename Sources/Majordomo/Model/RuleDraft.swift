@@ -15,8 +15,9 @@ struct ConditionDraft: Hashable, Sendable {
   var negated: Bool = false
 }
 
-/// A proposed rule, and what it should apply to: an existing label or
-/// inbox by name, or a new one to create alongside it.
+/// A proposed rule — one group of conditions, which becomes the rule's
+/// filter — and what it should apply to: an existing label or inbox by
+/// name, or a new one to create alongside it.
 struct RuleDraft: Hashable, Sendable {
   var name: String
   /// "all" or "any"; anything else falls back to all.
@@ -116,8 +117,7 @@ extension RuleDraft {
     let rule = LabelRule(
       id: UUID().uuidString,
       name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? wanted : name,
-      match: match.lowercased() == "any" ? .any : .all,
-      conditions: checked,
+      filter: RuleFilter(conditions: checked, match: match.lowercased() == "any" ? .any : .all),
       labelIds: [targetId]
     )
     return .success(ValidatedRule(rule: rule, newTarget: newTarget))
@@ -127,7 +127,9 @@ extension RuleDraft {
 extension ConditionDraft {
   /// The draft as a real condition, or why it isn't one.
   func condition() -> Result<RuleCondition, RuleDraftError> {
-    guard let field = RuleField(rawValue: field.lowercased()) else {
+    // Only what a notification carries: a board's fields never match one,
+    // and a question is the user's to word, not the model's.
+    guard let field = RuleField(rawValue: field.lowercased()), RuleField.itemFields.contains(field) else {
       return .failure(.unknownField(field))
     }
     guard let op = RuleOperator(rawValue: op.lowercased()) else {

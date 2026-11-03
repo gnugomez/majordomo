@@ -1,6 +1,7 @@
 // A text field that hands its text back on submit or when focus leaves —
 // never per keystroke. Label and rule edits each re-sweep every item and
-// rewrite the store, so the settings pages commit them whole.
+// rewrite the store, so the settings pages commit them whole. A vertical
+// one wraps and grows for text worth several lines, a rule's question.
 
 import SwiftUI
 
@@ -10,20 +11,22 @@ struct CommitTextField: View {
   /// The committed value; the draft resyncs to it whenever it changes
   /// while the field isn't being edited.
   let text: String
+  let axis: Axis
   let onCommit: (String) -> Void
 
   @State private var draft: String
   @FocusState private var focused: Bool
 
-  init(_ title: String, text: String, onCommit: @escaping (String) -> Void) {
+  init(_ title: String, text: String, axis: Axis = .horizontal, onCommit: @escaping (String) -> Void) {
     self.title = title
     self.text = text
+    self.axis = axis
     self.onCommit = onCommit
     _draft = State(initialValue: text)
   }
 
   var body: some View {
-    TextField(title, text: $draft)
+    TextField(title, text: $draft, axis: axis)
       .focused($focused)
       .onSubmit(commit)
       .onChange(of: focused) {

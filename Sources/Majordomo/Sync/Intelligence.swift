@@ -1,10 +1,10 @@
 // Where the on-device model plugs in. Four jobs, all optional: turning a
 // sentence into a rule, judging the patterns Suggestion.swift mined,
 // summarizing a notification's text for its inbox row, and answering a
-// user's own yes-or-no question about a notification for an intelligence
-// rule. The protocol keeps
-// the rest of the app honest — nothing here knows about FoundationModels,
-// and with no model present every caller sees the same "unavailable" and
+// user's own yes-or-no question — an Apple Intelligence check in a rule or
+// a board — about a notification or a board's card. The protocol keeps the
+// rest of the app honest — nothing here knows about FoundationModels, and
+// with no model present every caller sees the same "unavailable" and
 // carries on.
 
 import Foundation
@@ -38,8 +38,9 @@ struct SummaryRequest: Sendable {
   let body: String
 }
 
-/// One notification put to an intelligence rule's question. The question
-/// is the user's, in their words; the rest is what the notification says.
+/// One notification, or one card's target, put to an Apple Intelligence
+/// check's question. The question is the user's, in their words; the rest
+/// is what the notification — or the target's description — says.
 struct VerdictRequest: Sendable {
   let question: String
   let title: String
@@ -63,8 +64,9 @@ protocol IntelligenceProvider: Sendable {
   /// A notification's text in one line, for the row to show under the
   /// title. Throws a human-readable message; the caller skips the item.
   func summarize(_ request: SummaryRequest) async throws -> String
-  /// Whether one notification answers an intelligence rule's question.
-  /// Throws a human-readable message; the caller leaves the item unjudged.
+  /// Whether the request's text answers its question yes. Throws a
+  /// human-readable message, marked retryable when the model was only
+  /// busy; the caller leaves the subject unanswered.
   func evaluate(_ request: VerdictRequest) async throws -> Bool
 }
 
@@ -97,5 +99,8 @@ struct NoIntelligence: IntelligenceProvider {
 /// A failure fit for the UI, verbatim.
 struct IntelligenceError: LocalizedError, Sendable {
   let message: String
+  /// The model was busy or not ready — nothing was said about the text,
+  /// so asking again on a later pass is worth it.
+  var retryable = false
   var errorDescription: String? { message }
 }

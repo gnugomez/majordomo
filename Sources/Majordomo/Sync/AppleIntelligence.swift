@@ -1,8 +1,8 @@
 // The on-device model behind the intelligence seam: Apple's Foundation
 // Models, running entirely on this Mac. Four jobs — turning a sentence
 // into a draft rule, judging a mined pattern, summarizing a notification's
-// text for its row, and answering an intelligence rule's question about
-// one notification. The first two hand back a RuleDraft
+// text for its row, and answering an Apple Intelligence check's question
+// about one notification or one card. The first two hand back a RuleDraft
 // that the engine validates before anything reaches the store. Guided
 // generation constrains every field to this app's own vocabulary, so the
 // model picks from the fields and operators that exist rather than
@@ -215,8 +215,10 @@ actor AppleIntelligence: IntelligenceProvider {
     try requireAvailable()
     let session = LanguageModelSession(instructions: Self.verdictInstructions(question: request.question))
     do {
+      // Greedy: the answer is kept until the text changes, so the same
+      // text should always get the same one.
       return try await session.respond(
-        to: Self.describe(request), generating: VerdictProposal.self
+        to: Self.describe(request), generating: VerdictProposal.self, options: GenerationOptions(sampling: .greedy)
       ).content.matches
     } catch {
       throw Self.failure(error, doing: "answer that")
@@ -231,20 +233,24 @@ actor AppleIntelligence: IntelligenceProvider {
 
   /// Model failures as one readable sentence. A guardrail refusal is the
   /// one worth naming: it means the text itself was rejected, and rewording
-  /// is the way out.
+  /// is the way out. A busy model, or one whose assets aren't in, said
+  /// nothing about the text at all: that failure is retryable.
   private static func failure(_ error: Error, doing what: String) -> IntelligenceError {
     log.warning("generation failed: \(error)")
+    let message = "Apple Intelligence couldn't \(what). Try again in a moment."
     if let generation = error as? LanguageModelSession.GenerationError {
       switch generation {
       case .guardrailViolation:
         return IntelligenceError(message: "Apple Intelligence declined that wording — try describing the rule differently.")
       case .exceededContextWindowSize:
         return IntelligenceError(message: "That was too long to read — try a shorter sentence.")
+      case .rateLimited, .concurrentRequests, .assetsUnavailable:
+        return IntelligenceError(message: message, retryable: true)
       default:
         break
       }
     }
-    return IntelligenceError(message: "Apple Intelligence couldn't \(what). Try again in a moment.")
+    return IntelligenceError(message: message)
   }
 
   // MARK: Prompts
