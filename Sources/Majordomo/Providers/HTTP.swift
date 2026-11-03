@@ -1,6 +1,7 @@
 // Shared HTTP plumbing for the provider clients: a 15-second-capped
-// URLSession and the error phrasing helpers. The strings surface directly
-// in the Accounts pane, so they must be helpful.
+// URLSession that keeps tokens on their own origin, and the error phrasing
+// helpers. The strings surface directly in the Accounts pane, so they must
+// be helpful.
 
 import Foundation
 
@@ -74,13 +75,68 @@ func normalizeInstanceOrigin(_ raw: String) -> String? {
 }
 
 /// One shared session; both timeouts capped so no request outlives 15s.
+/// Redirects pass through `RedirectGuard`, so a token never follows one
+/// off the origin it was sent to.
 let providerSession: URLSession = {
   let config = URLSessionConfiguration.ephemeral
   config.timeoutIntervalForRequest = requestTimeout
   config.timeoutIntervalForResource = requestTimeout
   config.httpAdditionalHeaders = ["User-Agent": "majordomo"]
-  return URLSession(configuration: config)
+  return URLSession(configuration: config, delegate: RedirectGuard(), delegateQueue: nil)
 }()
+
+/// The headers a provider client puts its token in.
+private let credentialHeaders = ["Authorization", "PRIVATE-TOKEN"]
+
+/// Keeps credentials on the origin they were sent to. An API may hand a
+/// download to object storage or a CDN by redirect, and whatever answers
+/// there must never see the token: a redirect off the request's origin
+/// loses the credential headers before it is followed. A redirect from
+/// https down to plain http isn't followed at all. Moving from http to
+/// https on the same host keeps them — that is the same server, made safer.
+final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest
+  ) async -> URLRequest? {
+    guard let origin = task.originalRequest?.url ?? response.url, let next = request.url else {
+      return nil
+    }
+    if origin.scheme == "https", next.scheme != "https" {
+      return nil
+    }
+    guard !sameServer(origin, next) else {
+      return request
+    }
+    var stripped = request
+    for header in credentialHeaders {
+      stripped.setValue(nil, forHTTPHeaderField: header)
+    }
+    return stripped
+  }
+
+  /// Same host and port, or the same host moved from http to https on the
+  /// default ports.
+  private func sameServer(_ from: URL, _ to: URL) -> Bool {
+    guard let fromHost = from.host()?.lowercased(), fromHost == to.host()?.lowercased() else {
+      return false
+    }
+    let fromPort = from.port ?? defaultPort(from.scheme)
+    let toPort = to.port ?? defaultPort(to.scheme)
+    if from.scheme == to.scheme {
+      return fromPort == toPort
+    }
+    return from.scheme == "http" && to.scheme == "https" && fromPort == 80 && toPort == 443
+  }
+
+  private func defaultPort(_ scheme: String?) -> Int? {
+    switch scheme {
+    case "https": 443
+    case "http": 80
+    default: nil
+    }
+  }
+}
 
 /// Performs a request, mapping transport failures to UI-ready messages.
 /// Status handling is the caller's (GitHub needs 304 passed through).
