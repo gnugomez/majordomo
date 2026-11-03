@@ -57,6 +57,12 @@ func statusMessage(_ status: Int, _ ctx: RequestContext) -> String {
   }
 }
 
+/// The error a non-success HTTP status throws: its message, and whether
+/// the token itself was refused.
+func statusError(_ status: Int, _ ctx: RequestContext) -> ProviderError {
+  ProviderError(message: statusMessage(status, ctx), rejectsToken: status == 401)
+}
+
 /// Normalizes a user-typed instance origin: trims whitespace and trailing
 /// slashes, then requires an http(s) URL with a host. nil when it isn't
 /// one. Shared by the add-account form (fast feedback) and the GitLab
@@ -162,7 +168,7 @@ func send(_ request: URLRequest, ctx: RequestContext) async throws -> (Data, HTT
 func sendExpectingSuccess(_ request: URLRequest, ctx: RequestContext) async throws -> Data {
   let (data, http) = try await send(request, ctx: ctx)
   guard (200 ..< 300).contains(http.statusCode) else {
-    throw ProviderError(message: statusMessage(http.statusCode, ctx))
+    throw statusError(http.statusCode, ctx)
   }
   return data
 }

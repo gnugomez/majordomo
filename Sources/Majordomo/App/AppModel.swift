@@ -1,8 +1,11 @@
-// The UI-facing state: the latest AppState snapshot the engine pushed, plus
-// view state both windows share, plus the action methods. Actions mostly
-// need no optimistic update — the engine is in-process and pushes
-// immediately; the edits a keystroke or a drag must answer at once apply
-// here first, and the push echoes them.
+// The UI-facing state: the latest AppState the engine pushed, plus view
+// state both windows share, plus the action methods. The composition root
+// of the app's main-actor side: the user's lasting choices live in
+// Preferences and the preview's conversations in ConversationCache, both
+// read through here, so views see one model. Actions mostly need no
+// optimistic update — the engine is in-process and pushes immediately; the
+// edits a keystroke or a drag must answer at once apply here first, and
+// the push echoes them.
 
 import AppKit
 import Observation
@@ -10,20 +13,6 @@ import os
 import ServiceManagement
 
 private let log = Logger(subsystem: "dev.majordomo.app", category: "app")
-
-/// Which new unread items post a notification.
-enum NotifyScope: String, CaseIterable, Sendable {
-  /// The "needs you" tier — mentions and review requests (the default).
-  case mentions
-  /// Every item that enters the inbox unread.
-  case all
-  /// No notifications at all.
-  case none
-}
-
-/// Conversations the preview keeps read at most; looking back at a recent
-/// one is instant, and nothing builds up over a long session.
-private let conversationCacheLimit = 40
 
 /// True when running from a real .app bundle. SMAppService and
 /// UNUserNotificationCenter require one; a bare `swift run` executable
@@ -34,17 +23,33 @@ let isBundled = Bundle.main.bundleIdentifier != nil
 @Observable
 final class AppModel {
   // Engine-pushed state.
-  private(set) var items: [InboxItem] = []
+  private(set) var items: [InboxItem] = [] {
+    didSet {
+      sidebarSections = [:]
+    }
+  }
   private(set) var accounts: [AccountState] = []
   /// The user's labels (folder order) and rules (evaluation order). Edits
   /// apply here at once — the settings editors bind text fields to them,
   /// and a round trip through the engine would lag the keystrokes — then
   /// push to the engine, whose next state echoes the same values.
-  private(set) var labels: [InboxLabel] = []
-  private(set) var rules: [LabelRule] = []
+  private(set) var labels: [InboxLabel] = [] {
+    didSet {
+      sidebarSections = [:]
+    }
+  }
+  private(set) var rules: [LabelRule] = [] {
+    didSet {
+      sidebarSections = [:]
+    }
+  }
   /// The sidebar's tree of inboxes and folders; edited through
   /// `updateSidebar`, which applies here at once and pushes to the engine.
-  private(set) var sidebarLayout = SidebarLayout()
+  private(set) var sidebarLayout = SidebarLayout() {
+    didSet {
+      sidebarSections = [:]
+    }
+  }
   /// The user's boards, in sidebar order; edited through `setBoards`,
   /// which applies here at once and pushes to the engine.
   private(set) var boards: [Board] = []
@@ -58,25 +63,24 @@ final class AppModel {
       narrowedPlacements = [:]
     }
   }
-  /// Labels and rules the on-device model suggests, waiting on the user —
-  /// empty while `suggestionsEnabled` is off.
-  private(set) var suggestions: [Suggestion] = []
-  /// Whether the model watches for patterns worth a label at all; only
-  /// consulted while `intelligenceEnabled` is on.
-  private(set) var suggestionsEnabled: Bool = AppModel.loadSuggestionsEnabled()
-  /// Whether the model writes the one-line summaries the rows show in
-  /// place of raw excerpt text; only consulted while `intelligenceEnabled`
-  /// is on.
-  private(set) var summariesEnabled: Bool = AppModel.loadSummariesEnabled()
-  /// The master switch over every on-device feature — the rule composer,
-  /// the suggestions, and the summaries. Off means nothing is generated at
-  /// all.
-  private(set) var intelligenceEnabled: Bool = AppModel.loadIntelligenceEnabled()
+  /// The suggestions the engine holds, whether or not they are on offer.
+  private var pendingSuggestions: [Suggestion] = []
   /// Whether the on-device model can run here; read once the engine has
   /// installed its provider.
   private(set) var intelligence: IntelligenceAvailability = .unavailable("Checking…")
   private(set) var lastSyncAt: Date?
   private(set) var syncing = false
+  /// The revisions of the slices this model holds (see apply).
+  @ObservationIgnored private var appliedRevisions = StateRevisions()
+
+  // Worked out once per push rather than on every read.
+  /// Whether any item is unread.
+  private(set) var anyUnread = false
+  /// Unread THREADS — the number of rows needing attention, matching the
+  /// sidebar badges and the dock badge to what the list actually shows.
+  private(set) var unreadCount = 0
+  /// Whether an unread mention waits: the tray's dot.
+  private(set) var unreadMentionDot = false
 
   // Local facts.
   private(set) var launchAtLogin = false
@@ -88,22 +92,10 @@ final class AppModel {
   private(set) var now = Date()
 
   // Shared view state.
-  /// Which inbox is showing; remembered across launches.
-  var sidebarSelection = AppModel.loadSidebarSelection() {
-    didSet {
-      UserDefaults.standard.set(sidebarSelection.category, forKey: "sidebarCategory")
-      UserDefaults.standard.set(sidebarSelection.account, forKey: "sidebarAccount")
-      UserDefaults.standard.set(sidebarSelection.board, forKey: "sidebarBoard")
-      // Another inbox is a fresh look: the unread filter starts over.
-      if sidebarSelection != oldValue {
-        releaseKeptReads()
-      }
-    }
-  }
-  /// The toolbar's date filter, remembered across launches; nil is any time.
-  private(set) var activityWindow: ActivityWindow? = AppModel.loadActivityWindow()
-  /// The toolbar's unread filter, remembered across launches.
-  private(set) var unreadOnly = UserDefaults.standard.bool(forKey: "unreadOnly")
+  /// The user's choices that outlive a launch.
+  @ObservationIgnored let preferences: Preferences
+  /// The conversations the preview has read.
+  @ObservationIgnored let conversations = ConversationCache()
   /// What the pills under the toolbar narrow the inbox to, one value per
   /// facet. Kept for the session only: a pick names one author or
   /// repository, which a later launch may no longer have.
@@ -113,15 +105,6 @@ final class AppModel {
   /// inbox, the filter switched, the window closed — so reading a row
   /// never pulls it out from under the pointer.
   private(set) var keptReadIds: Set<String> = []
-  /// Which new items notify, and with what sound (settings → Notifications).
-  private(set) var notifyScope: NotifyScope = NotifyScope(
-    rawValue: UserDefaults.standard.string(forKey: "notifyScope") ?? ""
-  ) ?? .mentions
-  /// "default", "none", or a system alert sound name ("Ping").
-  private(set) var notificationSound: String =
-    UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
-  /// What the inbox rows show, and in what order (settings → General).
-  private(set) var rowLayout: RowLayout = AppModel.loadRowLayout()
   /// Selection is by thread id, so it survives sync updates.
   var selectedThreadIds: Set<String> = []
   /// The card selected on the board, by card id; a board shows one at a
@@ -131,19 +114,6 @@ final class AppModel {
   /// a card shows it; the user can put it away for the whole board and
   /// keep the card selected.
   var cardPreviewShown = false
-  /// Whether the main window's sidebar shows; remembered across launches.
-  var sidebarShown = !UserDefaults.standard.bool(forKey: "sidebarHidden") {
-    didSet {
-      UserDefaults.standard.set(!sidebarShown, forKey: "sidebarHidden")
-    }
-  }
-  /// Whether the inbox's preview stands beside the list. It stays as the
-  /// user leaves it, across launches.
-  var inboxPreviewShown = !UserDefaults.standard.bool(forKey: "previewHidden") {
-    didSet {
-      UserDefaults.standard.set(!inboxPreviewShown, forKey: "previewHidden")
-    }
-  }
   /// The board in the editor sheet — an existing one, or a new one not
   /// saved until the sheet is.
   var editingBoard: Board?
@@ -157,67 +127,115 @@ final class AppModel {
   /// there (⌘F does).
   var searchPresented = false
 
-  /// Where an item's target's conversation stands, as the preview shows it.
-  enum ConversationLoad: Sendable {
-    /// Not in yet: the background refresh hasn't reached it, and the
-    /// preview asked for it ahead of the rounds.
-    case fetching
-    case loaded(TargetConversation)
-    /// The provider won't show the target; why, fit to show verbatim.
-    case unreadable(String)
-    /// The ask ahead of the rounds came back empty; why, fit to show. The
-    /// rounds go on asking.
-    case waiting(String)
-  }
-
-  /// A stored conversation the preview has read, and the activity it is
-  /// current as of.
-  private struct HeldConversation {
-    let at: Date
-    let conversation: TargetConversation
-  }
-
-  /// Conversations read for the preview, by target key — the most recent
-  /// `conversationCacheLimit` of them.
-  private var conversations: [String: HeldConversation] = [:]
-  @ObservationIgnored private var conversationOrder: [String] = []
-  /// Why an ask ahead of the rounds came back empty, by target key.
-  private var conversationFailures: [String: String] = [:]
-  /// Targets an ask ahead of the rounds is out for.
-  @ObservationIgnored private var fetchingConversations: Set<String> = []
+  typealias ConversationLoad = ConversationCache.Load
 
   @ObservationIgnored var engine: SyncEngine?
-  /// Chrome updates after every state push: tray dot, dock badge.
-  @ObservationIgnored var onStateApplied: (@MainActor (AppModel) -> Void)?
   @ObservationIgnored var openMainWindow: (@MainActor () -> Void)?
   @ObservationIgnored var openSettings: (@MainActor () -> Void)?
 
-  var anyUnread: Bool { items.contains { !$0.read } }
-  /// Unread THREADS — the number of rows needing attention, matching the
-  /// sidebar badges and the dock badge to what the list actually shows.
-  var unreadCount: Int { groupIntoThreads(items).count { !$0.read } }
-  var unreadMentionDot: Bool { items.contains { $0.isMention && !$0.read } }
+  init(preferences: Preferences = Preferences()) {
+    self.preferences = preferences
+  }
+
   var hasAccounts: Bool { !accounts.isEmpty }
 
-  func apply(_ state: AppState) {
-    if unreadOnly {
-      keepNewlyRead(state.items)
+  // MARK: Preferences
+
+  /// Which inbox is showing; remembered across launches.
+  var sidebarSelection: SidebarSelection {
+    get {
+      preferences.sidebarSelection
     }
-    // Only what changed is assigned: every assignment wakes every view
-    // that reads the property, equal value or not, and a push repeats
-    // most of the state unchanged. Toolbar items redraw with a fade, so a
-    // push that touched only one card would flicker the whole toolbar.
-    assignIfChanged(\.items, state.items)
-    assignIfChanged(\.accounts, state.accounts)
-    assignIfChanged(\.labels, state.labels)
-    assignIfChanged(\.rules, state.rules)
-    assignIfChanged(\.sidebarLayout, state.sidebar)
-    assignIfChanged(\.boards, state.boards)
-    assignIfChanged(\.targets, state.targets)
-    assignIfChanged(\.placements, state.placements)
-    assignIfChanged(\.suggestions, suggestionsActive ? state.suggestions : [])
-    assignIfChanged(\.lastSyncAt, state.lastSyncAt)
-    assignIfChanged(\.syncing, state.syncing)
+    set {
+      let changed = newValue != preferences.sidebarSelection
+      preferences.sidebarSelection = newValue
+      // Another inbox is a fresh look: the unread filter starts over.
+      if changed {
+        releaseKeptReads()
+      }
+    }
+  }
+
+  /// Whether the main window's sidebar shows; remembered across launches.
+  var sidebarShown: Bool {
+    get { preferences.sidebarShown }
+    set { preferences.sidebarShown = newValue }
+  }
+
+  /// Whether the inbox's preview stands beside the list. It stays as the
+  /// user leaves it, across launches.
+  var inboxPreviewShown: Bool {
+    get { preferences.inboxPreviewShown }
+    set { preferences.inboxPreviewShown = newValue }
+  }
+
+  /// The toolbar's date filter, remembered across launches; nil is any time.
+  var activityWindow: ActivityWindow? { preferences.activityWindow }
+  /// The toolbar's unread filter, remembered across launches.
+  var unreadOnly: Bool { preferences.unreadOnly }
+  /// Which new items notify, and with what sound (settings → Notifications).
+  var notifyScope: NotifyScope { preferences.notifyScope }
+  /// "default", "none", or a system alert sound name ("Ping").
+  var notificationSound: String { preferences.notificationSound }
+  /// What the inbox rows show, and in what order (settings → General).
+  var rowLayout: RowLayout { preferences.rowLayout }
+  /// Whether the model watches for patterns worth a label at all; only
+  /// consulted while `intelligenceEnabled` is on.
+  var suggestionsEnabled: Bool { preferences.suggestionsEnabled }
+  /// Whether the model writes the one-line summaries the rows show in
+  /// place of raw excerpt text; only consulted while `intelligenceEnabled`
+  /// is on.
+  var summariesEnabled: Bool { preferences.summariesEnabled }
+  /// The master switch over every on-device feature — the rule composer,
+  /// the suggestions, and the summaries. Off means nothing is generated at
+  /// all.
+  var intelligenceEnabled: Bool { preferences.intelligenceEnabled }
+
+  // MARK: Pushes
+
+  /// Takes in a push: only the slices whose revision moved are assigned,
+  /// so a push that changed one board costs the integers it compares, not
+  /// a pass over every item. (Assigning an Equatable property its own
+  /// value notifies no one, but finding that out compares the whole
+  /// value.)
+  func apply(_ state: AppState) {
+    let moved = state.revisions.moved(since: appliedRevisions)
+    appliedRevisions = state.revisions
+    if moved.contains(.items) {
+      if unreadOnly {
+        keepNewlyRead(state.items)
+      }
+      items = state.items
+      noteUnread()
+    }
+    if moved.contains(.accounts) {
+      accounts = state.accounts
+    }
+    if moved.contains(.status) {
+      lastSyncAt = state.lastSyncAt
+      syncing = state.syncing
+    }
+    if moved.contains(.labels) {
+      labels = state.labels
+    }
+    if moved.contains(.rules) {
+      rules = state.rules
+    }
+    if moved.contains(.sidebar) {
+      sidebarLayout = state.sidebar
+    }
+    if moved.contains(.suggestions) {
+      pendingSuggestions = state.suggestions
+    }
+    if moved.contains(.boards) {
+      boards = state.boards
+    }
+    if moved.contains(.targets) {
+      targets = state.targets
+    }
+    if moved.contains(.placements) {
+      placements = state.placements
+    }
     // A sidebar scope pointing at a removed account would deselect every
     // row and persist the dangling id — snap back to All Inboxes.
     if let account = sidebarSelection.account, !accounts.contains(where: { $0.id == account }) {
@@ -227,13 +245,14 @@ final class AppModel {
     if let board = sidebarSelection.board, !boards.contains(where: { $0.id == board }) {
       sidebarSelection.board = nil
     }
-    onStateApplied?(self)
   }
 
-  private func assignIfChanged<Value: Equatable>(_ property: ReferenceWritableKeyPath<AppModel, Value>, _ value: Value) {
-    if self[keyPath: property] != value {
-      self[keyPath: property] = value
-    }
+  /// The unread figures the chrome and the window read, from the items as
+  /// they now stand.
+  private func noteUnread() {
+    anyUnread = items.contains { !$0.read }
+    unreadCount = groupIntoThreads(items).count { !$0.read }
+    unreadMentionDot = items.contains { $0.isMention && !$0.read }
   }
 
   func startTicker() {
@@ -263,28 +282,13 @@ final class AppModel {
     }
   }
 
-  private static func loadSidebarSelection() -> SidebarSelection {
-    let defaults = UserDefaults.standard
-    return SidebarSelection(
-      account: defaults.string(forKey: "sidebarAccount"),
-      category: defaults.string(forKey: "sidebarCategory") ?? recentCategory.id,
-      board: defaults.string(forKey: "sidebarBoard")
-    )
-  }
-
-  private static func loadActivityWindow() -> ActivityWindow? {
-    UserDefaults.standard.string(forKey: "activityWindow").flatMap(ActivityWindow.init(rawValue:))
-  }
-
   func setActivityWindow(_ window: ActivityWindow?) {
-    activityWindow = window
-    UserDefaults.standard.set(window?.rawValue, forKey: "activityWindow")
+    preferences.activityWindow = window
   }
 
   func setUnreadOnly(_ on: Bool) {
-    unreadOnly = on
+    preferences.unreadOnly = on
     releaseKeptReads()
-    UserDefaults.standard.set(on, forKey: "unreadOnly")
   }
 
   /// Narrows the inbox to one value of a facet; nil lets it show any.
@@ -311,42 +315,25 @@ final class AppModel {
   }
 
   func setNotifyScope(_ scope: NotifyScope) {
-    notifyScope = scope
-    UserDefaults.standard.set(scope.rawValue, forKey: "notifyScope")
+    preferences.notifyScope = scope
   }
 
   func setNotificationSound(_ sound: String) {
-    notificationSound = sound
-    UserDefaults.standard.set(sound, forKey: "notificationSound")
-  }
-
-  private static func loadRowLayout() -> RowLayout {
-    guard let raw = UserDefaults.standard.data(forKey: "rowLayout"),
-          let stored = try? JSONDecoder().decode(RowLayout.self, from: raw) else {
-      return .default
-    }
-    return stored
+    preferences.notificationSound = sound
   }
 
   func setRowLayout(_ layout: RowLayout) {
     let summarized = summariesWanted
-    rowLayout = layout
+    preferences.rowLayout = layout
     // Hiding the excerpt leaves a summary nowhere to go; showing it again
     // asks for the ones that were never written.
     if summariesWanted != summarized {
       pushSummariesWanted()
     }
-    guard let raw = try? JSONEncoder().encode(layout) else {
-      log.error("failed to encode the row layout")
-      return
-    }
-    UserDefaults.standard.set(raw, forKey: "rowLayout")
   }
 
   // MARK: Labels
 
-  /// Every label the sidebar can show: the providers' built-ins as "All
-  /// Inboxes" merges them, then the user's.
   /// Everything that exists: the providers' built-ins plus the user's,
   /// assembled the one way (see LabelCatalog). The views read their label
   /// lists from here rather than composing unions of their own.
@@ -354,6 +341,8 @@ final class AppModel {
     .current(user: labels, userRules: rules)
   }
 
+  /// Every label the sidebar can show: the providers' built-ins as "All
+  /// Inboxes" merges them, then the user's.
   var allLabels: [InboxLabel] {
     catalog.labels
   }
@@ -406,24 +395,18 @@ final class AppModel {
     intelligenceActive && summariesWanted
   }
 
-  private static func loadIntelligenceEnabled() -> Bool {
-    UserDefaults.standard.object(forKey: "intelligenceEnabled") as? Bool ?? true
+  /// Labels and rules the on-device model suggests, waiting on the user —
+  /// none while `suggestionsActive` is off.
+  var suggestions: [Suggestion] {
+    suggestionsActive ? pendingSuggestions : []
   }
 
   /// Turns every on-device feature off or on at once.
   func setIntelligenceEnabled(_ enabled: Bool) {
-    intelligenceEnabled = enabled
-    UserDefaults.standard.set(enabled, forKey: "intelligenceEnabled")
-    if !enabled {
-      suggestions = []
-    }
+    preferences.intelligenceEnabled = enabled
     Task {
       await engine?.setIntelligenceEnabled(enabled)
     }
-  }
-
-  private static func loadSummariesEnabled() -> Bool {
-    UserDefaults.standard.object(forKey: "summariesEnabled") as? Bool ?? true
   }
 
   /// What the engine is told: the user's switch, plus the fact that a row
@@ -440,8 +423,7 @@ final class AppModel {
   }
 
   func setSummariesEnabled(_ enabled: Bool) {
-    summariesEnabled = enabled
-    UserDefaults.standard.set(enabled, forKey: "summariesEnabled")
+    preferences.summariesEnabled = enabled
     pushSummariesWanted()
   }
 
@@ -451,16 +433,8 @@ final class AppModel {
     (intelligenceEnabled, suggestionsEnabled, summariesWanted)
   }
 
-  private static func loadSuggestionsEnabled() -> Bool {
-    UserDefaults.standard.object(forKey: "suggestionsEnabled") as? Bool ?? true
-  }
-
   func setSuggestionsEnabled(_ enabled: Bool) {
-    suggestionsEnabled = enabled
-    UserDefaults.standard.set(enabled, forKey: "suggestionsEnabled")
-    if !enabled {
-      suggestions = []
-    }
+    preferences.suggestionsEnabled = enabled
     Task {
       await engine?.setSuggestionsEnabled(enabled)
     }
@@ -501,6 +475,66 @@ final class AppModel {
     Task {
       await engine?.dismissSuggestion(id)
     }
+  }
+
+  // MARK: Sidebar
+
+  /// One sidebar section as it draws: its rows, and the unread threads of
+  /// each inbox and folder in it, by row id.
+  private struct SidebarSection {
+    let rows: [SidebarRow]
+    let unread: [String: Int]
+  }
+
+  /// Sections worked out since what they read last changed, by account
+  /// id ("" for All Inboxes). The sidebar redraws on a selection, a sync
+  /// starting, a board's badge; the sections only change with the items,
+  /// the labels, and the layout.
+  @ObservationIgnored private var sidebarSections: [String: SidebarSection] = [:]
+
+  /// A section's rows — All Inboxes (nil) or one account's — drawn from
+  /// the layout: inboxes and folders in the user's order, hidden ones
+  /// skipped.
+  func sidebarRows(for account: AccountState?) -> [SidebarRow] {
+    sidebarSection(for: account).rows
+  }
+
+  /// Unread threads, not items, in an inbox or folder of a section — the
+  /// badge matches the rows the list will show, and an item in two of a
+  /// folder's inboxes counts once.
+  func unreadThreads(in rowId: String, account: AccountState?) -> Int {
+    sidebarSection(for: account).unread[rowId] ?? 0
+  }
+
+  private func sidebarSection(for account: AccountState?) -> SidebarSection {
+    // Read on every call, a held section too: the views asking observe
+    // what they read, and one that stopped reading would never hear of a
+    // change.
+    let items = items
+    let labels = catalog.sectionLabels(for: account?.provider)
+    let layout = sidebarLayout
+    let key = account?.id ?? ""
+    if let held = sidebarSections[key] {
+      return held
+    }
+    let scoped = account.map { scope in items.filter { $0.accountId == scope.id } } ?? items
+    let rows = Majordomo.sidebarRows(layout: layout, categories: categorize(scoped, into: categories(for: labels)))
+    var unread: [String: Int] = [:]
+    func count(_ rows: [SidebarRow]) {
+      for row in rows {
+        switch row {
+        case .inbox(let category):
+          unread[category.id] = groupIntoThreads(category.items).count { !$0.read }
+        case .folder(let folder, let inside):
+          unread[folder.id] = unreadThreadCount(in: inside)
+          count(inside)
+        }
+      }
+    }
+    count(rows)
+    let section = SidebarSection(rows: rows, unread: unread)
+    sidebarSections[key] = section
+    return section
   }
 
   /// Edits the sidebar layout in place (move, hide, add or dissolve a
@@ -685,20 +719,7 @@ final class AppModel {
     guard let key = spec(for: item.provider).boardKey(for: item) else {
       return nil
     }
-    let target = targets[key]
-    if let at = target?.conversationAt {
-      guard let held = conversations[key], held.at == at else {
-        return nil
-      }
-      return .loaded(held.conversation)
-    }
-    if let reason = target?.unreadable {
-      return .unreadable(reason)
-    }
-    if let failure = conversationFailures[key] {
-      return .waiting(failure)
-    }
-    return .fetching
+    return conversations.load(key, target: targets[key])
   }
 
   /// What the preview's load of a conversation follows: a change to it
@@ -710,45 +731,12 @@ final class AppModel {
   }
 
   /// Reads the target's stored conversation, or, when the background
-  /// refresh hasn't brought it yet, asks for it ahead of the rounds. An
-  /// ask cancelled because the selection moved on leaves nothing behind.
+  /// refresh hasn't brought it yet, asks for it ahead of the rounds.
   func loadConversation(for item: InboxItem) async {
     guard let key = spec(for: item.provider).boardKey(for: item), let engine else {
       return
     }
-    let target = targets[key]
-    if let at = target?.conversationAt {
-      guard conversations[key]?.at != at else {
-        return
-      }
-      if let conversation = await engine.conversation(for: key) {
-        hold(key, HeldConversation(at: at, conversation: conversation))
-      }
-      return
-    }
-    guard target?.unreadable == nil, !fetchingConversations.contains(key) else {
-      return
-    }
-    fetchingConversations.insert(key)
-    defer { fetchingConversations.remove(key) }
-    if conversationFailures[key] != nil {
-      conversationFailures[key] = nil
-    }
-    let failure = await engine.refreshConversation(key)
-    if let failure, !Task.isCancelled {
-      conversationFailures[key] = failure
-    }
-  }
-
-  /// Keeps a conversation read, letting go of the oldest beyond the cache
-  /// limit.
-  private func hold(_ key: String, _ held: HeldConversation) {
-    conversations[key] = held
-    conversationOrder.removeAll { $0 == key }
-    conversationOrder.append(key)
-    while conversationOrder.count > conversationCacheLimit {
-      conversations[conversationOrder.removeFirst()] = nil
-    }
+    await conversations.fetch(key, target: targets[key], from: engine)
   }
 
   /// Opens the thread's lead item in the browser and marks every member read.
