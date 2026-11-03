@@ -95,14 +95,18 @@ struct ConversationTimeline: View {
         }
       }
       .background(alignment: .leading) {
-        // The thread line, through the faces; the cards cover it, so it
-        // shows between them and through the events.
+        // The thread line, through the faces. Each card clears it from
+        // under itself (`coversLine`), so it shows between the cards and
+        // through the events' glyphs.
         Rectangle()
           .fill(.separator)
           .frame(width: 1)
           .padding(.leading, 23.5)
           .padding(.vertical, 18)
       }
+      // What the cards clear the line from: this stack alone, not the
+      // inspector's material behind it.
+      .compositingGroup()
     }
   }
 
@@ -182,7 +186,8 @@ private struct TimelineCard: View {
     .conversationCard(
       outline: marked ? AnyShapeStyle(Color.accentColor.opacity(flashed ? 1 : 0.65)) : nil,
       lineWidth: flashed ? 2.5 : 1.5,
-      tint: marked ? Color.accentColor.opacity(flashed ? 0.12 : 0.04) : nil
+      tint: marked ? Color.accentColor.opacity(flashed ? 0.12 : 0.04) : nil,
+      coversLine: true
     )
     .animation(.easeOut(duration: 0.4), value: flashed)
   }

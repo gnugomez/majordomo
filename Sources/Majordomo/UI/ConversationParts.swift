@@ -8,20 +8,28 @@ import SwiftUI
 extension View {
   /// The card a conversation entry or a thread's message sits on: a light
   /// wash over the inspector's material, a hairline edge, a soft shadow. An accent `outline` marks one a notification points at or
-  /// the user picked; `tint` washes it in that color too.
+  /// the user picked; `tint` washes it in that color too. A card on the
+  /// timeline `coversLine`: the wash lets what lies beneath show, so the
+  /// card first clears the thread line from under itself — within the
+  /// timeline's compositing group, leaving the inspector's material.
   func conversationCard(
-    outline: AnyShapeStyle? = nil, lineWidth: CGFloat = 1.5, tint: Color? = nil
+    outline: AnyShapeStyle? = nil, lineWidth: CGFloat = 1.5, tint: Color? = nil, coversLine: Bool = false
   ) -> some View {
     padding(12)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Palette.paneCard)
-          .overlay {
-            if let tint {
-              RoundedRectangle(cornerRadius: 10).fill(tint)
-            }
+        ZStack {
+          if coversLine {
+            RoundedRectangle(cornerRadius: 10)
+              .fill(.black)
+              .blendMode(.destinationOut)
           }
+          RoundedRectangle(cornerRadius: 10)
+            .fill(Palette.paneCard)
+          if let tint {
+            RoundedRectangle(cornerRadius: 10).fill(tint)
+          }
+        }
       }
       .overlay {
         RoundedRectangle(cornerRadius: 10)
