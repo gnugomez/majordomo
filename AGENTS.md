@@ -24,10 +24,20 @@ and RELEASING.md.
   levels; an Apple Intelligence check is a `.question` condition), edited
   by the one `FilterEditor`. The sync engine's `sweep()` compiles them once
   and works out the labels AND every board's placement off the main actor;
-  `AppModel` only narrows a published placement by search and pills. Any
-  engine mutation that changes what a filter reads ends in a sweep. Model
+  `AppModel` only narrows a published placement by search and pills. Model
   answers are keyed by question (`RuleEngine.questionKey`), per item and
   per target.
+- **Changes, reactions, one push**: an engine mutation does its own work
+  and records what it touched (`record(.rules)`) — it never calls a sweep,
+  a model pass, or a publish itself. `EngineChange.reactions` is the one
+  table of what follows what (relabel or only re-place, reconcile the
+  sidebar, forget answers, which background passes start), and `settle`
+  runs the turn's changes through it once, publishing only the slices
+  they moved as one push. A new follow-up is an entry in that table; a
+  new reaction to what happened subscribes to `events()` (a
+  `DomainEvent`) instead of being wired into the engine. State reaches
+  the main actor as an `AsyncStream` (`states()`, latest wins), and the
+  store writes a moment after a change, off the actor, and on quit.
 - **Style**: strict Swift 6 concurrency, 2-space indent, one type per file
   where sensible; extract well-named helpers over clever one-liners.
   Provider errors are human-readable strings — they render verbatim.
@@ -42,7 +52,8 @@ and RELEASING.md.
 - **Checks**: `make build` (`swift build`) must pass with zero warnings,
   and `make test` (`swift test`, Swift Testing in `Tests/MajordomoTests`,
   `@testable import Majordomo`) must stay green — the filters, placement,
-  and every stored shape's decoding are covered there.
+  every stored shape's decoding, the engine's reactions and events, the
+  store's saves, and how the model takes in a push are covered there.
   `make bundle` → dist/Majordomo.app (release, ad-hoc signed unless
   `CODESIGN_IDENTITY` is set — it passes through make); `make install`
   installs it. `make help` lists the rest; the targets are thin wrappers
@@ -162,10 +173,14 @@ reintroduces the bug:
   updates, so each toolbar control is a small view given only what
   decides how it looks (`RefreshButton` watches `syncing`, the board's
   menu the board, `PreviewToggle` whether a card is selected), and
-  `AppModel.apply` assigns only the properties a push changed — an
-  assignment wakes every reader, equal value or not, and selecting a
-  card pushes several times (the selection, marking it seen), each one
-  flickering every item in the bar.
+  `AppModel.apply` assigns only the slices whose revision moved
+  (`StateRevisions`) — selecting a card pushes several times (the
+  selection, marking it seen), and every reader woken by each push
+  flickers every item in the bar. Assigning an Equatable property an
+  equal value wakes no one (Observation compares first, at the price of
+  a comparison), but an in-place mutation (`boards[i].pins[…] = …`) or a
+  non-Equatable value wakes every reader, equal or not; the revision
+  check spares both the wake-ups and the comparisons.
 - The preview is an inspector in the detail column (MainWindowView). On
   the NavigationSplitView itself, as Apple's Landmarks sample has it,
   SwiftUI counts it twice in the window's minimum width (as a column, and

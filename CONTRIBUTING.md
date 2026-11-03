@@ -37,17 +37,81 @@ Layers, lower never importing higher:
 - `Sources/Majordomo/Providers/` — one `ProviderClient` (API → items) and
   one `ProviderSpec` (presentation) per provider, registered in
   `providerSpecs`.
-- `Sources/Majordomo/Store/` — the JSON persistence and token encryption,
-  the targets' conversations, a file each beside the store, and the images
-  previews have shown, kept within a size under the user's Caches.
-- `Sources/Majordomo/Sync/` — the sync engine (an actor): fetch, reconcile,
-  sweep the rules and boards, publish state.
+- `Sources/Majordomo/Store/` — the JSON persistence and token encryption
+  (`Store`, written off the engine's actor by `StoreWriter` a moment after
+  a change), the targets' conversations, a file each beside the store,
+  and the images previews have shown, kept within a size under the user's
+  Caches.
+- `Sources/Majordomo/Sync/` — the sync engine, one actor split by concern:
+  `SyncEngine.swift` (the change log, `settle`, publishing, the streams,
+  start and stop), `EngineChange.swift` (the reaction table), and the
+  `SyncEngine+…` extensions — `Accounts`, `Fetch` (syncing and arrivals),
+  `Sweep` (labels, rules, boards, sidebar), `Inbox` (read state, label
+  overrides), `Intelligence` (the model's passes, with `ModelPass` holding
+  what they share), `Composer`, `Targets`, `Images`. Beside it the pure
+  engines it runs — `RuleEngine`, `BoardEngine` — and the on-device model's
+  protocol.
 - `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
-  windows, notifications, main menu.
+  windows, notifications, main menu, and `AppModel`, the main actor's
+  mirror of the engine's state and the views' one model; it composes
+  `Preferences` (everything kept in UserDefaults, through one
+  `PreferenceKey` mechanism) and `ConversationCache` (the conversations
+  the preview reads).
 - `Sources/Majordomo/UI/` — the SwiftUI views.
 
 `Tests/MajordomoTests/` holds the Swift Testing suite, which reaches the
 app target through `@testable import Majordomo`.
+
+## How state flows
+
+The sync engine is the one writer. Everything it knows changes inside the
+actor, in three steps:
+
+1. **A change.** A mutation — a fetch applied, a rule saved, a card
+   pinned, the model's answers filed — does its own work on the store and
+   records what it touched: `record(.rules)`, `record([.accounts,
+   .itemContent])`. It calls nothing else.
+2. **Reactions.** Once per actor turn, however many mutations it gathered,
+   `settle` looks the changes up in the reaction table
+   (`EngineChange.reactions`, `Sync/EngineChange.swift`) and does what
+   they call for, in a fixed order: forget stale answers, sweep (relabel
+   for what label rules read, or only re-place the boards), reconcile the
+   sidebar, announce arrivals, prune; then start the background work — a
+   target refresh round, the model's summary, verdict, and suggestion
+   passes. The table is the whole of "what depends on what": a rules
+   change relabels and asks the model again; a pin only re-places; a read
+   only re-places and republishes the items.
+3. **One push.** `settle` rebuilds only the slices of `AppState` the
+   changes could move (`EngineChange.slices`), moves the revision
+   (`StateRevisions`) of each that did, and pushes the state once.
+   `AppModel.apply` compares revisions — integers — and assigns only the
+   slices that moved, so a push about one card costs the views nothing
+   else. Slices the app model edits ahead of the engine (labels, rules,
+   the sidebar, boards, a pin) always move their revision when the engine
+   takes the edit (`EngineChange.echoes`), so the model ends on the
+   engine's version.
+
+Two streams leave the engine, one per subscriber: `states()` (latest
+wins — a slow reader skips to the newest) and `events()` (every
+`DomainEvent`, in order: fresh threads worth a banner, an account failing,
+a token rejected, an account working again). `AppDelegate` runs one
+main-actor loop over each — the states into `AppModel`, the events into
+banners and the log — and keeps the tray dot and dock badge in step with
+the model through `Observations`.
+
+The store notes each change and writes a moment later (`flushSoon`), in
+one write however many changes followed, encoded and written off the
+actor; quitting (`applicationWillTerminate` → `SyncEngine.stop`) writes
+what is pending before the app exits.
+
+**Adding a feature.** Something the engine should do *after* a kind of
+change is an entry in the reaction table — a new `Reactions` member, or a
+new `EngineChange` its mutation records — never a call added to every
+mutation that might need it. Something the app should do *when* a thing
+happens subscribes: add a `DomainEvent` case if the engine doesn't tell
+it yet, `emit` it where it happens, and consume `engine.events()` where
+the feature lives. Something the views should show is a slice of
+`AppState` (or derived from one in `AppModel`, worked out once per push).
 
 ## The provider contract
 
