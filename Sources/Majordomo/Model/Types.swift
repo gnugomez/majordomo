@@ -52,9 +52,9 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// generated; nothing else reads it.
   var summary: String?
   var read: Bool
-  /// What the on-device model answered about this item, per intelligence
-  /// rule: yes, no, or absent for one it hasn't been asked yet. The rules
-  /// read it; nothing else interprets it.
+  /// What the on-device model answered about this item, by question key
+  /// (RuleEngine.questionKey): yes, no, or absent for a question it hasn't
+  /// been asked yet. The rules read it; nothing else interprets it.
   var verdicts: [String: Bool] = [:]
   /// The labels the item carries: what the rules assigned with the user's
   /// overrides applied (see effectiveLabels). Folders, badges, and banner
@@ -108,4 +108,7 @@ struct AppState: Sendable {
   var boards: [Board] = []
   /// What the boards' cards know about their targets, by key.
   var targets: [String: TrackedTarget] = [:]
+  /// Where each board's cards go, by board id — worked out by the same
+  /// sweep that labels the items.
+  var placements: [BoardId: BoardPlacement] = [:]
 }

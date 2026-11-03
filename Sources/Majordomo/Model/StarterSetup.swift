@@ -1,8 +1,8 @@
-// What a store starts with: a Priority label and the intelligence rule
-// that fills it, seeded once so the feature arrives configured rather than
-// described. Nothing here is privileged afterwards — the prompt, the name,
-// the icon, the top box and the rule itself are the user's to edit or
-// delete, and nothing puts them back.
+// What a store starts with: a Priority label and the rule that fills it — a
+// single Apple Intelligence check — seeded once so the feature arrives
+// configured rather than described. Nothing here is privileged afterwards:
+// the question, the name, the icon, the top box and the rule itself are
+// the user's to edit or delete, and nothing puts them back.
 
 import Foundation
 
@@ -30,13 +30,13 @@ enum StarterSetup {
     LabelRule(
       id: priorityRuleId,
       name: "Priority",
-      judge: .intelligence,
-      conditions: [],
-      prompt: """
-      Needs my attention today: someone is blocked on me, I am asked \
-      directly for a review, an answer or a decision, or something is \
-      broken for users right now.
-      """,
+      filter: RuleFilter(conditions: [
+        .question("""
+        Needs my attention today: someone is blocked on me, I am asked \
+        directly for a review, an answer or a decision, or something is \
+        broken for users right now.
+        """),
+      ]),
       labelIds: [priorityLabelId],
       pinsToTop: true
     ),

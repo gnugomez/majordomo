@@ -133,14 +133,24 @@ enum RuleField: String, Codable, CaseIterable, Sendable {
   /// Whether any notification on the target is unread; the operator and
   /// value are ignored.
   case unread
+  /// A yes-or-no question put to the on-device model: the value is the
+  /// question, in the user's words, and the operator is ignored. The
+  /// answers are the model's, kept per subject; the condition only reads
+  /// them.
+  case question
 }
 
 extension RuleField {
-  /// The fields a notification carries itself — all that label and inbox
-  /// rules test.
+  /// The fields a notification carries itself — what a label or inbox
+  /// rule's condition rows offer.
   static let itemFields: [RuleField] = [
     .repo, .title, .body, .author, .kind, .reason, .state, .provider, .account, .upstreamLabel, .mention,
   ]
+
+  /// Every field a board's card answers — what a board's condition rows
+  /// offer. A question comes in through a row of its own, never as a
+  /// field to pick.
+  static let cardFields: [RuleField] = allCases.filter { $0 != .question }
 
   /// A yes-or-no test of its own: the operator and value are ignored.
   var isFlag: Bool {
@@ -165,50 +175,34 @@ enum RuleOperator: String, Codable, CaseIterable, Sendable {
   static let composable: [RuleOperator] = [.is, .contains, .matches]
 }
 
-/// One test inside a rule; a rule holds when every condition holds.
+/// One test inside a filter's group (RuleFilter).
 struct RuleCondition: Codable, Hashable, Sendable {
   var field: RuleField
   var op: RuleOperator = .is
   var value: String = ""
-  /// Inverts the test ("repo is not …").
+  /// Inverts the test ("repo is not …"); on a question, holds when the
+  /// model answered no.
   var negated: Bool = false
 }
 
-/// How a rule combines its conditions.
+/// How a group combines its conditions, and a filter its groups.
 enum RuleMatch: String, Codable, CaseIterable, Sendable {
-  /// Every condition must hold.
+  /// Every one must hold.
   case all
-  /// One condition holding is enough.
+  /// One holding is enough.
   case any
 }
 
-/// What a rule decides with.
-enum RuleJudge: String, Codable, CaseIterable, Sendable {
-  /// The item's own fields, tested logically — `conditions`.
-  case conditions
-  /// A question put to the on-device model in the user's own words —
-  /// `prompt`. The answer is cached per item; nothing here evaluates it.
-  case intelligence
-}
-
-/// A rule: when it holds for an item, its labels are added to it. A
-/// conditions rule holds when its conditions do — all of them, or any one
-/// with `match: .any`; an intelligence rule holds when the model answered
-/// yes to its prompt. Rules are independent — each matching rule
-/// contributes, and the item ends up with the union.
+/// A rule: when its filter holds for an item, its labels are added to it.
+/// Rules are independent — each matching rule contributes, and the item
+/// ends up with the union.
 struct LabelRule: Identifiable, Codable, Hashable, Sendable {
   var id: String
   var name: String
   var enabled: Bool = true
-  /// How this rule decides. The unused side is kept, not cleared: a rule
-  /// switched to the model and back finds its conditions where it left
-  /// them.
-  var judge: RuleJudge = .conditions
-  var match: RuleMatch = .all
-  var conditions: [RuleCondition]
-  /// The question the model answers about each notification — an
-  /// intelligence rule's whole definition, in the user's words.
-  var prompt: String = ""
+  /// What an item must satisfy. An empty filter matches nothing: a rule
+  /// without conditions is a draft, not a catch-all.
+  var filter: RuleFilter
   var labelIds: [LabelId]
   /// Whether a matching item is MOVED rather than copied: it shows only
   /// in what this rule applies, and nowhere else — the catch-all
@@ -221,34 +215,43 @@ struct LabelRule: Identifiable, Codable, Hashable, Sendable {
 
 extension LabelRule {
   private enum CodingKeys: String, CodingKey {
-    case id, name, enabled, judge, match, conditions, prompt, labelIds, movesItems, pinsToTop
+    case id, name, enabled, filter, labelIds, movesItems, pinsToTop
   }
 
-  /// Rules stored before `match`, the move fields, or the model existed
-  /// require every condition, move nothing, are judged by their
-  /// conditions, and stay out of the top box.
+  /// A rule stored flat: one list of conditions with its match, or — a
+  /// rule the model decided — a prompt.
+  private enum FlatKeys: String, CodingKey {
+    case judge, match, conditions, prompt
+  }
+
+  /// Rules stored before the move fields existed move nothing and stay
+  /// out of the top box. A rule stored flat becomes a filter of one group:
+  /// its conditions, every one required unless it said any — or, when the
+  /// model decided it, its prompt as the group's one Apple Intelligence
+  /// check.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     name = try container.decode(String.self, forKey: .name)
     enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-    judge = try container.decodeIfPresent(RuleJudge.self, forKey: .judge) ?? .conditions
-    match = try container.decodeIfPresent(RuleMatch.self, forKey: .match) ?? .all
-    conditions = try container.decode([RuleCondition].self, forKey: .conditions)
-    prompt = try container.decodeIfPresent(String.self, forKey: .prompt) ?? ""
+    if container.contains(.filter) {
+      filter = try container.decode(RuleFilter.self, forKey: .filter)
+    } else {
+      filter = try Self.flatFilter(decoder.container(keyedBy: FlatKeys.self))
+    }
     labelIds = try container.decode([LabelId].self, forKey: .labelIds)
     movesItems = try container.decodeIfPresent(Bool.self, forKey: .movesItems) ?? false
     pinsToTop = try container.decodeIfPresent(Bool.self, forKey: .pinsToTop) ?? false
   }
 
-  /// The question this rule puts to the model, or nil when it has none to
-  /// ask — a conditions rule, or an intelligence rule still being written.
-  var question: String? {
-    guard judge == .intelligence else {
-      return nil
+  private static func flatFilter(_ flat: KeyedDecodingContainer<FlatKeys>) throws -> RuleFilter {
+    if try flat.decodeIfPresent(String.self, forKey: .judge) == "intelligence" {
+      let prompt = try flat.decodeIfPresent(String.self, forKey: .prompt) ?? ""
+      return RuleFilter(conditions: [.question(prompt)])
     }
-    let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
+    let match = try flat.decodeIfPresent(RuleMatch.self, forKey: .match) ?? .all
+    let conditions = try flat.decodeIfPresent([RuleCondition].self, forKey: .conditions) ?? []
+    return RuleFilter(conditions: conditions, match: match)
   }
 
   /// The inboxes this rule hides a matching item from, given every inbox

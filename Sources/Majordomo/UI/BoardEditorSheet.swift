@@ -78,7 +78,18 @@ struct BoardEditorSheet: View {
   private var scopeSection: some View {
     VStack(alignment: .leading, spacing: 6) {
       sectionTitle("Cards", caption: "Which issues and pull requests the board takes. With no conditions it takes them all.")
-      RuleBox(rule: $draft.scope, accounts: model.accounts, emptyText: "Every card")
+      FilterEditor(
+        filter: $draft.scope,
+        accounts: model.accounts,
+        fields: RuleField.cardFields,
+        live: true,
+        newCondition: RuleCondition(field: .repo),
+        emptyText: "Every card",
+        questionHint: questionHint(model, subject: "card")
+      )
+      .padding(8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .settingsCard()
     }
   }
 
@@ -105,20 +116,21 @@ struct BoardEditorSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       sectionTitle(
         "Columns",
-        caption: "Read left to right: a card goes in the first column with a way in that holds. Open cards no column takes show under Other, finished ones under Done."
+        caption: "Read left to right: a card goes in the first column whose conditions hold. Open cards no column takes show under Other, finished ones under Done."
       )
-      ForEach(Array(draft.columns.enumerated()), id: \.element.id) { index, column in
+      ForEach($draft.columns) { $column in
+        let index = draft.columns.firstIndex { $0.id == column.id } ?? 0
         ColumnEditor(
-          column: column,
+          column: $column,
           accounts: model.accounts,
+          questionHint: questionHint(model, subject: "card"),
           canMoveLeft: index > 0,
           canMoveRight: index < draft.columns.count - 1,
-          onChange: { draft.columns[index] = $0 },
           onMove: { offset in
             draft.columns.swapAt(index, index + offset)
           },
           onRemove: {
-            draft.columns.remove(at: index)
+            draft.columns.removeAll { $0.id == column.id }
           }
         )
       }
@@ -169,30 +181,24 @@ struct BoardEditorSheet: View {
   }
 }
 
-/// One column: its name, its place among the others, and its ways in.
+/// One column: its name, its place among the others, and the filter that
+/// fills it — its groups the ways a card gets in.
 private struct ColumnEditor: View {
-  let column: BoardColumn
+  @Binding var column: BoardColumn
   let accounts: [AccountState]
+  let questionHint: String
   let canMoveLeft: Bool
   let canMoveRight: Bool
-  let onChange: (BoardColumn) -> Void
   let onMove: (Int) -> Void
   let onRemove: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 6) {
-        TextField("Column name", text: Binding(
-          get: { column.name },
-          set: { name in
-            var updated = column
-            updated.name = name
-            onChange(updated)
-          }
-        ))
-        .textFieldStyle(.roundedBorder)
-        .font(.system(size: 13, weight: .medium))
-        .frame(maxWidth: 240)
+        TextField("Column name", text: $column.name)
+          .textFieldStyle(.roundedBorder)
+          .font(.system(size: 13, weight: .medium))
+          .frame(maxWidth: 240)
         Spacer()
         Button {
           onMove(-1)
@@ -208,9 +214,7 @@ private struct ColumnEditor: View {
         }
         .disabled(!canMoveRight)
         .help("Move right: it is tried later")
-        Button {
-          onRemove()
-        } label: {
+        Button(action: onRemove) {
           Image(systemName: "trash")
         }
         .help("Remove this column")
@@ -218,111 +222,17 @@ private struct ColumnEditor: View {
       .buttonStyle(.borderless)
       .controlSize(.small)
 
-      if column.rules.isEmpty {
-        Text("Filled by hand: no way in, so only the cards you drag here.")
-          .font(.system(size: 11))
-          .foregroundStyle(.secondary)
-      }
-      ForEach(Array(column.rules.enumerated()), id: \.offset) { index, rule in
-        HStack(alignment: .top, spacing: 6) {
-          if index > 0 {
-            Text("or")
-              .font(.system(size: 11, weight: .medium))
-              .foregroundStyle(.secondary)
-              .frame(width: 18)
-              .padding(.top, 9)
-          }
-          RuleBox(
-            rule: Binding(
-              get: { rule },
-              set: { changed in
-                var updated = column
-                updated.rules[index] = changed
-                onChange(updated)
-              }
-            ),
-            accounts: accounts,
-            emptyText: "No conditions: matches nothing yet",
-            onRemove: {
-              var updated = column
-              updated.rules.remove(at: index)
-              onChange(updated)
-            }
-          )
-        }
-      }
-      Button {
-        var updated = column
-        updated.rules.append(BoardRule(conditions: [RuleCondition(field: .assignee, op: .is, value: "@me")]))
-        onChange(updated)
-      } label: {
-        Label(column.rules.isEmpty ? "Add a Way In" : "Add Another Way In", systemImage: "plus")
-      }
-      .buttonStyle(.borderless)
-      .controlSize(.small)
+      FilterEditor(
+        filter: $column.filter,
+        accounts: accounts,
+        fields: RuleField.cardFields,
+        live: true,
+        newCondition: RuleCondition(field: .assignee, op: .is, value: "@me"),
+        emptyText: "Filled by hand: no conditions, so only the cards you drag here.",
+        questionHint: questionHint
+      )
     }
     .padding(12)
     .settingsCard()
-  }
-}
-
-/// A set of conditions with its all-or-any switch, as a box of rows.
-private struct RuleBox: View {
-  @Binding var rule: BoardRule
-  let accounts: [AccountState]
-  let emptyText: String
-  var onRemove: (() -> Void)?
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 4) {
-        Text("When")
-        Picker("Match", selection: $rule.match) {
-          Text("all").tag(RuleMatch.all)
-          Text("any").tag(RuleMatch.any)
-        }
-        .labelsHidden()
-        .controlSize(.small)
-        .fixedSize()
-        Text("of these hold")
-        Spacer()
-        if let onRemove {
-          Button {
-            onRemove()
-          } label: {
-            Image(systemName: "xmark")
-          }
-          .buttonStyle(.borderless)
-          .help("Remove this way in")
-        }
-      }
-      .font(.system(size: 11, weight: .medium))
-      .foregroundStyle(.secondary)
-      ForEach(Array(rule.conditions.enumerated()), id: \.offset) { index, condition in
-        ConditionRow(
-          condition: condition,
-          accounts: accounts,
-          fields: RuleField.allCases,
-          live: true,
-          onChange: { rule.conditions[index] = $0 },
-          onRemove: { rule.conditions.remove(at: index) }
-        )
-      }
-      if rule.conditions.isEmpty {
-        Text(emptyText)
-          .font(.system(size: 12))
-          .foregroundStyle(.secondary)
-      }
-      Button {
-        rule.conditions.append(RuleCondition(field: .repo))
-      } label: {
-        Label("Add Condition", systemImage: "plus")
-      }
-      .buttonStyle(.borderless)
-      .controlSize(.small)
-    }
-    .padding(8)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
   }
 }

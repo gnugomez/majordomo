@@ -143,11 +143,12 @@ func suggestionCandidates(
 }
 
 /// What the user's existing rules already test for, in candidate-signature
-/// form, so a pattern they have already handled is never offered again.
+/// form, so a pattern they have already handled is never offered again: a
+/// plain "is" test anywhere in a rule's filter, and a group's pair of them.
 func coveredSignatures(in rules: [LabelRule]) -> Set<String> {
   var covered = Set<String>()
-  for rule in rules {
-    let single = rule.conditions.filter { $0.op == .is && !$0.negated }
+  for group in rules.flatMap(\.filter.groups) {
+    let single = group.conditions.filter { $0.op == .is && !$0.negated && $0.field != .question }
     for condition in single {
       covered.insert("\(condition.field.rawValue)=\(condition.value.lowercased())|")
     }

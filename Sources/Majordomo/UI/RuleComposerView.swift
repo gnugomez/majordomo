@@ -169,7 +169,7 @@ private struct ProposalCard: View {
   }
 
   private var matchLine: String {
-    let count = model.items.filter { LabelEngine.matches(proposal.rule, $0) }.count
+    let count = RuleEngine.matching(proposal.rule.filter, among: model.items).count
     return switch count {
     case 0: "Nothing in the inbox matches it yet"
     case 1: "Matches 1 item now"

@@ -1,6 +1,8 @@
 // The UI-facing state: the latest AppState snapshot the engine pushed, plus
-// view state both windows share, plus the action methods. Actions need no
-// optimistic update — the engine is in-process and pushes immediately.
+// view state both windows share, plus the action methods. Actions mostly
+// need no optimistic update — the engine is in-process and pushes
+// immediately; the edits a keystroke or a drag must answer at once apply
+// here first, and the push echoes them.
 
 import AppKit
 import Observation
@@ -48,11 +50,14 @@ final class AppModel {
   private(set) var boards: [Board] = []
   /// What the boards' cards know about their targets, by key.
   private(set) var targets: [String: TrackedTarget] = [:]
-  /// Every card the inbox's notifications make, newest activity first —
-  /// before any board's scope or columns. Built once per state push: the
-  /// inbox keeps every notification it was ever given, and boards and
-  /// their badges redraw far more often than the state changes.
-  private(set) var cards: [BoardCard] = []
+  /// Where each board's cards go, by board id, as the engine's sweep
+  /// placed them; the views narrow it by the search and the pills
+  /// (`placement(of:)`).
+  private(set) var placements: [BoardId: BoardPlacement] = [:] {
+    didSet {
+      narrowedPlacements = [:]
+    }
+  }
   /// Labels and rules the on-device model suggests, waiting on the user —
   /// empty while `suggestionsEnabled` is off.
   private(set) var suggestions: [Suggestion] = []
@@ -80,11 +85,7 @@ final class AppModel {
   private(set) var connecting = false
   private(set) var connectError: String?
   /// Ticked every 30s so relative timestamps stay fresh.
-  private(set) var now = Date() {
-    didSet {
-      placements = [:]
-    }
-  }
+  private(set) var now = Date()
 
   // Shared view state.
   /// Which inbox is showing; remembered across launches.
@@ -206,7 +207,6 @@ final class AppModel {
     // that reads the property, equal value or not, and a push repeats
     // most of the state unchanged. Toolbar items redraw with a fade, so a
     // push that touched only one card would flicker the whole toolbar.
-    let cardsStale = items != state.items || targets != state.targets || accounts != state.accounts
     assignIfChanged(\.items, state.items)
     assignIfChanged(\.accounts, state.accounts)
     assignIfChanged(\.labels, state.labels)
@@ -214,10 +214,7 @@ final class AppModel {
     assignIfChanged(\.sidebarLayout, state.sidebar)
     assignIfChanged(\.boards, state.boards)
     assignIfChanged(\.targets, state.targets)
-    if cardsStale {
-      cards = BoardEngine.cards(items: state.items, targets: state.targets, accounts: state.accounts)
-      placements = [:]
-    }
+    assignIfChanged(\.placements, state.placements)
     assignIfChanged(\.suggestions, suggestionsActive ? state.suggestions : [])
     assignIfChanged(\.lastSyncAt, state.lastSyncAt)
     assignIfChanged(\.syncing, state.syncing)
@@ -544,47 +541,50 @@ final class AppModel {
     sidebarSelection.board.flatMap { id in boards.first { $0.id == id } }
   }
 
-  /// What a board placement is remembered by.
-  private struct PlacementKey: Hashable {
-    let board: Board
+  /// What a narrowed placement is remembered by.
+  private struct NarrowingKey: Hashable {
+    let board: BoardId
     let search: String
     let picks: [Facet: String]
   }
 
-  /// Placements already worked out for the current cards and time. The
-  /// board, each pill's menu, and the sidebar badge all ask on every
-  /// redraw, and a selection or a hover is a redraw.
-  @ObservationIgnored private var placements: [PlacementKey: BoardEngine.Placement] = [:]
+  /// Placements already narrowed for the current ones. The board, each
+  /// pill's menu, and the window's subtitle all ask on every redraw, and a
+  /// selection or a hover is a redraw.
+  @ObservationIgnored private var narrowedPlacements: [NarrowingKey: BoardPlacement] = [:]
 
-  /// A board's cards placed, narrowed by the search and by the pills —
-  /// all of them but `except`'s, for that pill's own menu.
+  /// A board's cards as the engine placed them, narrowed by the search
+  /// and by the pills — all of them but `except`'s, for that pill's own
+  /// menu. Narrowing never moves a card: each is placed on its own, so
+  /// leaving some out changes nothing for the rest.
   func placement(
     of board: Board, search: String = "", picks: [Facet: String] = [:], except: Facet? = nil
-  ) -> BoardEngine.Placement {
-    // Read on every call, a held placement too: the views asking observe
-    // what they read, and one that stopped reading the cards would never
-    // hear that they changed.
-    let cards = cards
-    let now = now
+  ) -> BoardPlacement {
+    // Read on every call, a narrowed placement too: the views asking
+    // observe what they read, and one that stopped reading the placements
+    // would never hear that they changed.
+    let placed = placements[board.id] ?? BoardPlacement()
     let narrowing = picks.filter { $0.key != except }
-    let key = PlacementKey(board: board, search: search, picks: narrowing)
-    if let held = placements[key] {
+    guard !narrowing.isEmpty || !search.trimmingCharacters(in: .whitespaces).isEmpty else {
+      return placed
+    }
+    let key = NarrowingKey(board: board.id, search: search, picks: narrowing)
+    if let held = narrowedPlacements[key] {
       return held
     }
-    let narrowed = matchingFacets(matchingSearch(cards, search), narrowing)
-    let placed = BoardEngine.place(narrowed, on: board, now: now, isFinished: BoardEngine.isFinished)
-    // Every edit to a board or a search keystroke is a new key; a handful
-    // is all one screen ever needs at once.
-    if placements.count >= 24 {
-      placements = [:]
+    let kept = matchingFacets(matchingSearch(placed.allCards, search), narrowing)
+    let narrowed = placed.narrowed(to: Set(kept.map(\.id)))
+    // Every search keystroke is a new key; a handful is all one screen
+    // ever needs at once.
+    if narrowedPlacements.count >= 24 {
+      narrowedPlacements = [:]
     }
-    placements[key] = placed
-    return placed
+    narrowedPlacements[key] = narrowed
+    return narrowed
   }
 
   func setBoards(_ boards: [Board]) {
     self.boards = boards
-    placements = [:]
     Task {
       await engine?.setBoards(boards)
     }
@@ -636,11 +636,14 @@ final class AppModel {
   }
 
   /// Puts a card in a column of the board by hand, or (nil) hands it back
-  /// to the board's rules.
+  /// to the board's filters. A card put somewhere lands there at once; the
+  /// engine's sweep, a moment later, confirms it.
   func pin(_ card: BoardCard, to column: String?, on board: BoardId) {
     if let index = boards.firstIndex(where: { $0.id == board }) {
       boards[index].pins[card.id] = column.map { BoardPin(column: $0, state: card.state) }
-      placements = [:]
+    }
+    if let column, let placed = placements[board] {
+      placements[board] = placed.pinning(card, to: column)
     }
     Task {
       await engine?.setPin(board: board, card: card.id, column: column, state: card.state)

@@ -233,44 +233,93 @@ enum DemoData {
     let rules = [
       LabelRule(
         id: "demo-rule-team", name: "Teammates",
-        match: .any,
-        conditions: [
+        filter: RuleFilter(conditions: [
           RuleCondition(field: .author, op: .is, value: "mona"),
           RuleCondition(field: .author, op: .is, value: "sasha"),
-        ],
+        ], match: .any),
         labelIds: [teamInbox]
       ),
       LabelRule(
         id: "demo-rule-crash", name: "Crashes are urgent",
-        match: .any,
-        conditions: [
+        filter: RuleFilter(conditions: [
           RuleCondition(field: .title, op: .contains, value: "crash"),
           RuleCondition(field: .body, op: .contains, value: "crash"),
-        ],
+        ], match: .any),
         labelIds: [urgentLabel]
       ),
       LabelRule(
         id: "demo-rule-upstream", name: "Upstream urgent",
-        conditions: [RuleCondition(field: .upstreamLabel, op: .is, value: "urgent")],
+        filter: RuleFilter(conditions: [RuleCondition(field: .upstreamLabel, op: .is, value: "urgent")]),
         labelIds: [urgentLabel]
       ),
       LabelRule(
         id: "demo-rule-infra", name: "Infra repos",
-        conditions: [RuleCondition(field: .repo, op: .is, value: "acme/infra")],
+        filter: RuleFilter(conditions: [RuleCondition(field: .repo, op: .is, value: "acme/infra")]),
         labelIds: [infraLabel]
+      ),
+      // Groups joined by "and", each an "or" of its own: ops work, asked
+      // of me.
+      LabelRule(
+        id: "demo-rule-ops", name: "Ops work on me",
+        filter: RuleFilter(match: .all, groups: [
+          RuleGroup(match: .any, conditions: [
+            RuleCondition(field: .repo, op: .is, value: "acme/infra"),
+            RuleCondition(field: .repo, op: .is, value: "acme/deploy"),
+          ]),
+          RuleGroup(match: .any, conditions: [
+            RuleCondition(field: .reason, op: .is, value: "review_requested"),
+            RuleCondition(field: .reason, op: .is, value: "assigned"),
+          ]),
+        ]),
+        labelIds: [infraLabel]
+      ),
+      // A cheap condition and an Apple Intelligence check in one group:
+      // the model is only asked about issues.
+      LabelRule(
+        id: "demo-rule-user-bugs", name: "Bugs users hit",
+        filter: RuleFilter(conditions: [
+          RuleCondition(field: .kind, op: .is, value: "issue"),
+          .question("Is this a bug that people are running into right now, rather than an idea or a chore?"),
+        ]),
+        labelIds: [urgentLabel]
       ),
       LabelRule(
         id: "demo-rule-bots", name: "Bot chores can wait",
-        conditions: [
+        filter: RuleFilter(conditions: [
           RuleCondition(field: .author, op: .contains, value: "[bot]"),
           RuleCondition(field: .mention, negated: true),
-        ],
+        ]),
         labelIds: [laterLabel],
         // Moving, with nothing chosen: the bot's pull request shows in
         // Later and nowhere else.
         movesItems: true
       ),
     ]
+
+    // A second board beside the starter one: every pull and merge request
+    // (two groups, either one), sorted by what a review needs — the first
+    // column asks Apple Intelligence about the change.
+    let reviews = Board(
+      id: "demo-board-reviews",
+      name: "Reviews",
+      symbol: "eye",
+      scope: RuleFilter(match: .any, groups: [
+        RuleGroup(conditions: [RuleCondition(field: .kind, op: .is, value: "pull")]),
+        RuleGroup(conditions: [RuleCondition(field: .kind, op: .is, value: "merge")]),
+      ]),
+      columns: [
+        BoardColumn(id: "demo-reviews-careful", name: "Careful Look", filter: RuleFilter(conditions: [
+          RuleCondition(field: .reviewer, op: .is, value: "@me"),
+          .question("Could this change break production — storage, billing, or how things are deployed?"),
+        ])),
+        BoardColumn(id: "demo-reviews-mine", name: "Mine to Review", filter: RuleFilter(conditions: [
+          RuleCondition(field: .reviewer, op: .is, value: "@me"),
+        ])),
+        BoardColumn(id: "demo-reviews-ready", name: "Ready", filter: RuleFilter(conditions: [
+          RuleCondition(field: .review, op: .is, value: "approved"),
+        ])),
+      ]
+    )
 
     // Two patterns the model would have noticed, waiting on an answer:
     // neither signature is covered by the rules above, so they behave
@@ -385,7 +434,9 @@ enum DemoData {
       labels: labels,
       rules: rules,
       suggestions: suggestions,
-      targets: tracked
+      targets: tracked,
+      boards: [GitForgeBoards.myWork, reviews],
+      boardsSeeded: true
     )
   }
 

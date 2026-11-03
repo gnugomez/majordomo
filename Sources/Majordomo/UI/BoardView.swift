@@ -38,7 +38,7 @@ private let stripBackground = Color(nsColor: NSColor(name: nil) { appearance in
 struct BoardView: View {
   let model: AppModel
   let board: Board
-  let placement: BoardEngine.Placement
+  let placement: BoardPlacement
   /// Room above the column headers for what floats over the board's top
   /// edge (the filter pills).
   var topInset: CGFloat = 0
@@ -209,7 +209,7 @@ struct BoardView: View {
   private func headerHelp(_ column: DrawnColumn) -> String {
     switch column.kind {
     case .column:
-      board.columns.first { $0.id == column.id }?.rules.isEmpty == true
+      board.columns.first { $0.id == column.id }?.filter.isEmpty == true
         ? "Filled by hand: drag cards here"
         : "Cards the rules place here, and any you drag here"
     case .other:

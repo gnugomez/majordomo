@@ -215,7 +215,7 @@ struct MainWindowView: View {
   // MARK: Board
 
   /// The board's cards, narrowed by the search and the pills.
-  private func boardPlacement(_ board: Board) -> BoardEngine.Placement {
+  private func boardPlacement(_ board: Board) -> BoardPlacement {
     model.placement(of: board, search: model.searchText, picks: model.facetPicks)
   }
 
@@ -251,7 +251,7 @@ struct MainWindowView: View {
   }
 
   @ViewBuilder
-  private func boardPane(_ board: Board, placement: BoardEngine.Placement) -> some View {
+  private func boardPane(_ board: Board, placement: BoardPlacement) -> some View {
     if !model.hasAccounts {
       boardEmptyState(
         symbol: "tray",
