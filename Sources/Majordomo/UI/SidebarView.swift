@@ -109,10 +109,7 @@ struct SidebarView: View {
   /// folders in the user's order, hidden ones skipped.
   @ViewBuilder
   private func categoryRows(account: AccountState?) -> some View {
-    let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } } ?? model.items
-    let labels = model.catalog.sectionLabels(for: account?.provider)
-    let rows = sidebarRows(layout: model.sidebarLayout, categories: categorize(items, into: categories(for: labels)))
-    ForEach(rows) { row in
+    ForEach(model.sidebarRows(for: account)) { row in
       SidebarRowView(row: row, sectionKey: account?.id ?? "all", account: account, model: model)
     }
   }
@@ -158,7 +155,7 @@ private struct SidebarRowView: View {
       SidebarFolderGroup(
         folder: folder,
         sectionKey: sectionKey,
-        unreadCount: unreadThreadCount(in: rows),
+        unreadCount: model.unreadThreads(in: folder.id, account: account),
         openSettings: { model.openSettings?() }
       ) {
         ForEach(rows) { child in
@@ -185,7 +182,7 @@ private struct SidebarRowView: View {
     }
     // Unread threads, not items — the badge matches the rows the list
     // will actually show.
-    .badge(groupIntoThreads(category.items).count { !$0.read })
+    .badge(model.unreadThreads(in: category.id, account: account))
     .tag(SidebarSelection(account: account?.id, category: category.id))
     .contextMenu {
       if category.spec.labelId != nil {
