@@ -1,11 +1,12 @@
 // Right pane of the main window: everything AppModel knows about the
-// selected thread, then its target in full — who opened it and what it
-// says, the latest comments and reviews — as the background refresh stored
-// it, read from disk, as a timeline of cards on a gray pane. A target the
-// refresh hasn't reached yet is asked for ahead of it. A multi-member
-// thread stacks its messages as cards of the same kind under the shared
-// header. The images the bodies show come through the item's own account
-// (AppModel.bodyImages), handed down in the environment.
+// selected thread — where its target stands now, who it is assigned to and
+// who is still asked to review it — then its target in full: who opened it
+// and what it says, the latest comments and reviews, as the background
+// refresh stored it, read from disk, as a timeline of cards on a gray
+// pane. A target the refresh hasn't reached yet is asked for ahead of it.
+// A multi-member thread stacks its messages as cards of the same kind
+// under the shared header. The images the bodies show come through the
+// item's own account (AppModel.bodyImages), handed down in the environment.
 
 import SwiftUI
 
@@ -29,7 +30,13 @@ struct PreviewView: View {
       let conversation = loadedConversation(load)
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          PreviewHeader(model: model, thread: thread)
+          PreviewHeader(
+            model: model,
+            thread: thread,
+            status: model.targetStatus(for: thread),
+            snapshot: snapshot(of: item),
+            conversation: conversation
+          )
 
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
@@ -103,6 +110,12 @@ struct PreviewView: View {
     }
   }
 
+  /// What the latest refresh said about the item's target; nil when it
+  /// points at nothing tracked, or no refresh has described it yet.
+  private func snapshot(of item: InboxItem) -> TargetSnapshot? {
+    spec(for: item.provider).boardKey(for: item).flatMap { model.targets[$0]?.snapshot }
+  }
+
   private func loadedConversation(_ load: AppModel.ConversationLoad?) -> TargetConversation? {
     if case .loaded(let conversation) = load {
       return conversation
@@ -150,15 +163,22 @@ struct PreviewView: View {
   }
 }
 
-/// The title, the state and reason capsules, and the facts.
+/// The title; the state and reason capsules with where the target's
+/// review, checks, and merging stand under them; then the facts. The
+/// target reads as it stands now: a pull request merged since its
+/// notification came reads merged.
 private struct PreviewHeader: View {
   let model: AppModel
   let thread: InboxThread
+  let status: TargetStatus?
+  let snapshot: TargetSnapshot?
+  /// For the faces of the people the facts name.
+  let conversation: TargetConversation?
 
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
   var body: some View {
-    let item = thread.lead
+    let item = status?.presenting(thread.lead) ?? thread.lead
     let providerSpec = spec(for: item.provider)
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
@@ -168,17 +188,25 @@ private struct PreviewHeader: View {
         .textSelection(.enabled)
     }
 
-    HStack(spacing: 6) {
-      if let capsule = providerSpec.stateCapsule(for: item) {
-        CapsuleTag(text: capsule.label, tint: capsule.color)
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        if let capsule = providerSpec.stateCapsule(for: item) {
+          CapsuleTag(text: capsule.label, tint: capsule.color)
+        }
+        if thread.items.count == 1 {
+          // A single notification's reason belongs to the header; a
+          // thread's reasons ride on its messages below.
+          ReasonCapsule(item: item)
+        }
+        if !thread.read {
+          CapsuleTag(text: "unread", tint: Color.accentColor)
+        }
       }
-      if thread.items.count == 1 {
-        // A single notification's reason belongs to the header; a
-        // thread's reasons ride on its messages below.
-        ReasonCapsule(item: item)
-      }
-      if !thread.read {
-        CapsuleTag(text: "unread", tint: Color.accentColor)
+      if let status, !status.marks.isEmpty {
+        // Glyph and word each, wrapping as the pane narrows.
+        FlowLayout(spacing: 10, lineSpacing: 4) {
+          TargetBadges(status: status, density: .regular)
+        }
       }
     }
 
@@ -200,6 +228,19 @@ private struct PreviewHeader: View {
         GridRow {
           fieldLabel("Author")
           Text(highlighted(author, terms: highlightTerms)).textSelection(.enabled)
+        }
+      }
+      if let assignees = snapshot?.assignees, !assignees.isEmpty {
+        GridRow {
+          fieldLabel(assignees.count == 1 ? "Assignee" : "Assignees")
+          PeopleLine(logins: assignees, provider: item.provider, conversation: conversation)
+        }
+      }
+      if let reviewers = snapshot?.reviewers, !reviewers.isEmpty {
+        GridRow {
+          fieldLabel(reviewers.count == 1 ? "Reviewer" : "Reviewers")
+            .help("Asked for a review and yet to give one")
+          PeopleLine(logins: reviewers, provider: item.provider, conversation: conversation)
         }
       }
       GridRow {
@@ -264,6 +305,29 @@ private struct PreviewHeader: View {
     Text(text)
       .foregroundStyle(.secondary)
       .gridColumnAlignment(.leading)
+  }
+}
+
+/// People the facts name, each by face and login, on one line.
+private struct PeopleLine: View {
+  let logins: [String]
+  let provider: ProviderId
+  /// Where a face is found, when the conversation names its picture.
+  let conversation: TargetConversation?
+
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ForEach(logins, id: \.self) { login in
+        HStack(spacing: 5) {
+          PersonAvatar(login: login, avatarUrl: conversation?.avatarUrl(of: login), provider: provider, size: 16)
+          Text(highlighted(login, terms: highlightTerms))
+            .lineLimit(1)
+            .textSelection(.enabled)
+        }
+      }
+    }
   }
 }
 
