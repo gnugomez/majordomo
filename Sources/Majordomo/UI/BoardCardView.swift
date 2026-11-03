@@ -25,6 +25,17 @@ struct BoardCardView: View, Equatable {
   /// False when the lanes already name the repository.
   let showsRepo: Bool
 
+  /// The search's terms, painted where they match — the title,
+  /// repository, and author the board's search reads.
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  /// The card and how it is shown; the search terms reach the view
+  /// through the environment, which redraws it on its own.
+  nonisolated static func == (lhs: BoardCardView, rhs: BoardCardView) -> Bool {
+    lhs.card == rhs.card && lhs.now == rhs.now && lhs.selected == rhs.selected
+      && lhs.pinned == rhs.pinned && lhs.showsRepo == rhs.showsRepo
+  }
+
   var body: some View {
     let providerSpec = spec(for: card.lead.provider)
     let item = card.presentedItem
@@ -48,7 +59,7 @@ struct BoardCardView: View, Equatable {
         }
       }
 
-      Text(card.title)
+      Text(highlighted(card.title, terms: highlightTerms))
         .font(.app(.body, weight: .medium))
         .lineLimit(3)
         .fixedSize(horizontal: false, vertical: true)
@@ -84,7 +95,7 @@ struct BoardCardView: View, Equatable {
     let author = card.snapshot?.author ?? card.lead.author
     return HStack(spacing: 4) {
       if showsRepo {
-        Text(card.lead.repo)
+        Text(highlighted(card.lead.repo, terms: highlightTerms))
           .truncationMode(.middle)
           .layoutPriority(0)
       }
@@ -94,7 +105,7 @@ struct BoardCardView: View, Equatable {
           .layoutPriority(2)
       }
       if let author {
-        Text(showsRepo || reference != nil ? "· \(author)" : author)
+        Text(highlighted(showsRepo || reference != nil ? "· \(author)" : author, terms: highlightTerms))
           .truncationMode(.tail)
           .layoutPriority(1)
       }
