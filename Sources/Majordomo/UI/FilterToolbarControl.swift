@@ -42,6 +42,10 @@ struct FilterToolbarControl: View, Equatable {
       model.toggleFilter()
     }
     .help("Show only unread, or clear the filter; the arrow sets what it shows")
+    // The toolbar builds the menu once and keeps it, ticks and titles as
+    // they were; keyed by what the filter holds, any pick makes a fresh
+    // one. The summary spells out the whole set.
+    .id(summary)
     .accessibilityValue(active ? "Filtering by \(summary)" : "No filter")
   }
 

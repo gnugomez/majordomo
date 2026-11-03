@@ -185,7 +185,11 @@ reintroduces the bug:
   moves it, with the preview toggle, into the toolbar's overflow menu,
   which lists the menu but not the glyph's click; the menu's Unread Only
   and Clear Filters do what the click does, there and for VoiceOver,
-  which names no chevron.
+  which names no chevron. The control is keyed by its summary
+  (`.id(summary)`): the toolbar builds an item's menu once and keeps it,
+  so without the key a reopened menu shows the ticks and submenu titles
+  it was built with, whatever has been picked since — keying its content
+  instead changes nothing. A pick rebuilds the item, once per pick.
 - A board's column headers ride a `safeAreaBar` on its one two-axis
   ScrollView (BoardView), drawn as an overlay on a clear band rather than
   laid out directly: a row as wide as the grid would widen the bar, and
