@@ -248,13 +248,7 @@ reintroduces the bug:
   MainWindowView): NavigationSplitView keeps no widths across launches,
   so each column notes its width straight into the defaults — not into
   state, which would redraw the toolbar on every step of a drag — and
-  opens at it, as its ideal, the next time. The preview keeps two, one
-  beside the inbox and one beside the boards (`PreviewWidths`), and its
-  ideal is the width of where it stands, which it opens at. The split
-  holds the inspector's width across a move with the preview open, so it
-  keeps the width it had until it next opens; meanwhile its width is the
-  other place's, and is never noted as this one's, nor is any width while
-  the preview is closed or closing. The width modifiers sit
+  opens at it, as its ideal, the next time. The width modifiers sit
   outside that `onGeometryChange`: wrapped in it, the split no longer
   finds them and falls back to its own widths.
 - The inbox list draws `rowPage` threads and offers the rest behind a row
