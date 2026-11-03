@@ -195,6 +195,7 @@ struct ConditionRow: View {
     case .assignee, .reviewer, .lastCommenter: return "@me"
     case .review: return "approved"
     case .checks: return "failure"
+    case .merge: return "conflicts"
     case .milestone: return "v2.0"
     case .provider, .account, .mention, .unread, .question: return ""
     }

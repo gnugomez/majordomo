@@ -149,6 +149,7 @@ extension BoardCard: RuleSubject {
     case .reviewer: return snapshot?.reviewers ?? []
     case .review: return [snapshot?.review ?? ""]
     case .checks: return [snapshot?.checks ?? ""]
+    case .merge: return [snapshot?.merge ?? ""]
     case .milestone: return [snapshot?.milestone ?? ""]
     case .lastCommenter: return [snapshot?.lastCommenter ?? ""]
     case .mention, .unread, .question: return []

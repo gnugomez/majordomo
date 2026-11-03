@@ -227,6 +227,7 @@ enum GitForgeVisuals {
     case .reason: ["mentioned", "review_requested", "approval_required", "assigned", "author", "commented", "subscribed", "activity"]
     case .review: ["approved", "changes_requested", "review_required"]
     case .checks: ["success", "failure", "pending"]
+    case .merge: ["ready", "conflicts", "behind", "blocked", "unstable", "unresolved"]
     default: []
     }
   }

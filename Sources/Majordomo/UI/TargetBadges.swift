@@ -43,14 +43,17 @@ struct TargetStatus: Equatable, Sendable {
   }
 
   /// The marks in reading order: the user's own review first, then where
-  /// review, checks, and merging stand, as the provider draws them.
+  /// review, checks, and merging stand, as the provider draws them. While
+  /// the target waits on the user, the review mark shows only when it asks
+  /// for something of its own (changes requested): a plain "review
+  /// required" beside "awaiting your review" says the same thing twice.
   var marks: [StatusMark] {
     let providerSpec = spec(for: provider)
     var marks: [StatusMark] = []
     if awaitsYou {
       marks.append(StatusMark(id: "you", badge: awaitingYourReview))
     }
-    if let badge = review.flatMap(providerSpec.reviewBadge) {
+    if let badge = review.flatMap(providerSpec.reviewBadge), !awaitsYou || badge.needsAction {
       marks.append(StatusMark(id: "review", badge: badge))
     }
     if let badge = checks.flatMap(providerSpec.checksBadge) {

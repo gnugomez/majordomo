@@ -127,6 +127,8 @@ enum RuleField: String, Codable, CaseIterable, Sendable {
   case review
   /// The provider token for where the target's checks stand ("failure"…).
   case checks
+  /// The provider token for whether the target can merge ("conflicts"…).
+  case merge
   case milestone
   /// Whoever wrote the target's latest comment.
   case lastCommenter
