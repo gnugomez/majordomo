@@ -320,7 +320,7 @@ final class AppModel {
     switchFilterOn()
   }
 
-  /// The filter glyph's click, ⌘L, and the menus' Filter item: switches
+  /// The filter glyph's click, ⌘L, and the menu's Turn Filter On/Off: switches
   /// the filter off or back on, its set kept either way. With nothing set
   /// there is nothing to switch on, so it starts with Unread Only.
   func toggleFilter() {

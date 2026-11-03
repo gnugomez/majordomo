@@ -69,9 +69,12 @@ private struct FilterMenuItems: View {
   let values: FacetValues
 
   var body: some View {
-    // The glyph's click, here too: the toolbar's overflow menu lists this
-    // menu but not the click, and VoiceOver names no chevron.
-    Toggle("Filter", isOn: Binding(get: { model.filterActive }, set: { _ in model.toggleFilter() }))
+    // The glyph's click, here too, worded as what it does: the toolbar's
+    // overflow menu lists this menu but not the click, and VoiceOver names
+    // no chevron.
+    Button(model.filterActive ? "Turn Filter Off" : "Turn Filter On") {
+      model.toggleFilter()
+    }
     Divider()
     Toggle("Unread Only", isOn: Binding(get: { model.unreadOnly }, set: { model.setUnreadOnly($0) }))
     Divider()
