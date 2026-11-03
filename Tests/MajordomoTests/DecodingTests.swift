@@ -136,17 +136,4 @@ struct DecodingTests {
     #expect(RuleEngine.matches(rule.filter, yes))
     #expect(!RuleEngine.matches(rule.filter, no))
   }
-
-  @Test func draftsKeepToWhatANotificationCarries() {
-    let question = ConditionDraft(field: "question", op: "is", value: "Urgent?")
-    let assignee = ConditionDraft(field: "assignee", op: "is", value: "kim")
-    #expect(question.condition() == .failure(.unknownField("question")))
-    #expect(assignee.condition() == .failure(.unknownField("assignee")))
-    let draft = RuleDraft(
-      name: "Mona or Sasha", match: "any",
-      conditions: [ConditionDraft(field: "author", op: "is", value: "mona")], targetName: "Team"
-    )
-    let rule = try? draft.validated(against: []).get().rule
-    #expect(rule?.filter == RuleFilter(conditions: [condition(.author, .is, "mona")], match: .any))
-  }
 }

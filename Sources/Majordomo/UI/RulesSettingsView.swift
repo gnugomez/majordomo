@@ -4,8 +4,10 @@
 // with their switches, and the editor for the selected one: its filter
 // (groups of conditions, Apple Intelligence checks among them — the board
 // editor's own FilterEditor), what it applies, and a live preview of the
-// items it matches right now. Edits commit whole user rules through the
-// model; text commits on submit or blur.
+// items it matches right now. A rule drafted from a sentence takes the
+// editor's place until it is added or discarded, in the height the editor
+// had, so the page keeps its size to show it. Edits commit whole user
+// rules through the model; text commits on submit or blur.
 
 import SwiftUI
 
@@ -16,8 +18,9 @@ private let editorHeight: CGFloat = 430
 /// scrolls — a built-in rule's four conditions fit, and a partly visible
 /// row below is the scroll cue.
 private let filterBoxMaxHeight: CGFloat = 220
-/// Rows the match preview shows at most; the header carries the true count.
-private let previewCap = 50
+/// Rows a match preview shows at most — the editor's and a draft's; the
+/// header carries the true count.
+let rulePreviewCap = 50
 /// The match preview never shrinks below this, however tall the rule is.
 private let previewMinHeight: CGFloat = 100
 
@@ -31,22 +34,20 @@ struct RulesSettingsView: View {
   /// The built-in rules fold away by default: the user's own are the
   /// point of the page, and there are a dozen provider rules.
   @State private var builtinExpanded = false
-  /// True while the composer holds a draft awaiting confirmation.
-  @State private var draftPending = false
+  @State private var composer = RuleComposer()
+  /// What was selected when a draft came in, to go back to should it go
+  /// away without another rule being picked.
+  @State private var selectionBeforeDraft: String?
+  /// The height the editor's slot last took, which a draft takes over so
+  /// the page keeps its size while the draft waits on the user.
+  @State private var slotHeight = editorHeight
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      // One thing asking to be judged at a time: a draft waiting on the
-      // user takes the place of the suggestion card.
-      if !draftPending, model.suggestionsActive {
+      if model.suggestionsActive {
         SuggestionsView(model: model)
       }
-      RuleComposerView(model: model) { added in
-        selection = added.id
-        autoSelected = true
-      } onPending: { pending in
-        draftPending = pending
-      }
+      RuleComposerView(model: model, composer: composer)
 
       List(selection: $selection) {
         DisclosureGroup(isExpanded: $builtinExpanded) {
@@ -105,19 +106,14 @@ struct RulesSettingsView: View {
       .controlSize(.small)
       .fixedSize()
 
-      if let rule = selected {
-        RuleEditor(model: model, rule: committing(rule))
-      } else if let rule = selectedBuiltin {
-        // Read-only: the conditions as they are, nothing to change.
-        RuleEditor(model: model, rule: .constant(rule), definedBy: providerName(defining: rule))
-      } else {
-        VStack {
-          Text(model.rules.isEmpty ? "Add a rule to label items automatically." : "Select a rule to edit its conditions and labels.")
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+      if let draft = composer.draft {
+        DraftReview(model: model, draft: draft, onAdd: addDraft) {
+          composer.draft = nil
         }
-        .frame(maxWidth: .infinity, minHeight: editorHeight, maxHeight: editorHeight)
-        .settingsCard()
+        .frame(maxWidth: .infinity, minHeight: slotHeight, maxHeight: slotHeight)
+      } else {
+        editorSlot
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { slotHeight = $0 }
       }
     }
     .padding(16)
@@ -130,6 +126,50 @@ struct RulesSettingsView: View {
         autoSelected = true
       }
     }
+    // A draft stands in for the editor, so the list lets go of its
+    // selection while one shows — and takes it back when the draft goes
+    // without the user picking another rule meanwhile.
+    .onChange(of: composer.draft == nil) { _, noDraft in
+      if !noDraft {
+        selectionBeforeDraft = selection
+        selection = nil
+      } else if selection == nil {
+        selection = selectionBeforeDraft
+      }
+    }
+    // Picking a rule puts the editor back, which sets the draft aside.
+    .onChange(of: selection) {
+      if selection != nil {
+        composer.draft = nil
+      }
+    }
+  }
+
+  /// The selected rule's editor, or the placeholder when there is none.
+  @ViewBuilder private var editorSlot: some View {
+    if let rule = selected {
+      RuleEditor(model: model, rule: committing(rule))
+    } else if let rule = selectedBuiltin {
+      // Read-only: the conditions as they are, nothing to change.
+      RuleEditor(model: model, rule: .constant(rule), definedBy: providerName(defining: rule))
+    } else {
+      VStack {
+        Text(model.rules.isEmpty ? "Add a rule to label items automatically." : "Select a rule to edit its conditions and labels.")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, minHeight: editorHeight, maxHeight: editorHeight)
+      .settingsCard()
+    }
+  }
+
+  /// Saves the draft and selects the rule it became.
+  private func addDraft() {
+    guard let rule = composer.add(model) else {
+      return
+    }
+    selection = rule.id
+    autoSelected = true
   }
 
   /// The selected USER rule; a built-in row selects nothing editable.
@@ -265,7 +305,7 @@ private struct RuleEditor: View {
         .foregroundStyle(.secondary)
         .lineLimit(1)
       List {
-        ForEach(matches.prefix(previewCap)) { item in
+        ForEach(matches.prefix(rulePreviewCap)) { item in
           MatchRow(item: item, now: model.now)
         }
         if matches.isEmpty {
@@ -425,7 +465,7 @@ private struct RuleEditor: View {
 /// One matching item in the preview: the kind/state glyph in the
 /// provider's color, the title, and the where-and-when line with the
 /// provider mark — the inbox row's shape, minus everything interactive.
-private struct MatchRow: View {
+struct MatchRow: View {
   let item: InboxItem
   let now: Date
 
