@@ -2,8 +2,9 @@
 // selects — the inbox list or a board — with the selection's preview in
 // an inspector at the trailing edge. The column dividers, the sidebar's and
 // the inspector's glass and slide, the content scrolling on beneath them,
-// keyboard navigation, and the toolbar are all the system's. Settings open
-// in their own window.
+// the lists' keyboard navigation, and the toolbar are all the system's; a
+// board reads its keys itself (BoardKeyboard). Settings open in their own
+// window.
 
 import AppKit
 import SwiftUI

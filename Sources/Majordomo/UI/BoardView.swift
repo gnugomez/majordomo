@@ -9,7 +9,10 @@
 // opens its preview in the window's inspector and clicking it again puts
 // it away, double-clicking opens it in the browser, and dragging it
 // onto a column puts it there by hand — locally, like every label; nothing
-// is written upstream.
+// is written upstream. The board takes the keyboard too (BoardKeyboard):
+// the arrows walk the cards (BoardGrid), bringing each into view, Space
+// shows or puts away its preview, Return or ⌘↓ opens it in the browser,
+// and Escape puts the preview away, then the selection.
 
 import SwiftUI
 
@@ -31,6 +34,17 @@ private let gridBottomInset: CGFloat = 16
 /// `headerGap` above its edge, leaving the rest as air under the toolbar.
 private let headerBand: CGFloat = 44
 private let headerGap: CGFloat = 8
+/// The room a card the arrows pick keeps around it once scrolled into
+/// view: its slot's padding and the gap to the next column.
+private let revealMargin: CGFloat = 16
+/// The room above the first card of a slot: enough for the lane's title.
+private let laneRevealMargin: CGFloat = 44
+
+/// Names the frame the arrows scroll into view around a card, apart from
+/// the card's own identity in its slot.
+private struct RevealFrame: Hashable {
+  let card: String
+}
 
 struct BoardView: View {
   let model: AppModel
@@ -51,6 +65,9 @@ struct BoardView: View {
   /// A reference the board's own body never reads, so scrolling redraws
   /// the header row alone.
   @State private var scroll = BoardScroll()
+  /// The board's hold on the keyboard, for a click to take it and the
+  /// arrows to remember their aim.
+  @State private var keyboard = BoardFocus()
 
   /// One column as drawn: one of the board's own, Other, or Done.
   private struct DrawnColumn: Identifiable {
@@ -78,13 +95,53 @@ struct BoardView: View {
   var body: some View {
     let columns = drawnColumns
     let lanes = lanes(of: columns)
+    ScrollViewReader { proxy in
+      grid(lanes, columns: columns, proxy: proxy)
+        // The preview Space opens narrows the pane as it slides in, and
+        // may cover the card it shows: once the pane holds still, the card
+        // comes back into view.
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.containerSize.width
+        } action: { _, _ in
+          keyboard.paneResized { card in
+            if model.selectedCardId == card {
+              reveal(card, proxy: proxy, animated: true)
+            }
+          }
+        }
+        // Behind the grid, the whole pane's size: the view that holds the
+        // board's keyboard.
+        .background {
+          BoardKeyboard(focus: keyboard, label: "\(board.name) board") { key in
+            answer(key, lanes: lanes, columns: columns, proxy: proxy)
+          }
+          // Out of VoiceOver's tree: there, the pane's size, it would
+          // answer for every card under the pointer. Holding the keyboard,
+          // it still speaks as the board.
+          .accessibilityHidden(true)
+        }
+    }
+  }
+
+  private func grid(_ lanes: [Lane], columns: [DrawnColumn], proxy: ScrollViewProxy) -> some View {
     let scroll = scroll
-    ScrollView([.horizontal, .vertical]) {
+    return ScrollView([.horizontal, .vertical]) {
       // Lazy, so a board with dozens of repositories builds the lanes in
       // view and the rest as they scroll in.
       LazyVStack(alignment: .leading, spacing: 10) {
         ForEach(lanes) { lane in
           laneView(lane, columns: columns)
+            // Which lanes are built, for the arrows: a card in one that
+            // isn't is reached by scrolling to its lane first, and comes
+            // into view as the lane does.
+            .onAppear {
+              if let card = keyboard.laneAppeared(lane.id) {
+                reveal(card, proxy: proxy, animated: false)
+              }
+            }
+            .onDisappear {
+              keyboard.laneDisappeared(lane.id)
+            }
         }
       }
       .padding(.horizontal, gridInset)
@@ -92,11 +149,13 @@ struct BoardView: View {
       // bar with the cards.
       .padding(.top, gridTopInset)
       .padding(.bottom, gridBottomInset)
-      // A click on the board around the cards puts the selection down.
+      // A click on the board around the cards puts the selection down and
+      // hands the board the keyboard.
       .background {
         Color.clear
           .contentShape(Rectangle())
           .onTapGesture {
+            keyboard.take()
             model.selectedCardId = nil
           }
       }
@@ -195,6 +254,108 @@ struct BoardView: View {
     }
   }
 
+  private func slotKey(lane: String, column: String) -> String {
+    "\(lane)|\(column)"
+  }
+
+  /// The cards a slot draws: the first `slotCardLimit`, or every one once
+  /// the slot shows them all.
+  private func shownCards(_ cards: [BoardCard], slot: String) -> [BoardCard] {
+    expandedSlots.contains(slot) ? cards : Array(cards.prefix(slotCardLimit))
+  }
+
+  // MARK: Keys
+
+  /// The cards as drawn, for the arrows to walk: the lanes in order, each
+  /// a cell per column holding what its slot shows.
+  private func navigationGrid(_ lanes: [Lane], columns: [DrawnColumn]) -> BoardGrid {
+    BoardGrid(
+      lanes: lanes.map { lane in
+        BoardGrid.Lane(id: lane.id, cells: columns.map { column in
+          shownCards(lane.slots[column.id] ?? [], slot: slotKey(lane: lane.id, column: column.id)).map(\.id)
+        })
+      },
+      collapsed: collapsedLanes
+    )
+  }
+
+  /// Answers a key the board's keyboard read; false hands it on. A key
+  /// selects, shows, and opens just as a click on the card does.
+  private func answer(_ key: BoardKey, lanes: [Lane], columns: [DrawnColumn], proxy: ScrollViewProxy) -> Bool {
+    let selected = model.selectedCardId.flatMap { placement.byId[$0] }
+    switch key {
+    case .move(let move):
+      let from = model.selectedCardId
+      let aim = keyboard.cursor?.card == from ? keyboard.cursor?.aim : nil
+      // At an edge the key is still the board's: nothing moves, and
+      // nothing beeps.
+      guard let next = navigationGrid(lanes, columns: columns).step(move, from: from, aim: aim) else {
+        return true
+      }
+      keyboard.cursor = next
+      keyboard.cancelReveal()
+      model.selectedCardId = next.card
+      reveal(next.card, proxy: proxy, animated: false)
+      if let card = placement.byId[next.card] {
+        keyboard.announce(card.title)
+      }
+      return true
+    case .open:
+      guard let selected else {
+        return false
+      }
+      model.openThread(selected.items.map(\.id))
+      return true
+    case .togglePreview:
+      guard let selected else {
+        return false
+      }
+      if !model.cardPreviewShown {
+        keyboard.revealAfterResize(selected.id)
+      }
+      withAnimation {
+        model.cardPreviewShown.toggle()
+      }
+      return true
+    case .dismiss:
+      if selected != nil, model.cardPreviewShown {
+        withAnimation {
+          model.cardPreviewShown = false
+        }
+        return true
+      }
+      guard model.selectedCardId != nil else {
+        return false
+      }
+      model.selectedCardId = nil
+      keyboard.cursor = nil
+      return true
+    }
+  }
+
+  /// Scrolls the least that brings the card into view — not at all while
+  /// it is in view already. An arrow scrolls at once: a scroll animating
+  /// as the next key arrives drops that key's scroll, and the selection
+  /// would run off the pane.
+  private func reveal(_ card: String, proxy: ScrollViewProxy, animated: Bool) {
+    // In a lane the lazy grid hasn't built, the card isn't there to scroll
+    // to yet: the lane comes into view first, and the card once it is
+    // built (the lane's onAppear).
+    if let lane = placement.byId[card].map(laneKey), !keyboard.isShown(lane) {
+      keyboard.revealOnArrival(card, in: lane)
+      proxy.scrollTo(lane, anchor: nil)
+      return
+    }
+    let frame = RevealFrame(card: card)
+    if animated {
+      withAnimation(.snappy(duration: 0.2)) {
+        proxy.scrollTo(frame, anchor: nil)
+      }
+    } else {
+      proxy.scrollTo(frame, anchor: nil)
+    }
+  }
+
   // MARK: Pieces
 
   private func header(_ column: DrawnColumn) -> ColumnHeaderRow.Header {
@@ -267,17 +428,17 @@ struct BoardView: View {
   }
 
   private func cell(_ column: DrawnColumn, cards: [BoardCard], lane: String) -> some View {
-    let key = "\(lane)|\(column.id)"
+    let key = slotKey(lane: lane, column: column.id)
     let droppable = column.kind == .column
     // Without lanes the one row of slots runs at least the pane's height,
     // so a column reads as a column and a drop lands anywhere in it; with
     // lanes every slot of a row takes the row's height, empty ones too.
     let stretch = board.lanes == .none ? max(0, laneViewport - gridTopInset - gridBottomInset) : 0
     let expanded = expandedSlots.contains(key)
-    let shown = expanded ? cards : Array(cards.prefix(slotCardLimit))
+    let shown = shownCards(cards, slot: key)
     return VStack(spacing: 8) {
       ForEach(shown) { card in
-        cardView(card)
+        cardView(card, leadsSlot: card.id == shown.first?.id)
       }
       if cards.count > slotCardLimit {
         Button(expanded ? "Show Fewer" : "Show All \(cards.count)") {
@@ -322,21 +483,42 @@ struct BoardView: View {
     }
   }
 
-  private func cardView(_ card: BoardCard) -> some View {
+  /// One card, `leadsSlot` when it is the first its slot draws.
+  private func cardView(_ card: BoardCard, leadsSlot: Bool) -> some View {
     // The faces come the way a preview's do, through the account the
     // card's lead notification came through.
     let faces = model.bodyImages(for: card.lead)
+    let selected = model.selectedCardId == card.id
     return BoardCardView(
       card: card,
       now: model.now,
-      selected: model.selectedCardId == card.id,
+      selected: selected,
       pinned: placement.pinned.contains(card.id),
       showsRepo: board.lanes != .repository
     )
     .equatable()
     .environment(\.bodyImages, faces)
+    .accessibilityAddTraits(selected ? .isSelected : [])
+    // What the arrows scroll into view: the card and a margin around it,
+    // so it comes to rest clear of the header band, the scrollers, and
+    // the pane's edges rather than flush against them — and at the head
+    // of its slot, its lane's title above it too.
+    .background {
+      Color.clear
+        .id(RevealFrame(card: card.id))
+        .padding(EdgeInsets(
+          top: -(leadsSlot ? laneRevealMargin : revealMargin),
+          leading: -revealMargin,
+          bottom: -revealMargin,
+          trailing: -revealMargin
+        ))
+    }
     .contentShape(RoundedRectangle(cornerRadius: 9))
     .onTapGesture {
+      // A click hands the board the keyboard, the arrows going on from
+      // the card it picks.
+      keyboard.take()
+      keyboard.cursor = nil
       // The second click of a double-click is the browser's, not a toggle.
       guard (NSApp.currentEvent?.clickCount ?? 1) < 2 else {
         return

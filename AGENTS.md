@@ -134,12 +134,27 @@ reintroduces the bug:
   24 pt, the table's own value without the floor, through KVO on
   `verticalLineScroll`. Trackpads scroll by exact distances and never
   read it.
-- The inbox list takes the window's first responder through an AppKit
-  claim (`claimsInitialKeyboardFocus`, InitialKeyboardFocus): SwiftUI hands
+- The inbox list and a board take the window's first responder through
+  an AppKit claim (`KeyboardClaim`, InitialKeyboardFocus): SwiftUI hands
   a NavigationSplitView's keyboard to the sidebar, and neither
   `defaultFocus` on the split view nor a `FocusState` on the content column
   moves it — the arrow keys would walk the sidebar until a row is clicked.
-  It fires once per window and never out of a text field.
+  The list claims for its table (`claimsInitialKeyboardFocus`), a board
+  for its own key view (BoardKeyboard), an AppKit view behind the grid
+  that reads the arrows, Space, Return, and Escape. The claim fires once
+  per window — again only when nobody holds the keyboard, as after the
+  pane holding it is swapped for the other — and never out of a text
+  field, so the sidebar keeps its arrows while it has them.
+- A board's key view is `accessibilityHidden`: in SwiftUI's tree it is
+  the pane's size and answers VoiceOver's hit test over every card. As
+  first responder it still reports itself as the board, and each card the
+  arrows pick is announced. The arrows scroll without animation — a
+  scroll still animating when the next key lands leaves the selection off
+  the pane — to a clear frame around the card (`RevealFrame`), so it
+  rests clear of the header band and the scrollers; a card in a lane the
+  LazyVStack hasn't built is reached by scrolling to the lane and then to
+  the card in the lane's `onAppear`, since `scrollTo` finds nothing in an
+  unbuilt lane.
 - The filter glyph is an `NSImage` painted via a symbol configuration
   (MainWindowView.filterGlyph): the toolbar draws item images itself as
   templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
