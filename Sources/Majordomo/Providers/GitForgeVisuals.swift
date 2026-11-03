@@ -11,8 +11,8 @@ import SwiftUI
 protocol GitForgeSpec: ProviderSpec {}
 
 extension GitForgeSpec {
-  func symbol(for item: InboxItem) -> String {
-    GitForgeVisuals.symbol(for: item)
+  func glyph(for item: InboxItem) -> Glyph {
+    GitForgeVisuals.glyph(for: item)
   }
 
   func color(for item: InboxItem) -> Color {
@@ -25,6 +25,34 @@ extension GitForgeSpec {
 
   func reasonLabel(_ reason: String) -> String {
     GitForgeVisuals.reasonLabel(reason)
+  }
+
+  func boardKey(for item: InboxItem) -> String? {
+    GitForgeVisuals.targetUrl(item.url).map(\.key)
+  }
+
+  func shortReference(for item: InboxItem) -> String? {
+    GitForgeVisuals.targetUrl(item.url).map(\.reference)
+  }
+
+  func triggerCommentId(for item: InboxItem) -> String? {
+    GitForgeVisuals.commentAnchor(item.url)
+  }
+
+  func isFinished(state: String) -> Bool {
+    state == "closed" || state == "merged"
+  }
+
+  func reviewBadge(_ review: String) -> CardBadge? {
+    GitForgeVisuals.reviewBadge(review)
+  }
+
+  func checksBadge(_ checks: String) -> CardBadge? {
+    GitForgeVisuals.checksBadge(checks)
+  }
+
+  func tokens(for field: RuleField) -> [String] {
+    GitForgeVisuals.tokens(for: field)
   }
 }
 
@@ -49,15 +77,17 @@ enum GitForgeVisuals {
     item.kind == "pull" || item.kind == "merge"
   }
 
-  /// The kind glyph: SF Symbols standing in for the Octicons.
-  static func symbol(for item: InboxItem) -> String {
+  /// The kind glyph, the Octicon the forges themselves show for the
+  /// state: a draft and an unmerged close each have their own.
+  static func glyph(for item: InboxItem) -> Glyph {
     if item.kind == "issue" {
-      return item.state == "closed" ? "checkmark.circle" : "smallcircle.filled.circle"
+      return item.state == "closed" ? Octicon.issueClosed : Octicon.issueOpened
     }
     switch item.state {
-    case "merged": return "arrow.triangle.merge"
-    case "closed": return "xmark.circle"
-    default: return "arrow.triangle.branch"
+    case "merged": return Octicon.merge
+    case "closed": return Octicon.pullRequestClosed
+    case "draft": return Octicon.pullRequestDraft
+    default: return Octicon.pullRequest
     }
   }
 
@@ -81,6 +111,93 @@ enum GitForgeVisuals {
       return nil
     }
     return StateCapsule(label: state, color: stateColor(state))
+  }
+
+  /// An issue, pull or merge request url, as the key its notifications
+  /// share (anchors stripped) and the reference it reads as: "#" for
+  /// issues and pull requests, "!" for merge requests.
+  ///
+  /// Plain string work rather than a regex: boards key every notification
+  /// the app has ever kept, and this runs once for each.
+  static func targetUrl(_ url: String) -> (key: String, reference: String)? {
+    let page = url.utf8.firstIndex(of: UInt8(ascii: "#")).map { url[..<$0] } ?? url[...]
+    guard page.hasPrefix("https://") || page.hasPrefix("http://"),
+          let lastSlash = page.utf8.lastIndex(of: UInt8(ascii: "/")) else {
+      return nil
+    }
+    let number = page[page.index(after: lastSlash)...]
+    guard !number.isEmpty, number.utf8.allSatisfy({ $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }) else {
+      return nil
+    }
+    let head = page[..<lastSlash]
+    let marker: String
+    if head.hasSuffix("/issues") || head.hasSuffix("/pull") {
+      marker = "#"
+    } else if head.hasSuffix("/merge_requests") {
+      marker = "!"
+    } else {
+      return nil
+    }
+    return (key: String(page), reference: marker + number)
+  }
+
+  /// The comment a url's anchor points at, by its number: GitHub's
+  /// `#issuecomment-123`, GitLab's `#note_123`.
+  static func commentAnchor(_ url: String) -> String? {
+    guard let hash = url.utf8.lastIndex(of: UInt8(ascii: "#")) else {
+      return nil
+    }
+    let anchor = url[url.index(after: hash)...]
+    for prefix in ["issuecomment-", "note_"] where anchor.hasPrefix(prefix) {
+      let number = anchor.dropFirst(prefix.count)
+      return !number.isEmpty && number.utf8.allSatisfy({ $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") })
+        ? String(number) : nil
+    }
+    return nil
+  }
+
+  /// Review tokens, both forges: "approved", "changes_requested",
+  /// "review_required".
+  static func reviewBadge(_ review: String) -> CardBadge? {
+    switch review {
+    case "approved":
+      CardBadge(glyph: Octicon.checkCircle, label: "Approved", color: stateColor("open"))
+    case "changes_requested":
+      CardBadge(
+        glyph: Octicon.fileDiff, label: "Changes requested",
+        color: dynamicColor(light: 0xBC4C00, dark: 0xDB6D28)
+      )
+    case "review_required":
+      CardBadge(glyph: Octicon.eye, label: "Review required", color: stateColor(""))
+    default:
+      nil
+    }
+  }
+
+  /// Checks tokens, both forges: "success", "failure", "pending".
+  static func checksBadge(_ checks: String) -> CardBadge? {
+    switch checks {
+    case "success":
+      CardBadge(glyph: Octicon.check, label: "Checks passed", color: stateColor("open"))
+    case "failure":
+      CardBadge(glyph: Octicon.x, label: "Checks failed", color: stateColor("closed"))
+    case "pending":
+      CardBadge(glyph: Octicon.dotFill, label: "Checks running", color: dynamicColor(light: 0x9A6700, dark: 0xD29922))
+    default:
+      nil
+    }
+  }
+
+  /// The vocabulary of the token fields, as both forges speak it.
+  static func tokens(for field: RuleField) -> [String] {
+    switch field {
+    case .kind: ["issue", "pull", "merge"]
+    case .state: ["open", "draft", "closed", "merged"]
+    case .reason: ["mentioned", "review_requested", "approval_required", "assigned", "author", "commented", "subscribed", "activity"]
+    case .review: ["approved", "changes_requested", "review_required"]
+    case .checks: ["success", "failure", "pending"]
+    default: []
+    }
   }
 
   /// How each reason token reads in a capsule.

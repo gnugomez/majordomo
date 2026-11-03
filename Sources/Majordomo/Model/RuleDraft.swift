@@ -134,8 +134,8 @@ extension ConditionDraft {
       return .failure(.unknownOperator(op))
     }
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    // The mention field is the one test that needs no value.
-    if field != .mention {
+    // A flag field is the one test that needs no value.
+    if !field.isFlag {
       guard !trimmed.isEmpty else {
         return .failure(.emptyValue(field.rawValue))
       }

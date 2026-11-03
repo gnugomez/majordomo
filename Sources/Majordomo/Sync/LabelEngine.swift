@@ -55,10 +55,10 @@ enum LabelEngine {
     return assigned
   }
 
-  /// One condition against one item — for previews and tests; the batch
-  /// path above compiles patterns once instead.
-  static func holds(_ condition: RuleCondition, for item: InboxItem) -> Bool {
-    CompiledCondition(condition).holds(for: item)
+  /// One condition against one subject — for previews and tests; the
+  /// batch path above compiles patterns once instead.
+  static func holds(_ condition: RuleCondition, for subject: some RuleSubject) -> Bool {
+    CompiledCondition(condition).holds(for: subject)
   }
 
   /// One rule against one item, whatever its enabled state — the settings
@@ -109,8 +109,9 @@ private struct CompiledRule {
 
 /// One condition with its pattern prepared: a `*` glob (repo only) and a
 /// `matches` regex compile to NSRegularExpression up front; an invalid
-/// pattern compiles to nothing and never holds.
-private struct CompiledCondition {
+/// pattern compiles to nothing and never holds. Boards compile theirs the
+/// same way (BoardEngine).
+struct CompiledCondition {
   let condition: RuleCondition
   let regex: NSRegularExpression?
 
@@ -131,46 +132,35 @@ private struct CompiledCondition {
     }
   }
 
-  /// `mention` ignores operator and value; `upstreamLabel` holds when any
-  /// upstream label satisfies the test; `negated` inverts the outcome.
-  func holds(for item: InboxItem) -> Bool {
+  /// A flag field ignores operator and value; any other holds when one of
+  /// the subject's values for it passes (an issue's labels, its
+  /// assignees); `negated` inverts the outcome.
+  func holds(for subject: some RuleSubject) -> Bool {
     let outcome: Bool
-    switch condition.field {
-    case .mention:
-      outcome = item.isMention
-    case .upstreamLabel:
-      outcome = item.upstreamLabels.contains { test($0) }
-    case .repo:
-      outcome = test(item.repo)
-    case .title:
-      outcome = test(item.title)
-    case .body:
-      outcome = test(item.body ?? "")
-    case .author:
-      outcome = test(item.author ?? "")
-    case .kind:
-      outcome = test(item.kind)
-    case .reason:
-      outcome = test(item.reason)
-    case .state:
-      outcome = test(item.state ?? "")
-    case .provider:
-      outcome = test(item.provider.rawValue)
-    case .account:
-      outcome = test(item.accountId)
+    if condition.field.isFlag {
+      outcome = subject.flag(condition.field)
+    } else {
+      let values = subject.values(of: condition.field)
+      let own = subject.ownLogins
+      outcome = values.contains { test($0, own: own) }
     }
     return condition.negated ? !outcome : outcome
   }
 
-  private func test(_ value: String) -> Bool {
+  private func test(_ value: String, own: [String]) -> Bool {
     let pattern = condition.value.trimmingCharacters(in: .whitespacesAndNewlines)
     switch condition.op {
+    case .exists:
+      return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     // An empty value is an unset condition, never a match: `contains ""`
     // would hold for everything and `is ""` for every item missing the
     // field.
     case .is:
       if let regex {
         return regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+      }
+      if pattern.caseInsensitiveCompare("@me") == .orderedSame {
+        return own.contains { value.caseInsensitiveCompare($0) == .orderedSame }
       }
       return !pattern.isEmpty && value.caseInsensitiveCompare(pattern) == .orderedSame
     case .contains:

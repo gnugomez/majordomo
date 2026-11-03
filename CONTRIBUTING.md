@@ -36,7 +36,8 @@ Layers, lower never importing higher:
 - `Sources/Majordomo/Providers/` — one `ProviderClient` (API → items) and
   one `ProviderSpec` (presentation) per provider, registered in
   `providerSpecs`.
-- `Sources/Majordomo/Store/` — the JSON persistence and token encryption.
+- `Sources/Majordomo/Store/` — the JSON persistence and token encryption,
+  and the targets' conversations, a file each beside the store.
 - `Sources/Majordomo/Sync/` — the sync engine (an actor): fetch, reconcile,
   publish state.
 - `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
@@ -65,14 +66,31 @@ own, so the built-ins-first ordering is decided once.
 Adding a provider means:
 
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
-   tokens, and fetches an item's target in full (`fetchDetail`: the
-   description and latest comments, as Markdown) when the preview asks —
-   errors as human-readable `ProviderError` strings, which render verbatim
-   in the UI, a missing token scope named as such;
+   tokens, and refreshes the targets boards and previews are built from
+   (`fetchTargets`, at most `targetBatchLimit` per round: state,
+   assignees, reviewers, review and checks tokens, the latest commenter,
+   and for the keys it is asked to, the description and latest comments
+   as Markdown). The engine asks after new activity first, then fills in
+   the conversations it lacks; a target the provider won't show comes
+   back unreadable with the reason, and keys left out of the answer are
+   asked again next round. Errors are human-readable `ProviderError`
+   strings, which render verbatim in the UI, a missing token scope named
+   as such;
 2. a `ProviderSpec` with the presentation for those tokens and its built-in
    labels and rules (`GitForgeBuckets` builds the git-forge set), plus a
-   `previewScopeNote` when previews need a scope beyond the token hint's;
+   `previewScopeNote` when previews need a scope beyond the token hint's,
+   and the board hooks: which target an item is about (`boardKey`), the
+   comment it points at (`triggerCommentId`), which states are finished,
+   the review and checks badges, and the token vocabulary the board editor
+   offers;
 3. one registration line in `providerSpecs`.
+
+Boards (`Model/Board.swift`) are columns of rules over cards — one card per
+target, built by `BoardEngine` from the notifications pointing at it and
+the target's stored snapshot. Their conditions are the label rules' own
+(`RuleCondition`, compiled by `LabelEngine`), tested against a card instead
+of a notification through `RuleSubject`; the fields only a target has
+(assignee, review, checks…) are offered to board columns alone.
 
 Any number of accounts per provider can be connected; accounts are keyed by
 `AccountId`, never by provider.

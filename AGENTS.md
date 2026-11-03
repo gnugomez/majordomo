@@ -66,16 +66,16 @@ and RELEASING.md.
 Each of these fixes a real SwiftUI/AppKit-bridge failure; removing them
 reintroduces the bug:
 
-- The detail column's mark-read and open items are always present, merely
-  disabled when nothing is selected (MainWindowView): an empty detail
-  section sends the list column's toolbar items to the window's far corner
-  (a `ToolbarSpacer` instead draws a stray separator stub), and a section
-  whose item count changes shifts the filter a few points relative to
-  the search field, because a real item carries a glass background and a
-  hidden placeholder does not.
-- `NSHostingController.sizingOptions = []` on the main window
-  (MainWindowController): otherwise SwiftUI snaps the window back to its
-  preferred size after the autosaved frame restores — and autosaves that.
+- The inbox's mark-read and open items are always present, merely
+  disabled when nothing is selected (MainWindowView): a toolbar whose item
+  count changes shifts the filter a few points relative to the search
+  field, because a real item carries a glass background and a hidden
+  placeholder does not.
+- `NSHostingController.sizingOptions = [.minSize]` on the main window
+  (MainWindowController), never `.preferredContentSize`: that snaps the
+  window back to its preferred size after the autosaved frame restores —
+  and autosaves that. Without `.minSize`, a window narrower than the split
+  needs takes AppKit's layout down.
 - `shouldCascadeWindows = false` plus the CONTROLLER-level
   `windowFrameAutosaveName` (MainWindowController): window-level
   `setFrameAutosaveName` alone loses the position on every show.
@@ -85,13 +85,6 @@ reintroduces the bug:
 - `orderFrontRegardless()` after `NSApp.activate()` when opening windows:
   cooperative activation can deny the focus steal and the window would open
   buried.
-- `pairFilterWithSearch()` (MainWindowController) moves the toolbar's
-  trailing flexible space ahead of the filter item: SwiftUI lays the
-  trailing end out as [items][flexible space][search] and offers no
-  placement after the spacer (`.primaryAction`, `ToolbarSpacer`, and
-  `DefaultToolbarItem(kind: .search)` all land before it). It re-runs on
-  the toolbar's add/remove notifications because selection changes re-diff
-  the detail items.
 - The pinned spotlight is a list row keyed by its own shape
   (`spotlightKey`, InboxListView): a List row is measured once, when it
   arrives, and keeps that height — and the box arrives, grows (a summary is
@@ -134,7 +127,65 @@ reintroduces the bug:
   hard line at its foot. A List ignores `contentMargins` on macOS, so the
   room above the first row is a clear spacer row (InboxListView), keyed by
   its height for the spotlight's reason — a row is measured once, and only
-  a replaced row is measured again.
+  a replaced row is measured again. Over a board the same overlay sits
+  above the column headers, which a plain top padding moves down (no List
+  there to measure).
+- A board's column headers ride a `safeAreaBar` on its one two-axis
+  ScrollView (BoardView), drawn as an overlay on a clear band rather than
+  laid out directly: a row as wide as the grid would widen the bar, and
+  with it the pane, pushing the pills off its leading edge. A header row
+  outside the scroll view instead clips the cards at its foot, and a
+  vertical ScrollView nested in a horizontal one hides its scroller past
+  the grid's far end.
+- Over a board the board's menu stands in for the filter (MainWindowView),
+  and the inbox's mark-read and Open items are dropped rather than hidden:
+  a hidden toolbar item still draws its empty glass capsule. Switching
+  between the two runs with animations disabled — SwiftUI rebuilds the
+  toolbar's items either way, and animated they fade and morph. The
+  board's menu is a view that reads its own state
+  (BoardToolbarControls), with a fixed label and tooltip: content that
+  changes with a click or a selection makes SwiftUI rebuild the items,
+  and the cluster blinks.
+- Toolbar items redraw with a fade whenever the view that builds them
+  updates, so each toolbar control is a small view given only what
+  decides how it looks (`RefreshButton` watches `syncing`, the board's
+  menu the board, `PreviewToggle` whether a card is selected), and
+  `AppModel.apply` assigns only the properties a push changed — an
+  assignment wakes every reader, equal value or not, and selecting a
+  card pushes several times (the selection, marking it seen), each one
+  flickering every item in the bar.
+- The preview is an inspector in the detail column (MainWindowView). On
+  the NavigationSplitView itself, as Apple's Landmarks sample has it,
+  SwiftUI counts it twice in the window's minimum width (as a column, and
+  again as the room it covers over the content), and AppKit's layout
+  fails whenever it opens in a window narrower than that. In the detail
+  column the column's views sit under a clear layer that never changes
+  (`ZStack { … Color.clear }`, out of hit testing): with nothing in the
+  column holding still, every swap of one view for another — the list for
+  a board, the list's empty state for its rows — shrinks the inspector to
+  its narrowest, and the sidebar arriving in a narrow window takes the
+  layout down. The layer goes on top: beneath the views, it is what the
+  toolbar finds at the top of the pane, and with the inspector open the
+  toolbar draws a hard line under itself rather than fading the content
+  out beneath it. The
+  sidebar's and the inspector's slide, the content scrolling on beneath
+  both, and the toolbar's sections are all the system's.
+- The sidebar toggle is our own (`SidebarToggle`, MainWindowView), behind
+  a flexible spacer in the sidebar's stretch of the toolbar, and SwiftUI's
+  is removed (`.toolbar(removing: .sidebarToggle)`): SwiftUI's comes and
+  goes with how the window was set up. The toggle and View ▸ Toggle
+  Sidebar (⌃⌘S, AppDelegate) both go through `AppModel.sidebarShown`, so
+  the menu and SwiftUI's split never disagree.
+- The column widths persist through the defaults (`remembersWidth`,
+  MainWindowView): NavigationSplitView keeps no widths across launches,
+  so each column notes its width straight into the defaults — not into
+  state, which would redraw the toolbar on every step of a drag — and
+  opens at it, as its ideal, the next time. The width modifiers sit
+  outside that `onGeometryChange`: wrapped in it, the split no longer
+  finds them and falls back to its own widths.
+- The inbox list draws `rowPage` threads and offers the rest behind a row
+  (InboxListView): a List measures every row it is handed, and a long
+  history took seconds to show on opening and on every inbox switch.
 - Each pill draws its own `glassEffect` over a `.plain`-styled menu
   (FilterPillBar): a `Menu` given the `.glass` button style draws a flat
   gray fill, and inside a bar keeps only its label's icon.

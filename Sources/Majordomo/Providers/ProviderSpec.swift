@@ -28,6 +28,20 @@ struct StateCapsule: Sendable {
   let color: Color
 }
 
+/// An icon from a provider's own set, as SVG path data on a 16×16 grid
+/// — for what SF Symbols has no faithful stand-in for. GlyphImage draws it.
+struct Glyph: Hashable, Sendable {
+  let svg: String
+}
+
+/// A small glyph-and-word mark on a board card: where review or checks
+/// stand.
+struct CardBadge: Sendable {
+  let glyph: Glyph
+  let label: String
+  let color: Color
+}
+
 protocol ProviderSpec: Sendable {
   var id: ProviderId { get }
   var displayName: String { get }
@@ -44,8 +58,8 @@ protocol ProviderSpec: Sendable {
   func makeClient() -> any ProviderClient
   /// Best-effort avatar for a username when the API's URL is unknown.
   func fallbackAvatarURL(username: String) -> URL?
-  /// SF Symbol for an item's kind/state glyph.
-  func symbol(for item: InboxItem) -> String
+  /// An item's kind/state glyph.
+  func glyph(for item: InboxItem) -> Glyph
   /// Color for that glyph.
   func color(for item: InboxItem) -> Color
   /// The capsule when an item's state supersedes its reason, else nil.
@@ -68,6 +82,25 @@ protocol ProviderSpec: Sendable {
   /// Every provider's rules see every item; they test the provider's own
   /// tokens, so another provider's items simply never match.
   var builtinRules: [LabelRule] { get }
+  /// The target an item is about, as a key boards group cards by and the
+  /// client refreshes by; nil for items that point at nothing a card can
+  /// track (a repository-level alert).
+  func boardKey(for item: InboxItem) -> String?
+  /// How the provider names the target in a line of text ("#12", "!58").
+  func shortReference(for item: InboxItem) -> String?
+  /// The comment the notification points at, by the id its target's
+  /// conversation gives it (DetailComment.id); nil when it points at none.
+  func triggerCommentId(for item: InboxItem) -> String?
+  /// Whether a state token means the target is done with — Done on a
+  /// board, and no more refreshes until new activity.
+  func isFinished(state: String) -> Bool
+  /// A card's review mark for a review token; nil shows none.
+  func reviewBadge(_ review: String) -> CardBadge?
+  /// A card's checks mark for a checks token; nil shows none.
+  func checksBadge(_ checks: String) -> CardBadge?
+  /// Values a board column's condition can pick from for a token field
+  /// (kind, state, review, checks…), in the provider's own vocabulary.
+  func tokens(for field: RuleField) -> [String]
 }
 
 extension ProviderSpec {

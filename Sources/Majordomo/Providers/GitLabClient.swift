@@ -57,13 +57,6 @@ private struct GLTodo: Decodable {
   }
 }
 
-/// The fields the preview reads off an issue or merge request.
-private struct GLIssuable: Decodable {
-  let description: String?
-  /// Comments by people, GitLab's own system notes left out.
-  let user_notes_count: Int?
-}
-
 private struct GLNote: Decodable {
   let id: Int
   let body: String?
@@ -73,18 +66,73 @@ private struct GLNote: Decodable {
   let system: Bool?
 }
 
-/// Notes a detail fetch reads to find the latest comments: system notes
-/// crowd a busy merge request, so it reads past them.
-private let detailNotePage = 50
+/// What a board refresh reads off an issue or merge request; the
+/// merge-request-only fields come back nil on an issue.
+private struct GLTargetState: Decodable {
+  struct Milestone: Decodable {
+    let title: String?
+  }
 
-/// Where an item's target sits in the API, read off its web url
-/// (`{origin}/{project}/-/issues/{iid}#note_{id}`): the project, the
-/// collection and number, and the note the todo pointed at, if any.
+  struct Pipeline: Decodable {
+    let status: String?
+  }
+
+  let title: String?
+  let description: String?
+  let state: String?
+  let draft: Bool?
+  let work_in_progress: Bool?
+  let updated_at: String?
+  let author: GLTodo.GLAuthor?
+  let assignees: [GLTodo.GLAuthor]?
+  let reviewers: [GLTodo.GLAuthor]?
+  let labels: [String]?
+  let milestone: Milestone?
+  /// Comments by people, GitLab's own system notes left out.
+  let user_notes_count: Int?
+  let head_pipeline: Pipeline?
+  /// "requested_changes" once a reviewer asks for changes (newer instances).
+  let detailed_merge_status: String?
+}
+
+private struct GLApprovals: Decodable {
+  struct Approver: Decodable {
+    let user: GLTodo.GLAuthor?
+  }
+
+  let approved: Bool?
+  let approved_by: [Approver]?
+}
+
+/// Targets one refresh round reads at most. GitLab answers one target per
+/// request — its notes take another, a merge request's approvals a third
+/// — so a round stays small and the rest wait for the next.
+private let targetsPerRound = 15
+/// Requests in flight at once during a refresh.
+private let targetConcurrency = 4
+
+/// A pipeline status as a checks token; statuses that settle nothing
+/// (skipped, manual, canceled) show none.
+private func checksToken(_ status: String?) -> String? {
+  switch status {
+  case "success": "success"
+  case "failed": "failure"
+  case "created", "waiting_for_resource", "preparing", "pending", "running", "scheduled": "pending"
+  default: nil
+  }
+}
+
+/// Notes a refresh reads to find the latest comments: system notes crowd
+/// a busy merge request, so it reads past them.
+private let notePage = 50
+
+/// Where a target sits in the API, read off its key
+/// (`{origin}/{project}/-/issues/{iid}`): the project, and the collection
+/// and number.
 private struct GLTargetRef {
   let project: String
   let collection: String
   let iid: String
-  let noteId: String?
 
   /// The target's API url under the instance origin. GitLab addresses a
   /// project by its whole path, slashes encoded.
@@ -94,16 +142,30 @@ private struct GLTargetRef {
   }
 }
 
-private func detailTarget(_ url: String, origin: String) -> GLTargetRef? {
-  guard url.hasPrefix(origin + "/"),
-        let match = url.dropFirst(origin.count + 1).firstMatch(
-          of: #/^(.+?)/-/(issues|merge_requests)/(\d+)(?:#note_(\d+))?$/#
-        ) else {
+private func targetRef(_ key: String, origin: String) -> GLTargetRef? {
+  guard key.hasPrefix(origin + "/"),
+        let match = key.dropFirst(origin.count + 1).firstMatch(of: #/^(.+?)/-/(issues|merge_requests)/(\d+)$/#) else {
     return nil
   }
-  return GLTargetRef(
-    project: String(match.1), collection: String(match.2), iid: String(match.3), noteId: match.4.map(String.init)
-  )
+  return GLTargetRef(project: String(match.1), collection: String(match.2), iid: String(match.3))
+}
+
+/// One GET's answer.
+private enum Fetched<T> {
+  case found(T)
+  /// 404: gone, or out of the account's reach.
+  case missing
+  /// Any other failure, or an answer that wouldn't decode.
+  case failed
+}
+
+/// What one target's refresh came to.
+private enum TargetAnswer {
+  case refreshed(TargetRefresh)
+  /// GitLab won't show it; the reason, fit to show.
+  case unreadable(String)
+  /// The request failed in a way that says nothing of the target.
+  case unanswered
 }
 
 private func toDetailComment(_ note: GLNote) -> DetailComment? {
@@ -154,14 +216,20 @@ private func gitlabReason(_ raw: String) -> String {
 /// Upstream lifecycle state token, when the todo's target carries it.
 private func toItemState(_ todo: GLTodo) -> String? {
   guard let target = todo.target else { return nil }
-  switch target.state {
+  return stateToken(
+    target.state, mergeRequest: todo.target_type == "MergeRequest",
+    draft: target.draft == true || target.work_in_progress == true, title: target.title
+  )
+}
+
+/// GitLab's state as this provider's token. An open MR that is still a
+/// draft reads better as "draft"; the title prefix backstops older
+/// instances that omit the boolean fields.
+private func stateToken(_ state: String?, mergeRequest: Bool, draft: Bool, title: String?) -> String? {
+  switch state {
   case "opened":
-    // An open MR that is still a draft reads better as "draft". The title
-    // prefix backstops older instances that omit the boolean fields.
-    if todo.target_type == "MergeRequest",
-       target.draft == true
-       || target.work_in_progress == true
-       || (target.title ?? "").range(of: "^Draft:", options: [.regularExpression, .caseInsensitive]) != nil {
+    if mergeRequest,
+       draft || (title ?? "").range(of: "^Draft:", options: [.regularExpression, .caseInsensitive]) != nil {
       return "draft"
     }
     return "open"
@@ -298,59 +366,155 @@ struct GitLabClient: ProviderClient {
     return FetchResult(items: items, complete: complete)
   }
 
-  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail? {
+  var targetBatchLimit: Int { targetsPerRound }
+
+  func fetchTargets(_ config: AccountConfig, keys: [String], conversations: Set<String>) async throws -> TargetRound {
     let baseUrl = try resolveBaseUrl(config)
     let ctx = context(baseUrl)
-    guard let target = detailTarget(item.url, origin: baseUrl),
-          let targetUrl = URL(string: target.apiUrl(origin: baseUrl)) else {
-      return nil
+    let token = config.token
+    var round = TargetRound()
+    for start in stride(from: 0, to: keys.count, by: targetConcurrency) {
+      let wave = keys[start ..< min(start + targetConcurrency, keys.count)]
+      do {
+        try await withThrowingTaskGroup(of: (String, TargetAnswer).self) { group in
+          for key in wave {
+            guard let ref = targetRef(key, origin: baseUrl), let url = URL(string: ref.apiUrl(origin: baseUrl)) else {
+              round.unreadable[key] = "Majordomo can't ask GitLab about this one."
+              continue
+            }
+            let conversation = conversations.contains(key)
+            group.addTask {
+              let answer = try await self.refreshTarget(
+                url, mergeRequest: ref.collection == "merge_requests", conversation: conversation,
+                token: token, ctx: ctx
+              )
+              return (key, answer)
+            }
+          }
+          for try await (key, answer) in group {
+            switch answer {
+            case .refreshed(let refresh): round.refreshed[key] = refresh
+            case .unreadable(let reason): round.unreadable[key] = reason
+            case .unanswered: break
+            }
+          }
+        }
+      } catch {
+        // A refused token or a rate limit would fail the rest alike: they
+        // wait for the next round, and what earlier waves learned stands.
+        guard !round.refreshed.isEmpty || !round.unreadable.isEmpty else {
+          throw error
+        }
+        break
+      }
     }
-    let issuable: GLIssuable = try await getDetail(targetUrl, token: config.token, ctx: ctx)
-    let comments = await latestComments(of: targetUrl, token: config.token, ctx: ctx)
-    var trigger = target.noteId.flatMap { id in comments.first { $0.id == id } }
-    if trigger == nil, let id = target.noteId {
-      let note: GLNote? = try? await getDetail(targetUrl.appending(path: "notes/\(id)"), token: config.token, ctx: ctx)
-      trigger = note.flatMap(toDetailComment)
-    }
-    return ItemDetail(
-      description: truncatedBody(issuable.description, limit: detailTextLimit),
-      trigger: trigger,
-      comments: comments,
-      commentCount: issuable.user_notes_count
-    )
+    return round
   }
 
-  /// The latest comments by people, oldest first; a failure leaves the
-  /// conversation out rather than failing the whole preview.
-  private func latestComments(of targetUrl: URL, token: String, ctx: RequestContext) async -> [DetailComment] {
-    var components = URLComponents(url: targetUrl.appending(path: "notes"), resolvingAgainstBaseURL: false)
+  /// One target: the issue or merge request itself, its approvals for a
+  /// merge request, and its latest notes — for the latest comment's
+  /// author, and the conversation when one is wanted. A rejected token or
+  /// a refusal of the target itself throws, since every other target
+  /// would fail the same way.
+  private func refreshTarget(
+    _ url: URL, mergeRequest: Bool, conversation: Bool, token: String, ctx: RequestContext
+  ) async throws -> TargetAnswer {
+    let target: GLTargetState
+    switch try await getTarget(url, token: token, ctx: ctx) as Fetched<GLTargetState> {
+    case .found(let found): target = found
+    case .missing:
+      return .unreadable("GitLab couldn't find this one — it may have been deleted, or your account no longer has access.")
+    case .failed: return .unanswered
+    }
+    guard let updatedAt = ISODate.parse(target.updated_at) else {
+      return .unanswered
+    }
+    // Approvals and notes are extras: an instance or tier that refuses
+    // them still leaves the target itself.
+    var approvals: GLApprovals?
+    if mergeRequest,
+       case .found(let found)? = try? await getTarget(url.appending(path: "approvals"), token: token, ctx: ctx)
+         as Fetched<GLApprovals> {
+      approvals = found
+    }
+    let approvers = Set((approvals?.approved_by ?? []).compactMap(\.user?.username))
+    let reviewers = (target.reviewers ?? []).compactMap(\.username)
+    let review: String? = if !mergeRequest {
+      nil
+    } else if target.detailed_merge_status == "requested_changes" {
+      "changes_requested"
+    } else if approvals?.approved == true, !approvers.isEmpty {
+      "approved"
+    } else if !reviewers.isEmpty {
+      "review_required"
+    } else {
+      nil
+    }
+    // The latest notes by people, newest first; none to read when the
+    // count says there are none, and nil when the read failed.
+    var people: [GLNote]? = []
+    if (target.user_notes_count ?? 0) > 0 {
+      people = await latestNotes(of: url, token: token, ctx: ctx)
+    }
+    let snapshot = TargetSnapshot(
+      title: target.title ?? "",
+      state: stateToken(
+        target.state, mergeRequest: mergeRequest,
+        draft: target.draft == true || target.work_in_progress == true, title: target.title
+      ),
+      author: target.author?.username,
+      assignees: (target.assignees ?? []).compactMap(\.username),
+      reviewers: reviewers.filter { !approvers.contains($0) },
+      labels: target.labels ?? [],
+      milestone: target.milestone?.title,
+      review: review,
+      checks: checksToken(target.head_pipeline?.status),
+      commentCount: target.user_notes_count,
+      lastCommenter: people?.first?.author?.username,
+      updatedAt: updatedAt
+    )
+    // A conversation whose notes didn't come is left for the next round.
+    let talk = conversation ? people.map { notes in
+      TargetConversation(
+        description: truncatedBody(target.description, limit: detailTextLimit),
+        comments: notes.prefix(detailCommentLimit).reversed().compactMap(toDetailComment),
+        commentCount: target.user_notes_count
+      )
+    } : nil
+    return .refreshed(TargetRefresh(snapshot: snapshot, conversation: talk))
+  }
+
+  /// A target's latest notes by people, newest first; nil when they
+  /// couldn't be read.
+  private func latestNotes(of url: URL, token: String, ctx: RequestContext) async -> [GLNote]? {
+    var components = URLComponents(url: url.appending(path: "notes"), resolvingAgainstBaseURL: false)
     components?.queryItems = [
       URLQueryItem(name: "sort", value: "desc"),
       URLQueryItem(name: "order_by", value: "created_at"),
-      URLQueryItem(name: "per_page", value: String(detailNotePage)),
+      URLQueryItem(name: "per_page", value: String(notePage)),
     ]
-    guard let url = components?.url,
-          let notes: [Failable<GLNote>] = try? await getDetail(url, token: token, ctx: ctx) else {
-      return []
+    guard let notesUrl = components?.url,
+          case .found(let notes)? = try? await getTarget(notesUrl, token: token, ctx: ctx) as Fetched<[Failable<GLNote>]> else {
+      return nil
     }
-    let people = notes.compactMap(\.value).filter { $0.system != true }
-    return people.prefix(detailCommentLimit).reversed().compactMap(toDetailComment)
+    return notes.compactMap(\.value).filter { $0.system != true }
   }
 
-  /// One GET for the preview, decoded. `read_api` reads everything the
-  /// preview shows, so a 404 here means the target is gone or out of the
-  /// account's reach — not a missing scope.
-  private func getDetail<T: Decodable>(_ url: URL, token: String, ctx: RequestContext) async throws -> T {
+  /// One GET for a refresh, decoded. `read_api` reads everything a
+  /// refresh asks for, so a 404 means the target is gone or out of the
+  /// account's reach, not a missing scope. A rejected token and a refusal
+  /// throw.
+  private func getTarget<T: Decodable>(_ url: URL, token: String, ctx: RequestContext) async throws -> Fetched<T> {
     let (data, http) = try await send(request(url, token: token), ctx: ctx)
-    if http.statusCode == 404 {
-      throw ProviderError(message: "GitLab couldn't find this one — it may have been deleted, or your account no longer has access.")
-    }
-    guard (200 ..< 300).contains(http.statusCode) else {
+    if http.statusCode == 401 || http.statusCode == 403 || http.statusCode == 429 {
       throw ProviderError(message: statusMessage(http.statusCode, ctx))
     }
-    guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
-      throw ProviderError(message: invalidJsonMessage(ctx))
+    if http.statusCode == 404 {
+      return .missing
     }
-    return decoded
+    guard (200 ..< 300).contains(http.statusCode), let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+      return .failed
+    }
+    return .found(decoded)
   }
 }

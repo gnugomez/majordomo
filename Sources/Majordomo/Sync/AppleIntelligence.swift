@@ -64,10 +64,10 @@ private struct RuleProposal {
 /// One test inside a proposed rule.
 @Generable
 private struct ConditionProposal {
-  @Guide(description: "What to look at. repo is the project path \"owner/name\". title and body are the notification's text. author is the login of whoever opened the issue or pull request. kind, reason and state are the platform's own tokens. provider is \"github\" or \"gitlab\". account is an account id. upstreamLabel is a label the issue already carries on the platform. mention means the notification is in the needs-you tier and takes no value.", .anyOf(RuleField.allCases.map(\.rawValue)))
+  @Guide(description: "What to look at. repo is the project path \"owner/name\". title and body are the notification's text. author is the login of whoever opened the issue or pull request. kind, reason and state are the platform's own tokens. provider is \"github\" or \"gitlab\". account is an account id. upstreamLabel is a label the issue already carries on the platform. mention means the notification is in the needs-you tier and takes no value.", .anyOf(RuleField.itemFields.map(\.rawValue)))
   var field: String
 
-  @Guide(description: "How to compare. \"is\" is a whole-value match (on repo a * wildcard is allowed, as in \"acme/*\"), \"contains\" is a substring, \"matches\" is a regular expression.", .anyOf(RuleOperator.allCases.map(\.rawValue)))
+  @Guide(description: "How to compare. \"is\" is a whole-value match (on repo a * wildcard is allowed, as in \"acme/*\"), \"contains\" is a substring, \"matches\" is a regular expression.", .anyOf(RuleOperator.composable.map(\.rawValue)))
   var op: String
 
   @Guide(description: "What to compare against: a repo path, a login, a word, or a platform token such as mentioned, assigned, review_requested, issue, pull, merge, open, merged, closed. Leave empty only for the mention field.")

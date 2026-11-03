@@ -292,8 +292,7 @@ struct PinnedLabelBox: View {
     let item = thread.lead
     return VStack(alignment: .leading, spacing: 2) {
       HStack(spacing: 4) {
-        Image(systemName: spec(for: item.provider).symbol(for: item))
-          .font(.system(size: 11, weight: .medium))
+        GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
           .foregroundStyle(spec(for: item.provider).color(for: item))
         Text(item.title)
           .font(.system(size: 12, weight: .medium))

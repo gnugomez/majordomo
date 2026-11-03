@@ -1,9 +1,9 @@
 // Right pane of the main window: everything AppModel knows about the
 // selected thread, then its target in full — the comment that raised the
-// notification, the description, the latest comments — fetched from the
-// provider once the selection settles and held in memory only. A
-// multi-member thread stacks its messages as cards under the shared
-// header.
+// notification, the description, the latest comments — as the background
+// refresh stored it, read from disk. A target the refresh hasn't reached
+// yet is asked for ahead of it. A multi-member thread stacks its messages
+// as cards under the shared header.
 
 import SwiftUI
 
@@ -37,8 +37,7 @@ struct PreviewView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: providerSpec.symbol(for: item))
-              .font(.system(size: 16, weight: .medium))
+            GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
               .foregroundStyle(providerSpec.color(for: item))
             Text(highlighted(item.title, terms: highlightTerms))
               .font(.system(size: 17, weight: .semibold))
@@ -102,39 +101,45 @@ struct PreviewView: View {
           }
           .font(.system(size: 12))
 
-          let load = model.detail(for: item)
-          let detail = loadedDetail(load)
+          let load = model.conversation(for: item)
+          let conversation = loadedConversation(load)
+          // The comment the notification points at, when the stored
+          // conversation still holds it.
+          let trigger = providerSpec.triggerCommentId(for: item).flatMap { id in
+            conversation?.comments.first { $0.id == id }
+          }
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
               messageCard(member, providerSpec: providerSpec)
             }
-          } else if let trigger = detail?.trigger {
+          } else if let trigger {
             TriggerCard(comment: trigger, now: model.now)
-          } else if detail == nil, let bodyView = providerSpec.bodyView(for: item) {
+          } else if conversation == nil, let bodyView = providerSpec.bodyView(for: item) {
             // The notification's own excerpt stands in until the target
             // is in, or when it can't be.
             Divider()
             bodyView
           }
-          DetailStatusRow(load: load)
-          if let detail {
-            targetSections(detail, of: thread, providerSpec: providerSpec)
+          ConversationStatusRow(load: load)
+          if let conversation {
+            targetSections(conversation, triggerId: trigger?.id, of: thread, providerSpec: providerSpec)
           }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
-      // The target in full, asked for once the selection settles, so
-      // arrowing down the list doesn't send a request per row it passes. A
-      // target already held shows at once.
-      .task(id: "\(item.id)@\(item.updatedAt.timeIntervalSinceReferenceDate)") {
-        if model.detail(for: item) == nil {
+      // The stored conversation, read at once; one not in yet is asked for
+      // once the selection settles, so arrowing down the list doesn't send
+      // a request per row it passes. A refresh bringing a newer one reads
+      // that in turn.
+      .task(id: model.conversationVersion(for: item)) {
+        if case .fetching = model.conversation(for: item) {
           try? await Task.sleep(for: .milliseconds(250))
         }
         guard !Task.isCancelled else {
           return
         }
-        await model.loadDetail(for: item)
+        await model.loadConversation(for: item)
       }
       // The pane goes slightly gray so the white message cards read as
       // cards. Single notifications keep the plain page look — there's no
@@ -159,23 +164,25 @@ struct PreviewView: View {
   /// The target's description and latest comments, under what the
   /// notification itself says.
   @ViewBuilder
-  private func targetSections(_ detail: ItemDetail, of thread: InboxThread, providerSpec: any ProviderSpec) -> some View {
+  private func targetSections(
+    _ conversation: TargetConversation, triggerId: String?, of thread: InboxThread, providerSpec: any ProviderSpec
+  ) -> some View {
     let item = thread.lead
-    if detail.description != nil || !detail.comments.isEmpty {
+    if conversation.description != nil || !conversation.comments.isEmpty {
       Divider()
     }
-    if let description = detail.description {
+    if let description = conversation.description {
       // A fresh look at another target starts collapsed again.
       DescriptionSection(text: description)
         .id(item.id)
     }
-    if !detail.comments.isEmpty {
+    if !conversation.comments.isEmpty {
       ConversationSection(
-        comments: detail.comments,
+        comments: conversation.comments,
         // Only a single notification's card shows the comment it came from.
-        triggerId: thread.items.count == 1 ? detail.trigger?.id : nil,
+        triggerId: thread.items.count == 1 ? triggerId : nil,
         reason: providerSpec.reasonLabel(item.reason),
-        commentCount: detail.commentCount,
+        commentCount: conversation.commentCount,
         providerName: item.provider.displayName,
         url: URL(string: item.url),
         now: model.now
@@ -183,9 +190,9 @@ struct PreviewView: View {
     }
   }
 
-  private func loadedDetail(_ load: AppModel.DetailLoad?) -> ItemDetail? {
-    if case .loaded(let detail) = load {
-      return detail
+  private func loadedConversation(_ load: AppModel.ConversationLoad?) -> TargetConversation? {
+    if case .loaded(let conversation) = load {
+      return conversation
     }
     return nil
   }

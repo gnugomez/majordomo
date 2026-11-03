@@ -25,6 +25,10 @@ the SDK.
 - 🎯 Rules that read rather than match: describe what matters in your own
   words and the model judges each notification against it; what it picks
   can ride at the top of the inbox in a box of its own
+- 🧭 Boards: one card per issue or pull request across every project,
+  sorted into columns by the same rules — whose move it is, what waits on
+  others, what's in progress — with review, CI, and new comments at a
+  glance, and lanes per repository
 - 🔒 Everything stays on your machine — read-only, no backend, tokens
   encrypted at rest
 
@@ -80,12 +84,16 @@ Add accounts from Settings (⌘,) by pasting a personal access token:
 | GitLab (self-hosted) | `read_api` |
 
 Selecting a notification previews its issue, pull request, or merge request:
-the comment that raised it, the description, and the latest comments. On
+the comment that raised it, the description, and the latest comments. They
+are fetched in the background as notifications arrive and kept on your Mac,
+so a preview opens at once and works offline. On
 GitLab, `read_api` covers all of it. On GitHub, public repositories preview
 with the `notifications` scope alone; private ones also need `repo`. GitHub
 offers no read-only scope for private repositories, so `repo` grants write
 access too. Majordomo never writes; add `repo` only if you want those
-previews.
+previews. Boards read the same way and need nothing more: their cards
+refresh in the background from the same token, and moving a card between
+columns stays on your Mac.
 
 Tokens are stored AES-GCM encrypted in the app's data file; the key is a
 single Keychain item.

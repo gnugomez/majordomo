@@ -71,58 +71,237 @@ private struct GHSubject: Decodable {
   let labels: [Label]?
 }
 
-/// The fields the preview reads off an issue — or a pull request, which
-/// GitHub serves through the issues API too.
-private struct GHIssue: Decodable {
-  let body: String?
-  /// How many comments the conversation holds.
-  let comments: Int?
-}
-
-private struct GHComment: Decodable {
-  struct User: Decodable {
-    let login: String?
-  }
-
-  let id: Int
-  let user: User?
-  let created_at: String
-  let body: String?
-}
-
-/// Where an item's target sits in the API, read back off the web url
-/// htmlUrl derived from it: the repository, the number, and the comment
-/// the notification pointed at, if it pointed at one.
-private struct GHTarget {
-  let repo: String
-  let number: String
-  let commentId: String?
-}
-
-private func detailTarget(_ url: String) -> GHTarget? {
-  guard let match = url.firstMatch(
-    of: #/^https://github\.com/([^/]+/[^/]+)/(?:issues|pull)/(\d+)(?:#issuecomment-(\d+))?$/#
-  ) else {
-    return nil
-  }
-  return GHTarget(repo: String(match.1), number: String(match.2), commentId: match.3.map(String.init))
-}
-
-private func toDetailComment(_ comment: GHComment) -> DetailComment? {
-  guard let createdAt = ISODate.parse(comment.created_at) else { return nil }
-  return DetailComment(
-    id: String(comment.id),
-    author: comment.user?.login,
-    createdAt: createdAt,
-    body: truncatedBody(comment.body, limit: detailTextLimit) ?? ""
-  )
-}
-
 /// True when the token can read private repositories. GitHub reports a
 /// classic token's scopes on every response, failures included.
 private func grantsPrivateRepos(_ http: HTTPURLResponse) -> Bool {
   let scopes = http.value(forHTTPHeaderField: "X-OAuth-Scopes") ?? ""
   return scopes.split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "repo" }
+}
+
+/// Targets one GraphQL request asks about. GitHub prices a query by the
+/// nodes it could return, and fifty targets with their assignees, labels
+/// and reviewers stay far inside one request's share of the hourly budget.
+private let targetsPerQuery = 50
+/// Targets per request when their conversations come along: each brings
+/// its description and latest comments whole, and a request that heavy is
+/// slow to answer and more likely to time out.
+private let conversationsPerQuery = 20
+
+/// What a target query asks of each issue or pull request; the pull-only
+/// fields come back nil on an issue.
+private let targetFragments = """
+  fragment Issue on Issue { title state updatedAt author { login } \
+  assignees(first: 10) { nodes { login } } labels(first: 20) { nodes { name } } milestone { title } \
+  comments(last: 1) { totalCount nodes { author { login } createdAt } } }
+  fragment Pull on PullRequest { title state isDraft updatedAt author { login } \
+  assignees(first: 10) { nodes { login } } labels(first: 20) { nodes { name } } milestone { title } \
+  comments(last: 1) { totalCount nodes { author { login } createdAt } } \
+  reviews(last: 1) { nodes { author { login } submittedAt } } reviewDecision \
+  reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } \
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
+  """
+
+/// What a query asks of each target whose conversation it wants as well.
+/// GraphQL refuses a fragment the query never spreads, so these go only
+/// into the queries that do.
+private let conversationFragments = """
+  fragment IssueTalk on Issue { body talk: comments(last: \(detailCommentLimit)) { totalCount \
+  nodes { databaseId author { login } createdAt body } } }
+  fragment PullTalk on PullRequest { body talk: comments(last: \(detailCommentLimit)) { totalCount \
+  nodes { databaseId author { login } createdAt body } } }
+  """
+
+private struct GQLLogin: Decodable {
+  let login: String?
+}
+
+private struct GQLNodes<Node: Decodable>: Decodable {
+  let totalCount: Int?
+  let nodes: [Failable<Node>]?
+
+  var values: [Node] { (nodes ?? []).compactMap(\.value) }
+}
+
+private struct GQLTarget: Decodable {
+  struct Name: Decodable {
+    let name: String?
+  }
+
+  struct Milestone: Decodable {
+    let title: String?
+  }
+
+  struct Comment: Decodable {
+    let author: GQLLogin?
+    let createdAt: String?
+  }
+
+  struct Review: Decodable {
+    let author: GQLLogin?
+    let submittedAt: String?
+  }
+
+  struct ReviewRequest: Decodable {
+    let requestedReviewer: GQLLogin?
+  }
+
+  struct TalkComment: Decodable {
+    /// The REST id, which the comment's links and anchors use.
+    let databaseId: Int?
+    let author: GQLLogin?
+    let createdAt: String?
+    let body: String?
+  }
+
+  struct CommitNode: Decodable {
+    struct Commit: Decodable {
+      struct Rollup: Decodable {
+        let state: String?
+      }
+
+      let statusCheckRollup: Rollup?
+    }
+
+    let commit: Commit?
+  }
+
+  let __typename: String
+  let title: String
+  let state: String
+  let isDraft: Bool?
+  let updatedAt: String
+  let author: GQLLogin?
+  let assignees: GQLNodes<GQLLogin>?
+  let labels: GQLNodes<Name>?
+  let milestone: Milestone?
+  let comments: GQLNodes<Comment>?
+  let reviews: GQLNodes<Review>?
+  let reviewDecision: String?
+  let reviewRequests: GQLNodes<ReviewRequest>?
+  let commits: GQLNodes<CommitNode>?
+  /// The description and latest comments, when the query asked for them.
+  let body: String?
+  let talk: GQLNodes<TalkComment>?
+}
+
+private struct GQLRepository: Decodable {
+  let issueOrPullRequest: GQLTarget?
+}
+
+/// One alias per target; an alias the token can't see comes back null,
+/// with an error whose path starts at it.
+private struct GQLTargetsResponse: Decodable {
+  struct Failure: Decodable {
+    /// "NOT_FOUND", "FORBIDDEN", "RATE_LIMITED"…
+    let type: String?
+    let message: String?
+    let path: [GQLPathStep]?
+  }
+
+  let data: [String: Failable<GQLRepository>]?
+  let errors: [Failure]?
+}
+
+/// One step of an error's path: a field or alias name, or a list index.
+private struct GQLPathStep: Decodable {
+  let name: String?
+
+  init(from decoder: Decoder) throws {
+    name = try? decoder.singleValueContainer().decode(String.self)
+  }
+}
+
+/// A target key as the query addresses it. Owner and name are checked
+/// against GitHub's own alphabet before they go into the query text.
+private typealias QueryTarget = (owner: String, name: String, number: String)
+
+private func queryTarget(_ key: String) -> QueryTarget? {
+  guard let match = key.firstMatch(
+    of: #/^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)/(?:issues|pull)/(\d+)$/#
+  ) else {
+    return nil
+  }
+  return (String(match.1), String(match.2), String(match.3))
+}
+
+private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
+  guard let updatedAt = ISODate.parse(target.updatedAt) else { return nil }
+  let pull = target.__typename == "PullRequest"
+  let state: String? = switch target.state {
+  case "MERGED": "merged"
+  case "CLOSED": "closed"
+  case "OPEN": pull && target.isDraft == true ? "draft" : "open"
+  default: nil
+  }
+  let review: String? = switch target.reviewDecision {
+  case "APPROVED": "approved"
+  case "CHANGES_REQUESTED": "changes_requested"
+  case "REVIEW_REQUIRED": "review_required"
+  default: nil
+  }
+  let checks: String? = switch target.commits?.values.last?.commit?.statusCheckRollup?.state {
+  case "SUCCESS": "success"
+  case "FAILURE", "ERROR": "failure"
+  case "PENDING", "EXPECTED": "pending"
+  default: nil
+  }
+  // The latest word is a comment or a review, whichever came later.
+  let comment = target.comments?.values.last
+  let reviewed = target.reviews?.values.last
+  let commentAt = ISODate.parse(comment?.createdAt) ?? .distantPast
+  let reviewAt = ISODate.parse(reviewed?.submittedAt) ?? .distantPast
+  let lastCommenter = reviewAt > commentAt ? reviewed?.author?.login : comment?.author?.login
+  return TargetSnapshot(
+    title: target.title,
+    state: state,
+    author: target.author?.login,
+    assignees: target.assignees?.values.compactMap(\.login) ?? [],
+    reviewers: target.reviewRequests?.values.compactMap(\.requestedReviewer?.login) ?? [],
+    labels: target.labels?.values.compactMap(\.name) ?? [],
+    milestone: target.milestone?.title,
+    review: review,
+    checks: checks,
+    commentCount: target.comments?.totalCount,
+    lastCommenter: lastCommenter,
+    updatedAt: updatedAt
+  )
+}
+
+private func toConversation(_ target: GQLTarget) -> TargetConversation? {
+  guard let talk = target.talk else { return nil }
+  let comments = talk.values.compactMap { comment -> DetailComment? in
+    guard let id = comment.databaseId, let createdAt = ISODate.parse(comment.createdAt) else { return nil }
+    return DetailComment(
+      id: String(id),
+      author: comment.author?.login,
+      createdAt: createdAt,
+      body: truncatedBody(comment.body, limit: detailTextLimit) ?? ""
+    )
+  }
+  return TargetConversation(
+    description: truncatedBody(target.body, limit: detailTextLimit),
+    comments: comments,
+    commentCount: talk.totalCount
+  )
+}
+
+/// Why GitHub left a target out, as the preview says it. GitHub answers
+/// "not found" both for what is gone and for a private repository the
+/// token can't see, so the token's scopes on the response decide which;
+/// an organization enforcing single sign-on refuses until the token is
+/// authorized for it.
+private func unreadableMessage(_ failure: GQLTargetsResponse.Failure, _ http: HTTPURLResponse) -> String {
+  if failure.type == "FORBIDDEN", failure.message?.contains("SAML") == true {
+    return "This repository's organization uses single sign-on — authorize the token for it on GitHub (Settings → Developer settings → Personal access tokens)."
+  }
+  return grantsPrivateRepos(http)
+    ? "GitHub couldn't find this one — it may have been deleted or moved."
+    : "GitHub didn't share this one. Previews from private repositories need the token's repo scope: add it on GitHub, then paste the token again in Settings → Accounts."
+}
+
+/// A list in runs of at most `size`.
+private func chunked<Element>(_ list: [Element], by size: Int) -> [[Element]] {
+  stride(from: 0, to: list.count, by: size).map { Array(list[$0 ..< min($0 + size, list.count)]) }
 }
 
 /// What one subject lookup teaches us; cached per thread id + updated_at.
@@ -287,81 +466,83 @@ actor GitHubClient: ProviderClient {
     return FetchResult(items: items, complete: complete)
   }
 
-  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail? {
-    // Discussions and alerts link to the repository itself: nothing to show.
-    guard let target = detailTarget(item.url),
-          let issueUrl = URL(string: "https://api.github.com/repos/\(target.repo)/issues/\(target.number)") else {
-      return nil
-    }
-    let issue: GHIssue = try await getDetail(issueUrl, token: config.token)
-    let count = issue.comments ?? 0
-    let comments = count > 0
-      ? await latestComments(of: issueUrl, count: count, token: config.token)
-      : []
-    // The comment the notification points at is usually the newest one;
-    // an older one costs a lookup of its own.
-    var trigger = target.commentId.flatMap { id in comments.first { $0.id == id } }
-    if trigger == nil, let id = target.commentId,
-       let commentUrl = URL(string: "https://api.github.com/repos/\(target.repo)/issues/comments/\(id)") {
-      let comment: GHComment? = try? await getDetail(commentUrl, token: config.token)
-      trigger = comment.flatMap(toDetailComment)
-    }
-    return ItemDetail(
-      description: truncatedBody(issue.body, limit: detailTextLimit),
-      trigger: trigger,
-      comments: comments,
-      commentCount: count
-    )
-  }
+  nonisolated var targetBatchLimit: Int { targetsPerQuery * 2 }
 
-  /// The latest comments, oldest first. GitHub lists a conversation from
-  /// its start, so this reads the last page, and the one before when the
-  /// last falls short of the limit. A failure leaves the conversation out
-  /// rather than failing the whole preview.
-  private func latestComments(of issueUrl: URL, count: Int, token: String) async -> [DetailComment] {
-    let lastPage = (count + detailCommentLimit - 1) / detailCommentLimit
-    let pages = count % detailCommentLimit != 0 && lastPage > 1 ? [lastPage - 1, lastPage] : [lastPage]
-    var comments: [GHComment] = []
-    for page in pages {
-      var components = URLComponents(url: issueUrl.appending(path: "comments"), resolvingAgainstBaseURL: false)
-      components?.queryItems = [
-        URLQueryItem(name: "per_page", value: String(detailCommentLimit)),
-        URLQueryItem(name: "page", value: String(page)),
-      ]
-      guard let url = components?.url,
-            let batch: [Failable<GHComment>] = try? await getDetail(url, token: token) else {
-        return []
+  func fetchTargets(_ config: AccountConfig, keys: [String], conversations: Set<String>) async throws -> TargetRound {
+    var round = TargetRound()
+    var talking: [(key: String, target: QueryTarget)] = []
+    var quiet: [(key: String, target: QueryTarget)] = []
+    for key in keys {
+      guard let target = queryTarget(key) else {
+        round.unreadable[key] = "Majordomo can't ask GitHub about this one."
+        continue
       }
-      comments += batch.compactMap(\.value)
+      if conversations.contains(key) {
+        talking.append((key, target))
+      } else {
+        quiet.append((key, target))
+      }
     }
-    return comments.suffix(detailCommentLimit).compactMap(toDetailComment)
+    let queries = chunked(talking, by: conversationsPerQuery).map { (batch: $0, conversations: true) }
+      + chunked(quiet, by: targetsPerQuery).map { (batch: $0, conversations: false) }
+    for query in queries {
+      do {
+        let answer = try await askTargets(query.batch, conversations: query.conversations, token: config.token)
+        round.refreshed.merge(answer.refreshed) { $1 }
+        round.unreadable.merge(answer.unreadable) { $1 }
+      } catch {
+        // What this query and the ones after it asked waits for the next
+        // round; what earlier ones learned stands.
+        guard !round.refreshed.isEmpty || !round.unreadable.isEmpty else {
+          throw error
+        }
+        break
+      }
+    }
+    return round
   }
 
-  /// One GET for the preview, decoded. GitHub answers 404 both for what is
-  /// gone and for a private repository the token can't see, so the token's
-  /// scopes on the response decide which message it gets; an organization
-  /// enforcing single sign-on answers 403 until the token is authorized.
-  private func getDetail<T: Decodable>(_ url: URL, token: String) async throws -> T {
-    let (data, http) = try await send(request(url, token: token), ctx: githubContext)
-    if http.statusCode == 403, http.value(forHTTPHeaderField: "X-GitHub-SSO") != nil {
-      throw ProviderError(
-        message: "This repository's organization uses single sign-on — authorize the token for it on GitHub (Settings → Developer settings → Personal access tokens), then try again."
-      )
+  /// One GraphQL request for a batch of targets, an alias each.
+  private func askTargets(
+    _ batch: [(key: String, target: QueryTarget)], conversations: Bool, token: String
+  ) async throws -> TargetRound {
+    let shape = conversations ? "__typename ...Issue ...Pull ...IssueTalk ...PullTalk" : "__typename ...Issue ...Pull"
+    let aliases = batch.enumerated().map { index, entry in
+      "t\(index): repository(owner: \"\(entry.target.owner)\", name: \"\(entry.target.name)\") "
+        + "{ issueOrPullRequest(number: \(entry.target.number)) { \(shape) } }"
     }
-    if http.statusCode == 404 {
-      throw ProviderError(
-        message: grantsPrivateRepos(http)
-          ? "GitHub couldn't find this one — it may have been deleted or moved."
-          : "GitHub didn't share this one. Previews from private repositories need the token's repo scope: add it on GitHub, then paste the token again in Settings → Accounts."
-      )
-    }
+    let fragments = conversations ? "\(targetFragments)\n\(conversationFragments)" : targetFragments
+    let query = "query { \(aliases.joined(separator: " ")) }\n\(fragments)"
+    var request = request(URL(string: "https://api.github.com/graphql")!, token: token)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query])
+    let (data, http) = try await send(request, ctx: githubContext)
     guard (200 ..< 300).contains(http.statusCode) else {
       throw ProviderError(message: statusMessage(http.statusCode, githubContext))
     }
-    guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
-      throw ProviderError(message: invalidJsonMessage(githubContext))
+    let response = try? JSONDecoder().decode(GQLTargetsResponse.self, from: data)
+    guard let response, let answers = response.data else {
+      let limited = response?.errors?.contains { $0.type == "RATE_LIMITED" } == true
+      throw ProviderError(
+        message: limited
+          ? "GitHub's hourly limit for this token is used up; the refresh picks up again once it resets."
+          : "GitHub couldn't answer the refresh just now."
+      )
     }
-    return decoded
+    var round = TargetRound()
+    for (index, entry) in batch.enumerated() {
+      let alias = "t\(index)"
+      if let target = answers[alias]?.value?.issueOrPullRequest, let snapshot = toSnapshot(target) {
+        round.refreshed[entry.key] = TargetRefresh(
+          snapshot: snapshot,
+          conversation: conversations ? toConversation(target) : nil
+        )
+      } else if let failure = response.errors?.first(where: { $0.path?.first?.name == alias }) {
+        round.unreadable[entry.key] = unreadableMessage(failure, http)
+      }
+    }
+    return round
   }
 
   /// Fills in `state`/`author`/`body` on the fetched items by looking up

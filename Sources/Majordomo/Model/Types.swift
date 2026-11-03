@@ -104,4 +104,8 @@ struct AppState: Sendable {
   var sidebar: SidebarLayout = SidebarLayout()
   /// Suggested labels and rules the user hasn't answered yet.
   var suggestions: [Suggestion] = []
+  /// The user's boards, in sidebar order.
+  var boards: [Board] = []
+  /// What the boards' cards know about their targets, by key.
+  var targets: [String: TrackedTarget] = [:]
 }

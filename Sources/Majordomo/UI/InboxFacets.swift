@@ -1,6 +1,6 @@
-// The fields the pills under the toolbar narrow the inbox by: one author,
-// provider, or repository at a time. Like the search and date filters they
-// narrow the list and leave the sidebar badges alone.
+// The fields the pills under the toolbar narrow the inbox — or a board —
+// by: one author, provider, or repository at a time. Like the search and
+// date filters they narrow what shows and leave the sidebar badges alone.
 
 import Foundation
 
@@ -33,13 +33,34 @@ enum Facet: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
-/// Items matching every pick except `except`'s — the facet whose own menu
-/// is being filled, so it lists what the other pills leave.
-func matchingFacets(_ items: [InboxItem], _ picks: [Facet: String], except: Facet? = nil) -> [InboxItem] {
+/// What the pills narrow: a notification, or a board's card.
+protocol FacetSubject {
+  /// The value for this facet; nil when there is none.
+  func facetValue(_ facet: Facet) -> String?
+}
+
+extension InboxItem: FacetSubject {
+  func facetValue(_ facet: Facet) -> String? {
+    facet.value(of: self)
+  }
+}
+
+extension BoardCard: FacetSubject {
+  /// A card's values are its target's, as the card shows them.
+  func facetValue(_ facet: Facet) -> String? {
+    facet.value(of: presentedItem)
+  }
+}
+
+/// Subjects matching every pick except `except`'s — the facet whose own
+/// menu is being filled, so it lists what the other pills leave.
+func matchingFacets<Subject: FacetSubject>(
+  _ subjects: [Subject], _ picks: [Facet: String], except: Facet? = nil
+) -> [Subject] {
   let active = picks.filter { $0.key != except }
-  guard !active.isEmpty else { return items }
-  return items.filter { item in
-    active.allSatisfy { facet, value in facet.value(of: item) == value }
+  guard !active.isEmpty else { return subjects }
+  return subjects.filter { subject in
+    active.allSatisfy { facet, value in subject.facetValue(facet) == value }
   }
 }
 
@@ -53,11 +74,11 @@ struct FacetChoices: Identifiable, Sendable {
   var id: Facet { facet }
 }
 
-/// The values a facet takes across these items, sorted for a menu. The
-/// pick is always among them, even once nothing carries it any more, so
-/// the menu still shows it checked and it can be cleared.
-func facetChoices(_ facet: Facet, in items: [InboxItem], picked: String?) -> FacetChoices {
-  var values = Set(items.compactMap(facet.value(of:)))
+/// The values a facet takes across these subjects, sorted for a menu.
+/// The pick is always among them, even once nothing carries it any more,
+/// so the menu still shows it checked and it can be cleared.
+func facetChoices<Subject: FacetSubject>(_ facet: Facet, in subjects: [Subject], picked: String?) -> FacetChoices {
+  var values = Set(subjects.compactMap { $0.facetValue(facet) })
   if let picked {
     values.insert(picked)
   }

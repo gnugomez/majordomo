@@ -1,6 +1,7 @@
 // The row of pills under the toolbar: one small glass menu per facet,
-// narrowing the inbox to an author, provider, or repository. A pill names
-// its facet until something is picked, then shows the pick, accent-tinted.
+// narrowing the inbox or a board to an author, provider, or repository. A
+// pill names its facet until something is picked, then shows the pick,
+// accent-tinted.
 
 import SwiftUI
 

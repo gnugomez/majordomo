@@ -1,6 +1,7 @@
 // The preview's sections for a notification's target in full: the comment
 // that raised the notification, the target's description, and the latest
-// of its conversation — as fetched on demand (see AppModel.loadDetail).
+// of its conversation — as the background refresh stored them (see
+// AppModel.loadConversation).
 
 import SwiftUI
 
@@ -126,13 +127,13 @@ struct ConversationSection: View {
   }
 }
 
-/// While the target is on its way, or why it couldn't come.
-struct DetailStatusRow: View {
-  let load: AppModel.DetailLoad?
+/// While the conversation is on its way, or why it isn't in.
+struct ConversationStatusRow: View {
+  let load: AppModel.ConversationLoad?
 
   var body: some View {
     switch load {
-    case .loading:
+    case .fetching:
       HStack(spacing: 6) {
         ProgressView()
           .controlSize(.small)
@@ -140,15 +141,21 @@ struct DetailStatusRow: View {
           .foregroundStyle(.secondary)
       }
       .font(.system(size: 12))
-    case .failed(let message):
-      Label(message, systemImage: "exclamationmark.triangle")
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .textSelection(.enabled)
+    case .unreadable(let message):
+      notice(message)
+    case .waiting(let message):
+      notice("\(message) Majordomo asks again with the next refresh.")
     case .loaded, nil:
       EmptyView()
     }
+  }
+
+  private func notice(_ message: String) -> some View {
+    Label(message, systemImage: "exclamationmark.triangle")
+      .font(.system(size: 12))
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .textSelection(.enabled)
   }
 }
 

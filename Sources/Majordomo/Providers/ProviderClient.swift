@@ -51,6 +51,22 @@ enum FetchDepth: Sendable {
   case full
 }
 
+/// One target as a refresh found it, with its conversation when the
+/// round asked for that too.
+struct TargetRefresh: Sendable {
+  var snapshot: TargetSnapshot
+  var conversation: TargetConversation?
+}
+
+/// What fetchTargets learned. A key in neither map went unanswered — its
+/// share of the round failed — and is asked again next round.
+struct TargetRound: Sendable {
+  var refreshed: [String: TargetRefresh] = [:]
+  /// Targets the provider wouldn't show — gone, or out of the token's
+  /// reach — with why, in words fit to show.
+  var unreadable: [String: String] = [:]
+}
+
 /// What validate() learns about the account's owner.
 struct ProviderProfile: Sendable {
   var username: String
@@ -58,18 +74,19 @@ struct ProviderProfile: Sendable {
   var avatarUrl: String?
 }
 
-/// Comments a detail fetch brings back at most: the latest ones, enough to
-/// see where a conversation stands. The rest are a click away.
+/// Comments a conversation keeps at most: the latest ones, enough to see
+/// where it stands. The rest are a click away.
 let detailCommentLimit = 10
-/// Characters a detail's description or comment keeps at most — whole
+/// Characters a description or comment keeps at most — whole
 /// descriptions, but not whole build logs.
 let detailTextLimit = 20_000
 
 /// Implemented once per provider; one instance serves every account of it.
 ///
 /// Rules every implementation must follow:
-/// - `validate`, `fetchItems`, and `fetchDetail` throw `ProviderError`s with
-///   human-readable messages — the strings surface verbatim in the UI.
+/// - `validate`, `fetchItems`, and `fetchTargets` throw
+///   `ProviderError`s with human-readable messages — the strings surface
+///   verbatim in the UI.
 /// - One malformed remote entry must never fail the whole fetch: skip it.
 /// - No sorting — the UI orders items for display.
 /// - `externalId` is unique and stable within the account across fetches;
@@ -81,11 +98,17 @@ protocol ProviderClient: Sendable {
   func validate(_ config: AccountConfig) async throws -> ProviderProfile
   /// Returns the account's current inbox, reaching as deep as `depth` asks.
   func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult
-  /// The item's target in full — its description and latest comments —
-  /// for the preview, on demand. nil when the item points at nothing the
-  /// provider can describe (a repository-level alert). A failure's message
-  /// should say what would fix it, a missing token scope above all.
-  func fetchDetail(_ config: AccountConfig, item: InboxItem) async throws -> ItemDetail?
+  /// How many targets one `fetchTargets` call may ask about — what a
+  /// round of the sync timer can afford against the provider's limits.
+  var targetBatchLimit: Int { get }
+  /// Where these targets stand now, by key (the spec's `boardKey`), and
+  /// for the keys in `conversations` their description and latest
+  /// comments too — what the preview shows. A target the provider won't
+  /// show is unreadable, with a message that says what would fix it, a
+  /// missing token scope above all. A share of the round that fails
+  /// leaves its keys out of the answer, to be asked again; a throw means
+  /// the round failed as a whole.
+  func fetchTargets(_ config: AccountConfig, keys: [String], conversations: Set<String>) async throws -> TargetRound
 }
 
 /// Caps provider-supplied body text at fetch time — a description can carry

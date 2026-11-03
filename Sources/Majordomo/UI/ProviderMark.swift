@@ -1,5 +1,5 @@
 // Renders a provider's brand mark from the SVG path its spec declares —
-// the glyphs SF Symbols can't stand in for. 16×16 viewBox, filled with the
+// a logo SF Symbols can't stand in for. 16×16 viewBox, filled with the
 // current foreground style.
 
 import CoreGraphics
@@ -10,7 +10,9 @@ private let markPaths: [ProviderId: Path] = Dictionary(
   uniqueKeysWithValues: providerSpecs.map { ($0.id, Path(SVGPath.parse($0.markSVGPath))) }
 )
 
-private struct SVGShape: Shape {
+/// A path on a 16×16 grid, scaled to whatever square it is given — the
+/// provider marks' and every Glyph's.
+struct GridShape: Shape {
   let source: Path
 
   func path(in rect: CGRect) -> Path {
@@ -25,7 +27,7 @@ struct ProviderMark: View {
   let provider: ProviderId
 
   var body: some View {
-    SVGShape(source: markPaths[provider] ?? Path())
+    GridShape(source: markPaths[provider] ?? Path())
       .fill(.foreground, style: FillStyle(eoFill: false))
       .aspectRatio(1, contentMode: .fit)
   }

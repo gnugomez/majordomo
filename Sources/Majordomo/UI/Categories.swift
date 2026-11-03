@@ -136,6 +136,16 @@ func matchingSearch(_ items: [InboxItem], _ query: String) -> [InboxItem] {
   }
 }
 
+/// Cards matching the search: those with a notification the inbox's own
+/// search would show.
+func matchingSearch(_ cards: [BoardCard], _ query: String) -> [BoardCard] {
+  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+    return cards
+  }
+  let matched = Set(matchingSearch(cards.flatMap(\.items), query).map(\.id))
+  return cards.filter { card in card.items.contains { matched.contains($0.id) } }
+}
+
 /// The toolbar's date filter: a rolling window over an item's last
 /// activity. Absent (nil) means any time.
 enum ActivityWindow: String, CaseIterable, Identifiable, Sendable {
@@ -189,8 +199,10 @@ func matchingUnread(_ threads: [InboxThread], kept: Set<String>) -> [InboxThread
 }
 
 /// What the sidebar selects: a category id, optionally scoped to one
-/// account — nil is the aggregated "All Inboxes" section.
+/// account — nil is the aggregated "All Inboxes" section — or a board,
+/// which spans every account and stands in for the category while set.
 struct SidebarSelection: Hashable, Sendable {
   var account: AccountId?
   var category: String
+  var board: BoardId?
 }

@@ -24,6 +24,9 @@ private let summaryBudget = 8
 /// same bargain as the summaries: the rows in front of the user first, the
 /// rest on the next pass.
 private let verdictBudget = 8
+/// An open target is refreshed again this long after its last refresh; a
+/// finished one only when new activity arrives.
+private let openTargetRefreshInterval: TimeInterval = 15 * 60
 /// New unread items only post a banner while their activity is this fresh.
 /// A deep sync can surface months-old backlog in one go — that belongs in
 /// the inbox as unread, not in Notification Center as a flood.
@@ -74,6 +77,8 @@ actor SyncEngine {
   private var verdictFailures: Set<String> = []
   /// When the last sweep ran, so the next one waits its turn.
   private var lastSuggestionSweepAt: Date?
+  /// True while a board refresh is out with the providers.
+  private var refreshingTargets = false
   private var inFlight: Task<Void, Never>?
   private var timer: Task<Void, Never>?
 
@@ -83,11 +88,17 @@ actor SyncEngine {
   ) {
     self.emit = emit
     self.notify = notify
-    store = isDemo ? Store(fixture: DemoData.storeFile()) : Store()
+    if isDemo {
+      let fixture = DemoData.storeFile()
+      store = Store(fixture: fixture, conversations: DemoData.conversations(in: fixture))
+    } else {
+      store = Store()
+    }
     store.builtinLabelIds = LabelCatalog.current(user: [], userRules: []).builtinIds
     // The starter label and rule, once per store (see StarterSetup): the
     // feature arrives configured, and stays deleted if the user deletes it.
     store.seed(labels: StarterSetup.labels, rules: StarterSetup.rules)
+    store.seedBoards([GitForgeBoards.myWork])
     clients = Dictionary(uniqueKeysWithValues: providerSpecs.map { ($0.id, $0.makeClient()) })
     for account in store.accounts() where account.config == nil {
       errors[account.id] = "The stored token can't be read — remove and re-add the account."
@@ -111,7 +122,8 @@ actor SyncEngine {
     return AppState(
       items: items, accounts: accounts, lastSyncAt: lastSyncAt, syncing: syncing,
       labels: store.labels(), rules: store.rules(), sidebar: sidebarLayout(),
-      suggestions: store.suggestions().filter { !$0.dismissed }
+      suggestions: store.suggestions().filter { !$0.dismissed },
+      boards: store.boards(), targets: store.targets()
     )
   }
 
@@ -495,6 +507,11 @@ actor SyncEngine {
     syncing = false
     emitState()
 
+    // The boards and the previews' conversations catch up next, on their
+    // own requests; the inbox above is already current.
+    Task {
+      await self.refreshTargets()
+    }
     // The model catches up in the background; nothing here waits on it.
     // Summaries go first: they are what the rows are missing right now,
     // while patterns build over days.
@@ -612,6 +629,173 @@ actor SyncEngine {
     emitState()
   }
 
+  // MARK: Boards
+
+  func setBoards(_ boards: [Board]) {
+    store.setBoards(boards)
+    emitState()
+  }
+
+  /// Puts a card in a column by hand, noting the state it is in; nil
+  /// hands it back to the rules.
+  func setPin(board: BoardId, card: String, column: String?, state: String?) {
+    store.setPin(board: board, card: card, pin: column.map { BoardPin(column: $0, state: state) })
+    emitState()
+  }
+
+  /// The user had the card open: what is new on it counts from now.
+  func markTargetSeen(_ key: String, provider: ProviderId) {
+    store.markTargetSeen(key, provider: provider, at: Date())
+    emitState()
+  }
+
+  /// Refreshes the targets that are due, most pressing first: those with
+  /// activity since their last refresh (or none yet), newest first; then
+  /// those whose conversation is missing or behind their last activity —
+  /// the backfill, newest first; then open ones gone stale, longest
+  /// waiting first. The first two bring their conversations along. What a
+  /// round leaves unanswered — a failure, a limit — is first in line the
+  /// next time.
+  private func refreshTargets() async {
+    guard !isDemo, !refreshingTargets else {
+      return
+    }
+    refreshingTargets = true
+    defer { refreshingTargets = false }
+
+    let newest = newestItemsByTarget()
+    store.pruneTargets(keeping: Set(newest.keys))
+
+    let now = Date()
+    let known = store.targets()
+    var active: [(key: String, item: InboxItem)] = []
+    var behind: [(key: String, item: InboxItem)] = []
+    var stale: [(key: String, item: InboxItem, fetchedAt: Date)] = []
+    for (key, item) in newest {
+      guard let target = known[key], let fetchedAt = target.fetchedAt, fetchedAt >= item.updatedAt else {
+        active.append((key, item))
+        continue
+      }
+      if target.wantsConversation {
+        behind.append((key, item))
+        continue
+      }
+      let finished = (target.snapshot?.state ?? item.state).map {
+        spec(for: item.provider).isFinished(state: $0)
+      } ?? false
+      if !finished, now.timeIntervalSince(fetchedAt) >= openTargetRefreshInterval {
+        stale.append((key, item, fetchedAt))
+      }
+    }
+    active.sort { $0.item.updatedAt > $1.item.updatedAt }
+    behind.sort { $0.item.updatedAt > $1.item.updatedAt }
+    stale.sort { $0.fetchedAt < $1.fetchedAt }
+
+    let talking = active + behind
+    await refresh(talking + stale.map { ($0.key, $0.item) }, conversations: Set(talking.map(\.key)), at: now)
+  }
+
+  /// Fetches one target's conversation now, ahead of the rounds — for a
+  /// preview opened before they reached it. Returns why it didn't come,
+  /// if it didn't; the rounds go on asking either way.
+  func refreshConversation(_ key: String) async -> String? {
+    guard !isDemo, let item = newestItemsByTarget()[key] else {
+      return nil
+    }
+    let failure = await refresh([(key, item)], conversations: [key], at: Date())
+    guard let target = store.targets()[key], target.conversationAt == nil, target.unreadable == nil else {
+      return nil
+    }
+    return failure ?? "The conversation didn't come through just now."
+  }
+
+  /// A target's stored conversation, for the preview. One gone from disk
+  /// is forgotten, so the rounds fetch it again.
+  func conversation(for key: String) -> TargetConversation? {
+    if let conversation = store.conversation(for: key) {
+      return conversation
+    }
+    if store.forgetConversation(key) {
+      emitState()
+    }
+    return nil
+  }
+
+  /// Each target's newest notification, by key.
+  private func newestItemsByTarget() -> [String: InboxItem] {
+    var newest: [String: InboxItem] = [:]
+    for item in store.inboxItems() {
+      guard let key = spec(for: item.provider).boardKey(for: item) else {
+        continue
+      }
+      if let held = newest[key], held.updatedAt >= item.updatedAt {
+        continue
+      }
+      newest[key] = item
+    }
+    return newest
+  }
+
+  /// Asks after `due` in order, each target through the account of its
+  /// newest notification and as many as that account's client affords —
+  /// the rest wait — with the conversations of those in `conversations`,
+  /// and records what came back. Returns why an account's round failed
+  /// outright, if one did.
+  @discardableResult
+  private func refresh(
+    _ due: [(key: String, item: InboxItem)], conversations: Set<String>, at date: Date
+  ) async -> String? {
+    var batches: [AccountId: [String]] = [:]
+    var providers: [String: ProviderId] = [:]
+    for (key, item) in due {
+      guard let client = clients[item.provider],
+            batches[item.accountId, default: []].count < client.targetBatchLimit else {
+        continue
+      }
+      batches[item.accountId, default: []].append(key)
+      providers[key] = item.provider
+    }
+
+    let rounds = await withTaskGroup(of: Result<TargetRound, any Error>.self) { group in
+      for (accountId, keys) in batches {
+        guard let account = store.getAccount(accountId), let config = account.config,
+              let client = clients[account.provider] else {
+          continue
+        }
+        let wanted = conversations.intersection(keys)
+        group.addTask {
+          do {
+            return .success(try await client.fetchTargets(config, keys: keys, conversations: wanted))
+          } catch {
+            return .failure(error)
+          }
+        }
+      }
+      var collected: [Result<TargetRound, any Error>] = []
+      for await round in group {
+        collected.append(round)
+      }
+      return collected
+    }
+
+    var answer = TargetRound()
+    var failure: String?
+    for round in rounds {
+      switch round {
+      case .success(let round):
+        answer.refreshed.merge(round.refreshed) { $1 }
+        answer.unreadable.merge(round.unreadable) { $1 }
+      case .failure(let error):
+        failure = failure ?? errorMessage(error)
+      }
+    }
+    store.applyTargetRefresh(answer, providers: providers, at: date)
+    if !answer.refreshed.isEmpty || !answer.unreadable.isEmpty {
+      emitState()
+    }
+    return failure
+  }
+
   func syncNow(depth: FetchDepth) async {
     if let inFlight {
       await inFlight.value
@@ -649,6 +833,7 @@ actor SyncEngine {
       let identity = AccountIdentity(provider: provider, baseUrl: config.baseUrl, username: profile.username)
       let id = store.findAccount(identity) ?? UUID().uuidString
       store.setAccount(id, provider: provider, config: config, profile: profile)
+      store.clearUnreadableTargets()
       errors[id] = nil
       emitState()
       // Deep from the start: a new account seeds its whole backlog (and
@@ -682,6 +867,7 @@ actor SyncEngine {
         return "That token belongs to @\(profile.username), not @\(account.username ?? "")."
       }
       store.setAccount(id, provider: account.provider, config: config, profile: profile)
+      store.clearUnreadableTargets()
       errors[id] = nil
       emitState()
       // A dead token may have kept this account from syncing for days:
@@ -733,23 +919,6 @@ actor SyncEngine {
   func markAllRead() {
     store.markAllRead()
     emitState()
-  }
-
-  /// One item's target in full, for the preview: fetched on demand through
-  /// its account's client, and never stored. Demo mode answers from the
-  /// fixtures, offline like the rest of it.
-  func fetchDetail(itemId: String) async throws -> ItemDetail? {
-    guard let stored = store.getItems().first(where: { $0.id == itemId }) else {
-      return nil
-    }
-    let item = store.inboxItem(stored)
-    if isDemo {
-      return DemoData.detail(for: item)
-    }
-    guard let config = store.getAccount(item.accountId)?.config, let client = clients[item.provider] else {
-      throw ProviderError(message: "This account's token can't be read right now — check it in Settings → Accounts.")
-    }
-    return try await client.fetchDetail(config, item: item)
   }
 
   /// Kicks off the first sync and the 60s interval.

@@ -19,9 +19,9 @@ enum NotifyScope: String, CaseIterable, Sendable {
   case none
 }
 
-/// Targets the preview keeps fetched at most; looking back at a recent
+/// Conversations the preview keeps read at most; looking back at a recent
 /// one is instant, and nothing builds up over a long session.
-private let detailCacheLimit = 40
+private let conversationCacheLimit = 40
 
 /// True when running from a real .app bundle. SMAppService and
 /// UNUserNotificationCenter require one; a bare `swift run` executable
@@ -43,6 +43,16 @@ final class AppModel {
   /// The sidebar's tree of inboxes and folders; edited through
   /// `updateSidebar`, which applies here at once and pushes to the engine.
   private(set) var sidebarLayout = SidebarLayout()
+  /// The user's boards, in sidebar order; edited through `setBoards`,
+  /// which applies here at once and pushes to the engine.
+  private(set) var boards: [Board] = []
+  /// What the boards' cards know about their targets, by key.
+  private(set) var targets: [String: TrackedTarget] = [:]
+  /// Every card the inbox's notifications make, newest activity first —
+  /// before any board's scope or columns. Built once per state push: the
+  /// inbox keeps every notification it was ever given, and boards and
+  /// their badges redraw far more often than the state changes.
+  private(set) var cards: [BoardCard] = []
   /// Labels and rules the on-device model suggests, waiting on the user —
   /// empty while `suggestionsEnabled` is off.
   private(set) var suggestions: [Suggestion] = []
@@ -70,7 +80,11 @@ final class AppModel {
   private(set) var connecting = false
   private(set) var connectError: String?
   /// Ticked every 30s so relative timestamps stay fresh.
-  private(set) var now = Date()
+  private(set) var now = Date() {
+    didSet {
+      placements = [:]
+    }
+  }
 
   // Shared view state.
   /// Which inbox is showing; remembered across launches.
@@ -78,6 +92,7 @@ final class AppModel {
     didSet {
       UserDefaults.standard.set(sidebarSelection.category, forKey: "sidebarCategory")
       UserDefaults.standard.set(sidebarSelection.account, forKey: "sidebarAccount")
+      UserDefaults.standard.set(sidebarSelection.board, forKey: "sidebarBoard")
       // Another inbox is a fresh look: the unread filter starts over.
       if sidebarSelection != oldValue {
         releaseKeptReads()
@@ -108,6 +123,29 @@ final class AppModel {
   private(set) var rowLayout: RowLayout = AppModel.loadRowLayout()
   /// Selection is by thread id, so it survives sync updates.
   var selectedThreadIds: Set<String> = []
+  /// The card selected on the board, by card id; a board shows one at a
+  /// time.
+  var selectedCardId: String?
+  /// Whether the selected card's preview stands beside the board. Picking
+  /// a card shows it; the user can put it away for the whole board and
+  /// keep the card selected.
+  var cardPreviewShown = false
+  /// Whether the main window's sidebar shows; remembered across launches.
+  var sidebarShown = !UserDefaults.standard.bool(forKey: "sidebarHidden") {
+    didSet {
+      UserDefaults.standard.set(!sidebarShown, forKey: "sidebarHidden")
+    }
+  }
+  /// Whether the inbox's preview stands beside the list. It stays as the
+  /// user leaves it, across launches.
+  var inboxPreviewShown = !UserDefaults.standard.bool(forKey: "previewHidden") {
+    didSet {
+      UserDefaults.standard.set(!inboxPreviewShown, forKey: "previewHidden")
+    }
+  }
+  /// The board in the editor sheet — an existing one, or a new one not
+  /// saved until the sheet is.
+  var editingBoard: Board?
   /// A message picked inside the previewed thread: the toolbar actions
   /// narrow to it while set. Ignored whenever it doesn't belong to the
   /// previewed thread.
@@ -118,27 +156,34 @@ final class AppModel {
   /// there (⌘F does).
   var searchPresented = false
 
-  /// Where the preview's fetch of an item's target stands.
-  enum DetailLoad: Sendable {
-    case loading
-    /// nil when the item points at nothing the provider can describe.
-    case loaded(ItemDetail?)
-    /// The provider's message, fit to show verbatim.
-    case failed(String)
+  /// Where an item's target's conversation stands, as the preview shows it.
+  enum ConversationLoad: Sendable {
+    /// Not in yet: the background refresh hasn't reached it, and the
+    /// preview asked for it ahead of the rounds.
+    case fetching
+    case loaded(TargetConversation)
+    /// The provider won't show the target; why, fit to show verbatim.
+    case unreadable(String)
+    /// The ask ahead of the rounds came back empty; why, fit to show. The
+    /// rounds go on asking.
+    case waiting(String)
   }
 
-  /// One fetch held for the preview, and the activity it was made for.
-  private struct HeldDetail {
-    /// Which fetch owns the entry, so a superseded one can't write to it.
-    let ticket: UUID
-    let updatedAt: Date
-    var load: DetailLoad
+  /// A stored conversation the preview has read, and the activity it is
+  /// current as of.
+  private struct HeldConversation {
+    let at: Date
+    let conversation: TargetConversation
   }
 
-  /// What the preview has fetched about items' targets, by item id — in
-  /// memory only, the most recent `detailCacheLimit` of them.
-  private var details: [String: HeldDetail] = [:]
-  @ObservationIgnored private var detailOrder: [String] = []
+  /// Conversations read for the preview, by target key — the most recent
+  /// `conversationCacheLimit` of them.
+  private var conversations: [String: HeldConversation] = [:]
+  @ObservationIgnored private var conversationOrder: [String] = []
+  /// Why an ask ahead of the rounds came back empty, by target key.
+  private var conversationFailures: [String: String] = [:]
+  /// Targets an ask ahead of the rounds is out for.
+  @ObservationIgnored private var fetchingConversations: Set<String> = []
 
   @ObservationIgnored var engine: SyncEngine?
   /// Chrome updates after every state push: tray dot, dock badge.
@@ -157,20 +202,41 @@ final class AppModel {
     if unreadOnly {
       keepNewlyRead(state.items)
     }
-    items = state.items
-    accounts = state.accounts
-    labels = state.labels
-    rules = state.rules
-    sidebarLayout = state.sidebar
-    suggestions = suggestionsActive ? state.suggestions : []
-    lastSyncAt = state.lastSyncAt
-    syncing = state.syncing
+    // Only what changed is assigned: every assignment wakes every view
+    // that reads the property, equal value or not, and a push repeats
+    // most of the state unchanged. Toolbar items redraw with a fade, so a
+    // push that touched only one card would flicker the whole toolbar.
+    let cardsStale = items != state.items || targets != state.targets || accounts != state.accounts
+    assignIfChanged(\.items, state.items)
+    assignIfChanged(\.accounts, state.accounts)
+    assignIfChanged(\.labels, state.labels)
+    assignIfChanged(\.rules, state.rules)
+    assignIfChanged(\.sidebarLayout, state.sidebar)
+    assignIfChanged(\.boards, state.boards)
+    assignIfChanged(\.targets, state.targets)
+    if cardsStale {
+      cards = BoardEngine.cards(items: state.items, targets: state.targets, accounts: state.accounts)
+      placements = [:]
+    }
+    assignIfChanged(\.suggestions, suggestionsActive ? state.suggestions : [])
+    assignIfChanged(\.lastSyncAt, state.lastSyncAt)
+    assignIfChanged(\.syncing, state.syncing)
     // A sidebar scope pointing at a removed account would deselect every
     // row and persist the dangling id — snap back to All Inboxes.
     if let account = sidebarSelection.account, !accounts.contains(where: { $0.id == account }) {
       sidebarSelection = SidebarSelection(account: nil, category: sidebarSelection.category)
     }
+    // Likewise a deleted board: back to the inbox it was opened over.
+    if let board = sidebarSelection.board, !boards.contains(where: { $0.id == board }) {
+      sidebarSelection.board = nil
+    }
     onStateApplied?(self)
+  }
+
+  private func assignIfChanged<Value: Equatable>(_ property: ReferenceWritableKeyPath<AppModel, Value>, _ value: Value) {
+    if self[keyPath: property] != value {
+      self[keyPath: property] = value
+    }
   }
 
   func startTicker() {
@@ -204,7 +270,8 @@ final class AppModel {
     let defaults = UserDefaults.standard
     return SidebarSelection(
       account: defaults.string(forKey: "sidebarAccount"),
-      category: defaults.string(forKey: "sidebarCategory") ?? recentCategory.id
+      category: defaults.string(forKey: "sidebarCategory") ?? recentCategory.id,
+      board: defaults.string(forKey: "sidebarBoard")
     )
   }
 
@@ -470,53 +537,199 @@ final class AppModel {
     }
   }
 
+  // MARK: Boards
+
+  /// The board the sidebar has open, if it has one open.
+  var selectedBoard: Board? {
+    sidebarSelection.board.flatMap { id in boards.first { $0.id == id } }
+  }
+
+  /// What a board placement is remembered by.
+  private struct PlacementKey: Hashable {
+    let board: Board
+    let search: String
+    let picks: [Facet: String]
+  }
+
+  /// Placements already worked out for the current cards and time. The
+  /// board, each pill's menu, and the sidebar badge all ask on every
+  /// redraw, and a selection or a hover is a redraw.
+  @ObservationIgnored private var placements: [PlacementKey: BoardEngine.Placement] = [:]
+
+  /// A board's cards placed, narrowed by the search and by the pills —
+  /// all of them but `except`'s, for that pill's own menu.
+  func placement(
+    of board: Board, search: String = "", picks: [Facet: String] = [:], except: Facet? = nil
+  ) -> BoardEngine.Placement {
+    // Read on every call, a held placement too: the views asking observe
+    // what they read, and one that stopped reading the cards would never
+    // hear that they changed.
+    let cards = cards
+    let now = now
+    let narrowing = picks.filter { $0.key != except }
+    let key = PlacementKey(board: board, search: search, picks: narrowing)
+    if let held = placements[key] {
+      return held
+    }
+    let narrowed = matchingFacets(matchingSearch(cards, search), narrowing)
+    let placed = BoardEngine.place(narrowed, on: board, now: now, isFinished: BoardEngine.isFinished)
+    // Every edit to a board or a search keystroke is a new key; a handful
+    // is all one screen ever needs at once.
+    if placements.count >= 24 {
+      placements = [:]
+    }
+    placements[key] = placed
+    return placed
+  }
+
+  func setBoards(_ boards: [Board]) {
+    self.boards = boards
+    placements = [:]
+    Task {
+      await engine?.setBoards(boards)
+    }
+  }
+
+  /// Edits one board in place and pushes the result.
+  func updateBoard(_ id: BoardId, _ change: (inout Board) -> Void) {
+    guard let index = boards.firstIndex(where: { $0.id == id }) else {
+      return
+    }
+    var updated = boards
+    change(&updated[index])
+    setBoards(updated)
+  }
+
+  /// Saves a board from the editor: replaced where it stands, or added at
+  /// the end and opened.
+  func saveBoard(_ board: Board) {
+    var updated = boards
+    if let index = updated.firstIndex(where: { $0.id == board.id }) {
+      updated[index] = board
+    } else {
+      updated.append(board)
+      sidebarSelection = SidebarSelection(account: nil, category: recentCategory.id, board: board.id)
+    }
+    setBoards(updated)
+  }
+
+  func deleteBoard(_ id: BoardId) {
+    setBoards(boards.filter { $0.id != id })
+    if sidebarSelection.board == id {
+      sidebarSelection.board = nil
+    }
+  }
+
+  /// A board to start editing: the starter board's columns under fresh
+  /// ids, since a project board usually wants the same who-moves-next
+  /// split, narrowed by a scope.
+  func newBoard() -> Board {
+    var board = GitForgeBoards.myWork
+    board.id = UUID().uuidString
+    board.name = "New Board"
+    board.columns = board.columns.map { column in
+      var copy = column
+      copy.id = UUID().uuidString
+      return copy
+    }
+    return board
+  }
+
+  /// Puts a card in a column of the board by hand, or (nil) hands it back
+  /// to the board's rules.
+  func pin(_ card: BoardCard, to column: String?, on board: BoardId) {
+    if let index = boards.firstIndex(where: { $0.id == board }) {
+      boards[index].pins[card.id] = column.map { BoardPin(column: $0, state: card.state) }
+      placements = [:]
+    }
+    Task {
+      await engine?.setPin(board: board, card: card.id, column: column, state: card.state)
+    }
+  }
+
+  /// The user has the card open: its new comments count from now on.
+  func markSeen(_ card: BoardCard) {
+    let countable = card.snapshot?.commentCount != nil
+    guard card.target?.seenAt == nil || card.newComments != nil || (countable && card.target?.seenComments == nil) else {
+      return
+    }
+    Task {
+      await engine?.markTargetSeen(card.id, provider: card.lead.provider)
+    }
+  }
+
   // MARK: Previews
 
-  /// What is known about the item's target as of its latest activity; nil
-  /// when nothing current was asked for.
-  func detail(for item: InboxItem) -> DetailLoad? {
-    guard let held = details[item.id], held.updatedAt >= item.updatedAt else {
+  /// The conversation of the item's target, as the preview shows it; nil
+  /// when the item points at nothing a conversation is kept for, or while
+  /// a stored one is on its way from disk.
+  func conversation(for item: InboxItem) -> ConversationLoad? {
+    guard let key = spec(for: item.provider).boardKey(for: item) else {
       return nil
     }
-    return held.load
+    let target = targets[key]
+    if let at = target?.conversationAt {
+      guard let held = conversations[key], held.at == at else {
+        return nil
+      }
+      return .loaded(held.conversation)
+    }
+    if let reason = target?.unreadable {
+      return .unreadable(reason)
+    }
+    if let failure = conversationFailures[key] {
+      return .waiting(failure)
+    }
+    return .fetching
   }
 
-  /// Fetches the item's target unless it is already held for the item's
-  /// latest activity. A failure is tried again on the next look; a fetch
-  /// whose task was cancelled — the selection moved on — leaves nothing
-  /// behind.
-  func loadDetail(for item: InboxItem) async {
-    if case .loaded = detail(for: item) {
+  /// What the preview's load of a conversation follows: a change to it
+  /// starts the load again.
+  func conversationVersion(for item: InboxItem) -> String {
+    let target = spec(for: item.provider).boardKey(for: item).flatMap { targets[$0] }
+    let at = target?.conversationAt?.timeIntervalSinceReferenceDate ?? 0
+    return "\(item.id)@\(at)\(target?.unreadable == nil ? "" : "!")"
+  }
+
+  /// Reads the target's stored conversation, or, when the background
+  /// refresh hasn't brought it yet, asks for it ahead of the rounds. An
+  /// ask cancelled because the selection moved on leaves nothing behind.
+  func loadConversation(for item: InboxItem) async {
+    guard let key = spec(for: item.provider).boardKey(for: item), let engine else {
       return
     }
-    guard let engine else {
+    let target = targets[key]
+    if let at = target?.conversationAt {
+      guard conversations[key]?.at != at else {
+        return
+      }
+      if let conversation = await engine.conversation(for: key) {
+        hold(key, HeldConversation(at: at, conversation: conversation))
+      }
       return
     }
-    let ticket = UUID()
-    hold(item.id, HeldDetail(ticket: ticket, updatedAt: item.updatedAt, load: .loading))
-    let load: DetailLoad
-    do {
-      load = .loaded(try await engine.fetchDetail(itemId: item.id))
-    } catch {
-      load = .failed((error as? ProviderError)?.message ?? error.localizedDescription)
-    }
-    guard details[item.id]?.ticket == ticket else {
+    guard target?.unreadable == nil, !fetchingConversations.contains(key) else {
       return
     }
-    if Task.isCancelled {
-      details[item.id] = nil
-    } else {
-      details[item.id]?.load = load
+    fetchingConversations.insert(key)
+    defer { fetchingConversations.remove(key) }
+    if conversationFailures[key] != nil {
+      conversationFailures[key] = nil
+    }
+    let failure = await engine.refreshConversation(key)
+    if let failure, !Task.isCancelled {
+      conversationFailures[key] = failure
     }
   }
 
-  /// Keeps a fetch, letting go of the oldest beyond the cache limit.
-  private func hold(_ id: String, _ held: HeldDetail) {
-    details[id] = held
-    detailOrder.removeAll { $0 == id }
-    detailOrder.append(id)
-    while detailOrder.count > detailCacheLimit {
-      details[detailOrder.removeFirst()] = nil
+  /// Keeps a conversation read, letting go of the oldest beyond the cache
+  /// limit.
+  private func hold(_ key: String, _ held: HeldConversation) {
+    conversations[key] = held
+    conversationOrder.removeAll { $0 == key }
+    conversationOrder.append(key)
+    while conversationOrder.count > conversationCacheLimit {
+      conversations[conversationOrder.removeFirst()] = nil
     }
   }
 

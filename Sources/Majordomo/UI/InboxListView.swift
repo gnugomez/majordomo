@@ -8,6 +8,13 @@ import SwiftUI
 /// table refuses a row of no height at all, so it rests at a hairline.
 private let spotlightRestHeight: CGFloat = 1
 
+/// Rows the list draws before it offers the rest behind a row of its own.
+/// The list measures every row it is handed, so a long history would take
+/// seconds to show — on opening, and on every switch between inboxes. The
+/// search and filters still reach every notification; only the drawing
+/// waits.
+private let rowPage = 200
+
 struct InboxListView: View {
   let model: AppModel
   let threads: [InboxThread]
@@ -24,6 +31,8 @@ struct InboxListView: View {
   /// reset anything the box held itself.
   @State private var spotlightIndex = 0
   @State private var spotlightGreeted = ""
+  /// How many threads the list draws; another inbox starts over.
+  @State private var shownCount = rowPage
 
   var body: some View {
     // Items keep showing while their account is connected, even when it
@@ -123,7 +132,7 @@ struct InboxListView: View {
           // selection, and no separator draws around it.
           .listRowSeparator(.hidden)
           .selectionDisabled()
-          ForEach(threads) { thread in
+          ForEach(threads.prefix(shownCount)) { thread in
             ItemRowView(
               thread: thread,
               now: model.now,
@@ -148,6 +157,17 @@ struct InboxListView: View {
                 .tag(member.id)
               }
             }
+          }
+          if threads.count > shownCount {
+            Button("Show \(min(rowPage, threads.count - shownCount)) More") {
+              shownCount += rowPage
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 12, weight: .medium))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowSeparator(.hidden)
+            .selectionDisabled()
           }
         }
         .listStyle(.inset)
@@ -179,6 +199,9 @@ struct InboxListView: View {
         } primaryAction: { ids in
           open(resolveSelection(in: threads, ids: ids))
         }
+        .onChange(of: categoryId) {
+          shownCount = rowPage
+        }
         .onKeyPress(.return) {
           let picked = resolveSelection(in: threads, ids: model.selectedThreadIds)
           guard !picked.isEmpty else {
@@ -193,6 +216,11 @@ struct InboxListView: View {
         .onChange(of: model.selectedThreadIds) { _, ids in
           guard ids.count == 1, let id = ids.first else {
             return
+          }
+          // A pick beyond the drawn rows (an old one, from a banner) draws
+          // as far as it first.
+          if let index = threads.firstIndex(where: { $0.id == id || $0.itemIds.contains(id) }), index >= shownCount {
+            shownCount = (index / rowPage + 1) * rowPage
           }
           withAnimation(.snappy(duration: 0.2)) {
             scroll.scrollTo(id, anchor: nil)

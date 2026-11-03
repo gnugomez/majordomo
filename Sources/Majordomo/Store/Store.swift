@@ -8,7 +8,10 @@
 // labels and rules live here too, next to the per-item assignments they
 // govern, as do the summaries the on-device model writes — keyed by the
 // text they were made from, so they survive relaunches and go stale only
-// when that text changes.
+// when that text changes. Boards live here as well, with the targets they
+// are built from: what each issue or pull request looked like at its last
+// refresh. The targets' conversations sit beside the store, a file each
+// (ConversationFiles): together they outweigh everything else here.
 
 import CryptoKit
 import Foundation
@@ -147,6 +150,12 @@ struct StoreFile: Codable {
   /// Whether the starter label and rule were ever added. Set the once,
   /// kept forever: deleting what they seeded is final.
   var seeded: Bool = false
+  /// The targets boards are built from, by key.
+  var targets: [String: TrackedTarget] = [:]
+  /// The user's boards, in sidebar order.
+  var boards: [Board] = []
+  /// Whether the starter board was ever added — the same once-only rule.
+  var boardsSeeded: Bool = false
 }
 
 extension StoreFile {
@@ -161,6 +170,9 @@ extension StoreFile {
     sidebar = try container.decodeIfPresent(SidebarLayout.self, forKey: .sidebar)
     suggestions = try container.decodeIfPresent([Suggestion].self, forKey: .suggestions) ?? []
     seeded = try container.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
+    targets = try container.decodeIfPresent([String: TrackedTarget].self, forKey: .targets) ?? [:]
+    boards = try container.decodeIfPresent([Board].self, forKey: .boards) ?? []
+    boardsSeeded = try container.decodeIfPresent(Bool.self, forKey: .boardsSeeded) ?? false
   }
 }
 
@@ -192,6 +204,10 @@ final class Store {
   /// ever written.
   private let persistent: Bool
   private var data = StoreFile()
+  private let conversations: ConversationFiles
+  /// Whether this run has cleared out the conversations of targets the
+  /// store no longer holds — once, then as targets drop.
+  private var conversationsSwept = false
   /// Lazy so a demo run (plaintext fixture tokens) never touches the
   /// Keychain at all.
   private lazy var key = TokenCipher.loadOrCreateKey()
@@ -228,10 +244,11 @@ final class Store {
   }
 
   /// An in-memory store seeded with fixtures; nothing persists.
-  init(fixture: StoreFile) {
+  init(fixture: StoreFile, conversations seed: [String: TargetConversation] = [:]) {
     fileURL = URL(fileURLWithPath: "/dev/null")
     persistent = false
     data = fixture
+    conversations = ConversationFiles(directory: nil, seed: seed)
   }
 
   init(directory: URL? = nil) {
@@ -240,6 +257,7 @@ final class Store {
       .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appending(path: "Majordomo")
     fileURL = base.appending(path: "majordomo.json")
+    conversations = ConversationFiles(directory: base.appending(path: "Conversations"))
     if let raw = try? Data(contentsOf: fileURL) {
       if let parsed = try? Self.decoder().decode(StoreFile.self, from: raw) {
         data = parsed
@@ -669,6 +687,140 @@ final class Store {
     }
     data.sidebar = layout
     save()
+  }
+
+  // MARK: Boards
+
+  func boards() -> [Board] {
+    data.boards
+  }
+
+  func setBoards(_ boards: [Board]) {
+    guard data.boards != boards else {
+      return
+    }
+    data.boards = boards
+    save()
+  }
+
+  /// Adds the starter boards, once — the same rule as the starter labels.
+  func seedBoards(_ boards: [Board]) {
+    guard !data.boardsSeeded else {
+      return
+    }
+    data.boardsSeeded = true
+    let known = Set(data.boards.map(\.id))
+    data.boards.append(contentsOf: boards.filter { !known.contains($0.id) })
+    save()
+  }
+
+  /// Puts a card in a column by hand; nil hands it back to the rules.
+  func setPin(board: BoardId, card: String, pin: BoardPin?) {
+    guard let index = data.boards.firstIndex(where: { $0.id == board }), data.boards[index].pins[card] != pin else {
+      return
+    }
+    data.boards[index].pins[card] = pin
+    save()
+  }
+
+  // MARK: Targets
+
+  func targets() -> [String: TrackedTarget] {
+    data.targets
+  }
+
+  /// A target's stored conversation.
+  func conversation(for key: String) -> TargetConversation? {
+    conversations.read(key)
+  }
+
+  /// Records a refresh round. The snapshots and conversations that came
+  /// back replace the old ones, and a target the provider wouldn't show
+  /// keeps the last of each with the reason why; both are stamped, so a
+  /// target out of reach waits for new activity before it is asked again.
+  /// What went unanswered is left as it was, first in line next round.
+  func applyTargetRefresh(_ round: TargetRound, providers: [String: ProviderId], at date: Date) {
+    guard !round.refreshed.isEmpty || !round.unreadable.isEmpty else {
+      return
+    }
+    func target(_ key: String) -> TrackedTarget? {
+      data.targets[key] ?? providers[key].map { TrackedTarget(key: key, provider: $0) }
+    }
+    for (key, refresh) in round.refreshed {
+      guard var target = target(key) else { continue }
+      target.snapshot = refresh.snapshot
+      target.fetchedAt = date
+      target.unreadable = nil
+      if let conversation = refresh.conversation {
+        conversations.write(conversation, for: key)
+        target.conversationAt = refresh.snapshot.updatedAt
+      }
+      data.targets[key] = target
+    }
+    for (key, reason) in round.unreadable {
+      guard var target = target(key) else { continue }
+      target.fetchedAt = date
+      target.unreadable = reason
+      data.targets[key] = target
+    }
+    save()
+  }
+
+  /// Notes that a target's conversation is no longer held; false when it
+  /// wasn't noted as held anyway.
+  func forgetConversation(_ key: String) -> Bool {
+    guard data.targets[key]?.conversationAt != nil else {
+      return false
+    }
+    data.targets[key]?.conversationAt = nil
+    save()
+    return true
+  }
+
+  /// Forgets why targets couldn't be read, so the next rounds ask after
+  /// them again: a new token may reach what the old one couldn't.
+  func clearUnreadableTargets() {
+    var changed = false
+    for (key, target) in data.targets where target.unreadable != nil {
+      data.targets[key]?.unreadable = nil
+      changed = true
+    }
+    if changed {
+      save()
+    }
+  }
+
+  /// Notes that the user had the card open: what is new counts from here.
+  func markTargetSeen(_ key: String, provider: ProviderId, at date: Date) {
+    var target = data.targets[key] ?? TrackedTarget(key: key, provider: provider)
+    target.seenAt = date
+    target.seenComments = target.snapshot?.commentCount
+    data.targets[key] = target
+    save()
+  }
+
+  /// Drops the targets no live notification points at any more, with
+  /// their conversations and the pins of the cards that went with them.
+  func pruneTargets(keeping keys: Set<String>) {
+    var changed = false
+    for key in data.targets.keys where !keys.contains(key) {
+      data.targets.removeValue(forKey: key)
+      changed = true
+    }
+    if changed || !conversationsSwept {
+      conversations.keep(only: Set(data.targets.keys))
+      conversationsSwept = true
+    }
+    for index in data.boards.indices {
+      let pins = data.boards[index].pins.filter { keys.contains($0.key) }
+      if pins.count != data.boards[index].pins.count {
+        data.boards[index].pins = pins
+        changed = true
+      }
+    }
+    if changed {
+      save()
+    }
   }
 
   // MARK: Suggestions

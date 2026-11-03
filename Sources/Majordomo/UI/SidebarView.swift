@@ -6,7 +6,8 @@
 // ⌘, the tray menu and the rows' own menus. Buckets and their wording come from
 // each provider's spec; the user's label folders sit nested under one
 // collapsible "Labels" node after them in every section, in their own
-// tints.
+// tints. The user's boards follow All Inboxes in a section of their own:
+// a board spans every account, so it belongs to none of theirs.
 
 import SwiftUI
 
@@ -15,6 +16,7 @@ struct SidebarView: View {
   @Binding var selection: SidebarSelection
 
   @AppStorage("sidebarAllExpanded") private var allExpanded = true
+  @AppStorage("sidebarBoardsExpanded") private var boardsExpanded = true
   /// Account sections the user expanded (collapsed by default), as a CSV of
   /// account ids.
   @AppStorage("expandedAccountSections") private var expandedCSV = ""
@@ -28,6 +30,11 @@ struct SidebarView: View {
         categoryRows(account: nil)
       } header: {
         Text("All Inboxes")
+      }
+      Section(isExpanded: $boardsExpanded) {
+        boardRows
+      } header: {
+        Text("Boards")
       }
       ForEach(model.accounts) { account in
         Section(isExpanded: expansion(for: account.id)) {
@@ -54,6 +61,37 @@ struct SidebarView: View {
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
       }
+    }
+  }
+
+  /// One row per board, badged with its cards that carry unread
+  /// notifications — the board's version of an inbox's unread rows.
+  @ViewBuilder
+  private var boardRows: some View {
+    // With every board deleted, the section offers a fresh one rather than
+    // vanishing — nothing else in the window would.
+    if model.boards.isEmpty {
+      Button {
+        model.editingBoard = model.newBoard()
+      } label: {
+        Label("New Board…", systemImage: "plus")
+          .foregroundStyle(.secondary)
+      }
+      .buttonStyle(.plain)
+      .selectionDisabled()
+    }
+    ForEach(model.boards) { board in
+      Label(board.name, systemImage: board.symbol)
+        .badge(model.placement(of: board).unread)
+        .tag(SidebarSelection(account: nil, category: recentCategory.id, board: board.id))
+        .contextMenu {
+          Button("Edit Board…") {
+            model.editingBoard = board
+          }
+          Button("New Board…") {
+            model.editingBoard = model.newBoard()
+          }
+        }
     }
   }
 

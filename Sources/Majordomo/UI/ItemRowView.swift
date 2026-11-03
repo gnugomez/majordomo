@@ -76,8 +76,7 @@ struct ItemRowView: View {
         .padding(.top, excerpt == nil ? 0 : 4)
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 4) {
-          Image(systemName: spec(for: item.provider).symbol(for: item))
-            .font(.system(size: 11, weight: .medium))
+          GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
             .foregroundStyle(
               selected ? AnyShapeStyle(.primary) : AnyShapeStyle(spec(for: item.provider).color(for: item))
             )

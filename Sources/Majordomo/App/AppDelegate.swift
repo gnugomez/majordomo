@@ -199,6 +199,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     find.target = self
     editMenu.addItem(find)
 
+    // The View menu: the sidebar, through the model like the toolbar's
+    // toggle, so SwiftUI's split and the menu never disagree about it.
+    let viewItem = NSMenuItem()
+    mainMenu.addItem(viewItem)
+    let viewMenu = NSMenu(title: "View")
+    viewItem.submenu = viewMenu
+    let sidebar = NSMenuItem(title: "Toggle Sidebar", action: #selector(toggleSidebar), keyEquivalent: "s")
+    sidebar.keyEquivalentModifierMask = [.control, .command]
+    sidebar.target = self
+    viewMenu.addItem(sidebar)
+
     // The Window menu: the standard trio, plus the open-windows list and
     // "Bring All to Front" that AppKit maintains once it owns the menu.
     // A menu-bar app only shows a menu bar while a window is open (the
@@ -415,6 +426,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   @objc private func focusSearch() {
     openMainWindow()
     model.searchPresented = true
+  }
+
+  /// ⌃⌘S: the main window's sidebar slides away or back.
+  @objc private func toggleSidebar() {
+    withAnimation {
+      model.sidebarShown.toggle()
+    }
   }
 
   // MARK: Windows

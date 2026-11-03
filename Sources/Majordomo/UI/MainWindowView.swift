@@ -1,7 +1,9 @@
-// Main-window shell: a three-column NavigationSplitView (source list,
-// inbox, preview). The column dividers, their drag behavior, the
-// sidebar material, keyboard navigation, and the toolbar are all the
-// system's. Settings open in their own window.
+// Main-window shell: a NavigationSplitView of the source list and what it
+// selects — the inbox list or a board — with the selection's preview in
+// an inspector at the trailing edge. The column dividers, the sidebar's and
+// the inspector's glass and slide, the content scrolling on beneath them,
+// keyboard navigation, and the toolbar are all the system's. Settings open
+// in their own window.
 
 import AppKit
 import SwiftUI
@@ -9,10 +11,12 @@ import SwiftUI
 struct MainWindowView: View {
   let model: AppModel
 
-  @State private var columnVisibility: NavigationSplitViewVisibility =
-    UserDefaults.standard.bool(forKey: "sidebarHidden") ? .doubleColumn : .all
   /// How tall the floating filter pills stand; the list's rows start below.
   @State private var pillBarHeight: CGFloat = 0
+  /// The widths the sidebar and the preview open at: where the user last
+  /// left them. Read once, as the window opens.
+  @State private var sidebarWidth = rememberedWidth(sidebarWidthKey, or: 200)
+  @State private var previewWidth = rememberedWidth(previewWidthKey, or: previewIdealWidth)
 
   /// Everything the sidebar selection resolves to for one render pass.
   private struct Scope {
@@ -75,6 +79,59 @@ struct MainWindowView: View {
   }
 
   var body: some View {
+    split
+      // Between the inbox and a board the window changes at once: the
+      // toolbar's items are rebuilt either way, and animated they fade
+      // and morph through a few frames.
+      .transaction(value: model.selectedBoard?.id) { transaction in
+        transaction.disablesAnimations = true
+      }
+    // The search field sits at the toolbar's trailing edge, filtering the
+    // list (or the board) live. State lives on the model so ⌘F
+    // (AppDelegate's Edit menu) can focus the field from outside the view
+    // tree.
+    .searchable(
+      text: Binding(get: { model.searchText }, set: { model.searchText = $0 }),
+      isPresented: Binding(get: { model.searchPresented }, set: { model.searchPresented = $0 }),
+      placement: .toolbar,
+      prompt: "Search"
+    )
+    // Rows, preview, and bodies paint the query's matches from this.
+    .environment(\.searchHighlightTerms, searchTerms(model.searchText))
+    // The columns carry their own minimum widths; the window's minimum
+    // height lives here (hosting sizingOptions [.minSize] enforces both).
+    .frame(minHeight: 420)
+    .sheet(item: Binding(get: { model.editingBoard }, set: { model.editingBoard = $0 })) { board in
+      BoardEditorSheet(model: model, board: board)
+    }
+  }
+
+  private var sidebarColumn: some View {
+    SidebarView(
+      model: model,
+      selection: Binding(
+        get: { model.sidebarSelection },
+        set: { model.sidebarSelection = $0 }
+      )
+    )
+    // The widths go outside the note of the width: wrapped in its
+    // onGeometryChange, the split no longer finds them.
+    .remembersWidth(sidebarWidthKey)
+    .navigationSplitViewColumnWidth(min: 170, ideal: sidebarWidth, max: 320)
+    // In the sidebar's own stretch of the toolbar, at its trailing end, and
+    // beside the window's buttons while the sidebar is away. SwiftUI's own
+    // toggle comes and goes with how the window was set up, so the split
+    // view drops it (`.toolbar(removing: .sidebarToggle)`) for this one.
+    .toolbar {
+      ToolbarSpacer(.flexible)
+      ToolbarItem {
+        SidebarToggle(model: model)
+      }
+    }
+  }
+
+  /// The sidebar, what it selects, and the preview of what that selects.
+  private var split: some View {
     let scope = resolveScope()
     // Selection survives sync updates (ids from other scopes stay in the
     // set but must not count here); a selected id is a thread row or an
@@ -87,75 +144,151 @@ struct MainWindowView: View {
     let pickedMember = selected?.items.first { $0.id == model.selectedMemberId }
     let actionTargets = pickedMember.map { [InboxThread(id: $0.id, items: [$0])] } ?? selectedThreads
 
-    NavigationSplitView(columnVisibility: $columnVisibility) {
-      SidebarView(
-        model: model,
-        selection: Binding(
-          get: { model.sidebarSelection },
-          set: { model.sidebarSelection = $0 }
-        )
-      )
-      .navigationSplitViewColumnWidth(min: 170, ideal: 200, max: 320)
-      // The bridged toolbar drops NavigationSplitView's automatic sidebar
-      // toggle, so supply one, with the standard shortcut. Declared on
-      // the sidebar column but placed .navigation, so it survives (leading)
-      // while the sidebar is hidden.
+    let columnVisibility = Binding<NavigationSplitViewVisibility>(
+      get: { model.sidebarShown ? .all : .detailOnly },
+      set: { model.sidebarShown = $0 != .detailOnly }
+    )
+    return NavigationSplitView(columnVisibility: columnVisibility) {
+      sidebarColumn
+    } detail: {
+      // Under a clear layer that stays put: the inspector beside the
+      // column shrinks to its narrowest whenever the column's view is
+      // swapped for another — the list for a board, or the list's empty
+      // state for its rows — unless something in the column holds still.
+      // On top, out of hit testing, rather than beneath: beneath, it is
+      // what the toolbar finds at the top of the pane, and with the
+      // inspector open the toolbar draws a hard line under itself instead
+      // of fading the content out beneath it.
+      ZStack {
+        if let board = model.selectedBoard {
+          boardContent(board)
+        } else {
+          inboxList(scope)
+        }
+        Color.clear.allowsHitTesting(false)
+      }
       .toolbar {
-        ToolbarItem(placement: .navigation) {
-          sidebarToggleButton
+        contentToolbar(actionTargets: actionTargets)
+      }
+      // The preview of what the list or the board selects: details about
+      // the selection, at the trailing edge, as an inspector. In the
+      // detail column rather than on the split: there SwiftUI counts it
+      // twice in the window's minimum width, once as a column and again
+      // as the room it covers over the content, and AppKit gives up on the
+      // layout whenever it opens in a window narrower than that.
+      .inspector(isPresented: previewPresented) {
+        previewPane(selectedThreads: selectedThreads, selected: selected)
+          .remembersWidth(previewWidthKey)
+          .inspectorColumnWidth(min: previewMinWidth, ideal: previewWidth, max: previewMaxWidth)
+      }
+    }
+    .toolbar(removing: .sidebarToggle)
+    .navigationTitle(model.selectedBoard?.name ?? windowTitle(for: scope))
+    .navigationSubtitle(model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count))
+  }
+
+  /// The inbox list, the filter pills and the suggestion panel floating
+  /// over it.
+  private func inboxList(_ scope: Scope) -> some View {
+    let pillRoom = model.hasAccounts ? pillBarHeight : 0
+    return InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id, topInset: pillRoom)
+      // The filter pills float over the list, just under the toolbar.
+      // An overlay rather than a safe-area inset or bar: either of those
+      // extends the toolbar's edge effect down over the pills, fading the
+      // rows out beneath them, where floating they sit on the rows
+      // themselves, seen through the glass. The list leaves room their
+      // height above its first row. They stay up when the filters empty
+      // the list, so they can be undone.
+      .overlay(alignment: .top) {
+        if model.hasAccounts {
+          FilterPillBar(model: model, facets: scope.facets)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
         }
       }
-    } content: {
-      let pillRoom = model.hasAccounts ? pillBarHeight : 0
-      InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id, topInset: pillRoom)
-        // The filter pills float over the list, just under the toolbar.
-        // An overlay rather than a safe-area inset or bar: either of those
-        // extends the toolbar's edge effect down over the pills, fading the
-        // rows out beneath them, where floating they sit on the rows
-        // themselves, seen through the glass. The list leaves room their
-        // height above its first row. They stay up when the filters empty
-        // the list, so they can be undone.
-        .overlay(alignment: .top) {
-          if model.hasAccounts {
-            FilterPillBar(model: model, facets: scope.facets)
-              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-          }
-        }
-        // The suggestion panel floats over the foot of the list, and only
-        // while the model has something to offer.
-        .overlay(alignment: .bottom) {
-          SuggestionPanel(model: model)
-        }
-        .navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 560)
-        // Declared on the column so it lands in the list's own toolbar
-        // section: refresh sits over the inbox column, the selection's
-        // actions over the detail column.
-        .toolbar {
-          ToolbarItem {
-            refreshButton
-          }
-        }
-    } detail: {
-      detailPane(selectedThreads: selectedThreads, selected: selected, actionTargets: actionTargets)
+      // The suggestion panel floats over the foot of the list, and only
+      // while the model has something to offer.
+      .overlay(alignment: .bottom) {
+        SuggestionPanel(model: model)
+      }
+  }
+
+  // MARK: Board
+
+  /// The board's cards, narrowed by the search and the pills.
+  private func boardPlacement(_ board: Board) -> BoardEngine.Placement {
+    model.placement(of: board, search: model.searchText, picks: model.facetPicks)
+  }
+
+  /// The card the board has selected, while it is on the board.
+  private func selectedCard(on board: Board) -> BoardCard? {
+    model.selectedCardId.flatMap { boardPlacement(board).byId[$0] }
+  }
+
+  /// A board, the filter pills floating over it as over the inbox.
+  private func boardContent(_ board: Board) -> some View {
+    let placement = boardPlacement(board)
+    // The inbox's pills, over the board: each menu lists what the search
+    // and the other pills leave on it. A board spans every account, so the
+    // provider pill shows whenever more than one provider is connected.
+    let facets = offeredFacets(for: nil).map { facet in
+      let pool = model.placement(of: board, search: model.searchText, picks: model.facetPicks, except: facet).byId
+      return facetChoices(facet, in: Array(pool.values), picked: model.facetPicks[facet])
     }
-    .navigationTitle(windowTitle(for: scope))
-    .navigationSubtitle(itemCount(scope.threads.count))
-    // The search field sits at the toolbar's trailing edge, filtering the
-    // list live. State lives on the model so ⌘F (AppDelegate's Edit menu)
-    // can focus the field from outside the view tree.
-    .searchable(
-      text: Binding(get: { model.searchText }, set: { model.searchText = $0 }),
-      isPresented: Binding(get: { model.searchPresented }, set: { model.searchPresented = $0 }),
-      placement: .toolbar,
-      prompt: "Search"
-    )
-    // Rows, preview, and bodies paint the query's matches from this.
-    .environment(\.searchHighlightTerms, searchTerms(model.searchText))
-    // The columns carry their own minimum widths; the window's minimum
-    // height lives here (hosting sizingOptions [.minSize] enforces both).
-    .frame(minHeight: 420)
-    .onChange(of: columnVisibility) {
-      UserDefaults.standard.set(columnVisibility == .doubleColumn, forKey: "sidebarHidden")
+    let selected = selectedCard(on: board)
+    return boardPane(board, placement: placement)
+      // The board leaves their height above its column headers.
+      .overlay(alignment: .top) {
+        if model.hasAccounts {
+          FilterPillBar(model: model, facets: facets)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
+        }
+      }
+      .onChange(of: selected?.id, initial: true) {
+        if let selected {
+          model.markSeen(selected)
+        }
+      }
+  }
+
+  @ViewBuilder
+  private func boardPane(_ board: Board, placement: BoardEngine.Placement) -> some View {
+    if !model.hasAccounts {
+      boardEmptyState(
+        symbol: "tray",
+        title: "No accounts connected",
+        caption: "Add an account in Settings to fill your boards."
+      )
+    } else if placement.count == 0 {
+      if !model.searchText.isEmpty {
+        boardEmptyState(
+          symbol: "magnifyingglass",
+          title: "No results",
+          caption: "Nothing on this board matches \u{201C}\(model.searchText)\u{201D}."
+        )
+      } else if !model.facetPicks.isEmpty {
+        boardEmptyState(
+          symbol: "line.3.horizontal.decrease",
+          title: "No matches",
+          caption: "Nothing on this board matches the filters above. Set one back to Any to see the rest."
+        )
+      } else {
+        boardEmptyState(
+          symbol: board.symbol,
+          title: "Nothing on this board yet",
+          caption: "Cards turn up as notifications arrive about the issues and pull requests this board takes."
+        )
+      }
+    } else {
+      BoardView(model: model, board: board, placement: placement, topInset: pillBarHeight)
+    }
+  }
+
+  /// Scroll-backed for the same reason as PreviewView's empty state: plain
+  /// content makes the toolbar draw a hard edge over the pane.
+  private func boardEmptyState(symbol: String, title: String, caption: String) -> some View {
+    ScrollView {
+      EmptyStateView(symbol: symbol, title: title, caption: caption)
+        .containerRelativeFrame(.vertical)
     }
   }
 
@@ -180,41 +313,73 @@ struct MainWindowView: View {
     return "\(scope.category.label) – @\(account.username ?? account.provider.displayName)"
   }
 
-  // MARK: Detail column
+  // MARK: Preview
 
-  private func detailPane(
-    selectedThreads: [InboxThread], selected: InboxThread?, actionTargets: [InboxThread]
-  ) -> some View {
-    Group {
-      if selectedThreads.count > 1 {
-        multiSelectionPlaceholder(count: selectedThreads.count)
-      } else {
-        PreviewView(model: model, thread: selected)
+  /// Whether the inspector shows: the inbox's preview as the user leaves
+  /// it, a board's while a card is picked and its preview not put away.
+  private var previewPresented: Binding<Bool> {
+    Binding(
+      get: {
+        guard let board = model.selectedBoard else {
+          return model.inboxPreviewShown
+        }
+        return model.cardPreviewShown && selectedCard(on: board) != nil
+      },
+      set: { shown in
+        if model.selectedBoard != nil {
+          model.cardPreviewShown = shown
+        } else {
+          model.inboxPreviewShown = shown
+        }
       }
+    )
+  }
+
+  @ViewBuilder
+  private func previewPane(selectedThreads: [InboxThread], selected: InboxThread?) -> some View {
+    if let board = model.selectedBoard {
+      PreviewView(model: model, thread: selectedCard(on: board).map { InboxThread(id: $0.id, items: $0.items) })
+    } else if selectedThreads.count > 1 {
+      multiSelectionPlaceholder(count: selectedThreads.count)
+    } else {
+      PreviewView(model: model, thread: selected)
     }
-    .frame(minWidth: 360)
-    // Mark-read and Open are always present, disabled while nothing is
-    // selected: the toolbar then has one shape, so the filter keeps the
-    // same distance from the search field either way, and the detail
-    // section is never empty (an empty one sends the list column's items
-    // to the window's far corner).
-    // They sit at the leading edge of the detail section
-    // (the search field owns the trailing edge) and only while something
-    // is selected; the invisible item covers the empty case so the detail
-    // section (which anchors the list column's items) never disappears.
-    // The filter is declared last so it is the item nearest the search
-    // field; MainWindowController then moves the toolbar's trailing
-    // spacer ahead of it, which SwiftUI offers no placement for.
-    .toolbar {
+  }
+
+  // MARK: Toolbar
+
+  /// In groups, as fixed spacers part them: Refresh; the selection's
+  /// actions; the filter; the preview toggle. Mark-read and Open are always
+  /// present over the inbox, disabled while nothing is selected, so the
+  /// toolbar keeps one shape. Over a board they go — opening and marking
+  /// read live on the cards there (a double-click, the context menu), and
+  /// a board is for looking across — and the board's menu stands in for
+  /// the filter.
+  @ToolbarContentBuilder
+  private func contentToolbar(actionTargets: [InboxThread]) -> some ToolbarContent {
+    ToolbarItem {
+      RefreshButton(model: model)
+    }
+    ToolbarSpacer(.fixed)
+    if model.selectedBoard == nil {
       ToolbarItem {
         markReadButton(for: actionTargets)
       }
       ToolbarItem {
         openButton(for: actionTargets)
       }
-      ToolbarItem {
+      ToolbarSpacer(.fixed)
+    }
+    ToolbarItem {
+      if model.selectedBoard != nil {
+        BoardToolbarControls(model: model)
+      } else {
         filterMenu
       }
+    }
+    ToolbarSpacer(.fixed)
+    ToolbarItem {
+      PreviewToggle(model: model)
     }
   }
 
@@ -297,29 +462,6 @@ struct MainWindowView: View {
 
   // MARK: Toolbar buttons
 
-  private var sidebarToggleButton: some View {
-    Button {
-      withAnimation {
-        columnVisibility = columnVisibility == .all ? .doubleColumn : .all
-      }
-    } label: {
-      Label("Toggle Sidebar", systemImage: "sidebar.leading")
-    }
-    .keyboardShortcut("s", modifiers: [.control, .command])
-    .help("Hide or show the sidebar")
-  }
-
-  private var refreshButton: some View {
-    Button {
-      model.refresh()
-    } label: {
-      Label("Refresh now", systemImage: "arrow.clockwise")
-    }
-    .keyboardShortcut("r")
-    .disabled(model.syncing)
-    .help("Refresh now")
-  }
-
   private func openButton(for selectedThreads: [InboxThread]) -> some View {
     Button {
       for thread in selectedThreads {
@@ -352,4 +494,96 @@ struct MainWindowView: View {
 
 private func itemCount(_ count: Int) -> String {
   count == 1 ? "1 item" : "\(count) items"
+}
+
+/// Refresh, in a view of its own so it redraws when a sync starts or ends
+/// and at no other update of the window: a toolbar item redraws with a
+/// fade.
+private struct RefreshButton: View {
+  let model: AppModel
+
+  var body: some View {
+    Button {
+      model.refresh()
+    } label: {
+      Label("Refresh now", systemImage: "arrow.clockwise")
+    }
+    .keyboardShortcut("r")
+    .disabled(model.syncing)
+    .help("Refresh now")
+  }
+}
+
+/// Slides the sidebar away or back. A view of its own, like Refresh: it
+/// reads nothing that changes, so nothing redraws it.
+private struct SidebarToggle: View {
+  let model: AppModel
+
+  var body: some View {
+    Button {
+      withAnimation {
+        model.sidebarShown.toggle()
+      }
+    } label: {
+      Label("Toggle Sidebar", systemImage: "sidebar.leading")
+    }
+    .help("Hide or show the sidebar")
+  }
+}
+
+/// Shows or puts away the preview: the inbox's, or the selected card's on
+/// a board, for the whole board in view without losing the selection. A
+/// view of its own, like Refresh, reading only what decides how it looks.
+private struct PreviewToggle: View {
+  let model: AppModel
+
+  var body: some View {
+    let onBoard = model.selectedBoard != nil
+    Button {
+      withAnimation {
+        if onBoard {
+          model.cardPreviewShown.toggle()
+        } else {
+          model.inboxPreviewShown.toggle()
+        }
+      }
+    } label: {
+      Label("Preview", systemImage: "info.circle")
+    }
+    .keyboardShortcut("i", modifiers: [.command, .option])
+    .disabled(onBoard && model.selectedCardId == nil)
+    .help("Show or hide the preview")
+  }
+}
+
+/// How wide the preview stands: the narrowest, at first, and the widest.
+private let previewMinWidth: CGFloat = 360
+private let previewIdealWidth: CGFloat = 420
+private let previewMaxWidth: CGFloat = 900
+
+private let sidebarWidthKey = "sidebarWidth"
+private let previewWidthKey = "previewWidth"
+
+/// The width a column was last left at, or `standard` the first time.
+private func rememberedWidth(_ key: String, or standard: CGFloat) -> CGFloat {
+  let saved = UserDefaults.standard.double(forKey: key)
+  return saved > 0 ? saved : standard
+}
+
+private func cardCount(_ count: Int) -> String {
+  count == 1 ? "1 card" : "\(count) cards"
+}
+
+private extension View {
+  /// Notes the width the column this view fills is left at, for the window
+  /// to open at next time. Straight into the defaults rather than into
+  /// state: nothing on screen changes with it, and a state change would
+  /// have the toolbar redraw on every step of a drag.
+  func remembersWidth(_ key: String) -> some View {
+    onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+      if width > 0 {
+        UserDefaults.standard.set(Double(width), forKey: key)
+      }
+    }
+  }
 }

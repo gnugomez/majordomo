@@ -23,13 +23,14 @@ enum DemoData {
       minutesAgo: Double, account: AccountId, provider: ProviderId, kind: String,
       title: String, repo: String, reason: String, mention: Bool = false,
       state: String? = nil, author: String? = nil, body: String? = nil, read: Bool = true,
-      url: String = "https://example.com", upstreamLabels: [String]? = nil,
+      url: String? = nil, upstreamLabels: [String]? = nil,
       labelOverrides: LabelOverrides = [:]
     ) -> StoredItem {
       let date = now.addingTimeInterval(-minutesAgo * 60)
       return StoredItem(
         id: "\(account):\(Int(minutesAgo))", accountId: account, provider: provider,
-        kind: kind, title: title, repo: repo, url: url,
+        kind: kind, title: title, repo: repo,
+        url: url ?? targetUrl(provider: provider, repo: repo, kind: kind, number: Int(minutesAgo) % 1000),
         reason: reason, isMention: mention, updatedAt: date, state: state,
         author: author, body: body, read: read, firstSeenAt: date, lastSeenUpstreamAt: now,
         labelOverrides: labelOverrides, upstreamLabels: upstreamLabels
@@ -70,7 +71,8 @@ enum DemoData {
         - swap `Data(contentsOf:)` for `InputStream`
         - parse incrementally with `XMLParser`
         """,
-        read: false
+        read: false,
+        url: "https://github.com/acme/vector-kit/issues/26#issuecomment-4"
       ),
       item(
         minutesAgo: 12, account: gitlab, provider: .gitlab, kind: "merge",
@@ -96,7 +98,8 @@ enum DemoData {
         format, one series per provider. Names follow the *rate/errors/duration* \
         convention.
         """,
-        read: false
+        read: false,
+        url: "https://gitlab.acme.dev/acme/metrics/-/merge_requests/49#note_7"
       ),
       // One MR that arrived as three GitLab todos — they thread into a
       // single row (same target, fragments stripped).
@@ -170,6 +173,29 @@ enum DemoData {
         minutesAgo: 52 * 60, account: github, provider: .github, kind: "pull",
         title: "Draft: experiment with HTTP/3 for the edge tier", repo: "acme/edge",
         reason: "author", state: "draft", author: "octocat"
+      ),
+      // Watched-repository traffic: new issues nobody has picked up yet,
+      // a teammate's pull request, and an assignment gone quiet — what a
+      // board's triage, Other and faded cards are for.
+      item(
+        minutesAgo: 95, account: github, provider: .github, kind: "issue",
+        title: "Export to PDF drops embedded fonts", repo: "acme/vector-kit",
+        reason: "subscribed", state: "open", author: "lin", read: false
+      ),
+      item(
+        minutesAgo: 3 * 60, account: gitlab, provider: .gitlab, kind: "issue",
+        title: "Document the canary thresholds", repo: "acme/deploy",
+        reason: "subscribed", state: "open", author: "priya"
+      ),
+      item(
+        minutesAgo: 4 * 60, account: github, provider: .github, kind: "pull",
+        title: "feat: keyboard shortcuts for the command palette", repo: "acme/console",
+        reason: "subscribed", state: "open", author: "kim"
+      ),
+      item(
+        minutesAgo: 20 * 24 * 60, account: github, provider: .github, kind: "issue",
+        title: "Search results ignore the user's locale", repo: "acme/atlas",
+        reason: "assigned", state: "open", author: "mona"
       ),
     ]
 
@@ -278,37 +304,130 @@ enum DemoData {
       ),
     ]
 
+    // What the boards know about each target, as a refresh would have
+    // left it: enough to put a card in every column of the starter board.
+    func target(
+      _ item: StoredItem, assignees: [String] = [], reviewers: [String] = [], labels: [String] = [],
+      milestone: String? = nil, review: String? = nil, checks: String? = nil,
+      comments: Int = 0, lastCommenter: String? = nil, seenComments: Int? = nil
+    ) -> TrackedTarget {
+      let key = String(item.url.prefix { $0 != "#" })
+      return TrackedTarget(
+        key: key,
+        provider: item.provider,
+        snapshot: TargetSnapshot(
+          title: item.title, state: item.state, author: item.author, assignees: assignees, reviewers: reviewers,
+          labels: labels, milestone: milestone, review: review, checks: checks, commentCount: comments,
+          lastCommenter: lastCommenter, updatedAt: item.updatedAt
+        ),
+        fetchedAt: now,
+        seenAt: seenComments.map { _ in now.addingTimeInterval(-3600) },
+        seenComments: seenComments,
+        conversationAt: item.updatedAt
+      )
+    }
+    let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+    func on(_ account: AccountId, _ minutesAgo: Double) -> StoredItem {
+      byId["\(account):\(Int(minutesAgo))"]!
+    }
+    let targets = [
+      target(
+        on(github, 4), assignees: ["mona"], reviewers: ["octocat"], labels: ["storage"],
+        review: "review_required", checks: "success", comments: 3, lastCommenter: "mona"
+      ),
+      target(on(github, 26), labels: ["bug", "crash"], comments: 7, lastCommenter: "hubot", seenComments: 5),
+      target(
+        on(gitlab, 12), assignees: ["sasha"], reviewers: ["octocat"],
+        review: "review_required", checks: "pending", comments: 2, lastCommenter: "sasha"
+      ),
+      target(on(gitlab, 49), assignees: ["kim"], checks: "failure", comments: 4, lastCommenter: "kim"),
+      target(
+        on(gitlab, 8), assignees: ["octocat", "priya"], reviewers: ["octocat"], milestone: "Q4 rollout",
+        review: "review_required", checks: "success", comments: 6, lastCommenter: "priya", seenComments: 4
+      ),
+      target(
+        on(github, 65), assignees: ["octocat"], labels: ["urgent", "backend"], milestone: "v2.4",
+        comments: 2, lastCommenter: "octocat"
+      ),
+      target(on(github, 3 * 60), labels: ["dependencies"], checks: "success"),
+      target(
+        on(github, 5 * 60), assignees: ["hubot"], review: "changes_requested", checks: "success",
+        comments: 5, lastCommenter: "octocat"
+      ),
+      target(on(gitlab, 2 * 60), assignees: ["mona"], review: "approved", checks: "success", comments: 1),
+      target(
+        on(gitlab, 8 * 60), assignees: ["octocat"], milestone: "17.4 upgrade", comments: 1, lastCommenter: "sasha"
+      ),
+      target(on(github, 26 * 60), labels: ["design"], comments: 3, lastCommenter: "kim"),
+      target(on(gitlab, 49 * 60), labels: ["flaky"], comments: 1),
+      target(on(github, 52 * 60), checks: "pending"),
+      target(on(github, 95)),
+      target(on(gitlab, 3 * 60), comments: 1, lastCommenter: "priya"),
+      target(
+        on(github, 4 * 60), assignees: ["kim"], labels: ["enhancement"], review: "approved", checks: "success",
+        comments: 2, lastCommenter: "mona"
+      ),
+      target(on(github, 20 * 24 * 60), assignees: ["octocat"], labels: ["i18n"], comments: 4, lastCommenter: "mona"),
+    ]
+
+    // The rest of the targets have their conversations in too, as the
+    // background refresh would have left them.
+    var tracked = Dictionary(uniqueKeysWithValues: targets.map { ($0.key, $0) })
+    for item in items {
+      if let key = GitForgeVisuals.targetUrl(item.url)?.key, tracked[key] == nil {
+        tracked[key] = TrackedTarget(key: key, provider: item.provider, fetchedAt: now, conversationAt: item.updatedAt)
+      }
+    }
+
     return StoreFile(
       accounts: accounts,
-      items: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
+      items: byId,
       labels: labels,
       rules: rules,
-      suggestions: suggestions
+      suggestions: suggestions,
+      targets: tracked
     )
   }
 
-  /// What the preview fetches for a fixture item: a written-out target for
-  /// a few of them — a mention with its comment, a review with a
-  /// conversation — and for the rest just the description the item carries.
-  static func detail(for item: InboxItem) -> ItemDetail? {
+  /// A fixture item's page, shaped like the real forge's so boards can key
+  /// it: GitHub's issues and pulls, the demo GitLab instance's issues and
+  /// merge requests.
+  private static func targetUrl(provider: ProviderId, repo: String, kind: String, number: Int) -> String {
+    switch provider {
+    case .github:
+      "https://github.com/\(repo)/\(kind == "pull" ? "pull" : "issues")/\(number)"
+    case .gitlab:
+      "https://gitlab.acme.dev/\(repo)/-/\(kind == "merge" ? "merge_requests" : "issues")/\(number)"
+    }
+  }
+
+  /// The fixture targets' conversations: written out for a few of them — a
+  /// mention with its comment, a review with a conversation — and for the
+  /// rest just the description their newest item carries.
+  static func conversations(in file: StoreFile) -> [String: TargetConversation] {
     let now = Date()
     func comment(_ id: String, _ author: String, minutesAgo: Double, _ body: String) -> DetailComment {
       DetailComment(id: id, author: author, createdAt: now.addingTimeInterval(-minutesAgo * 60), body: body)
     }
 
-    switch item.id {
-    case "\(github):26":
-      let trigger = comment("c4", "hubot", minutesAgo: 26, """
-        @octocat this is the file from your report — it dies the moment the \
-        mapping starts. Could you check whether the streaming branch fixes it \
-        on your machine?
-        """)
-      return ItemDetail(
+    var conversations: [String: TargetConversation] = [:]
+    for item in file.items.values.sorted(by: { $0.updatedAt < $1.updatedAt }) {
+      if let key = GitForgeVisuals.targetUrl(item.url)?.key {
+        conversations[key] = TargetConversation(description: item.body, commentCount: 0)
+      }
+    }
+    func write(_ itemId: String, _ conversation: (StoredItem) -> TargetConversation) {
+      if let item = file.items[itemId], let key = GitForgeVisuals.targetUrl(item.url)?.key {
+        conversations[key] = conversation(item)
+      }
+    }
+
+    write("\(github):26") { item in
+      TargetConversation(
         description: item.body,
-        trigger: trigger,
         comments: [
-          comment("c1", "kim", minutesAgo: 3 * 24 * 60, "Same here with a 2.4 GB export from Figma."),
-          comment("c2", "mona", minutesAgo: 2 * 24 * 60, """
+          comment("1", "kim", minutesAgo: 3 * 24 * 60, "Same here with a 2.4 GB export from Figma."),
+          comment("2", "mona", minutesAgo: 2 * 24 * 60, """
             Confirmed on main. Peak memory tracks file size exactly:
 
             | File | Peak |
@@ -316,13 +435,18 @@ enum DemoData {
             | 800 MB | 1.1 GB |
             | 2.3 GB | crash |
             """),
-          comment("c3", "sasha", minutesAgo: 90, "- [x] repro on macOS\n- [ ] repro on Linux"),
-          trigger,
+          comment("3", "sasha", minutesAgo: 90, "- [x] repro on macOS\n- [ ] repro on Linux"),
+          comment("4", "hubot", minutesAgo: 26, """
+            @octocat this is the file from your report — it dies the moment the \
+            mapping starts. Could you check whether the streaming branch fixes it \
+            on your machine?
+            """),
         ],
         commentCount: 7
       )
-    case "\(github):4":
-      return ItemDetail(
+    }
+    write("\(github):4") { item in
+      TargetConversation(
         description: """
           <!-- Describe the change and link the issue it closes. -->
           ## Summary
@@ -336,24 +460,23 @@ enum DemoData {
           - [ ] Remove the old code path
           """,
         comments: [
-          comment("p1", "hubot", minutesAgo: 30, "Benchmarks look great — **3× less memory** on the 1 GB fixture."),
+          comment("1", "hubot", minutesAgo: 30, "Benchmarks look great — **3× less memory** on the 1 GB fixture."),
         ],
         commentCount: 1
       )
-    case "\(gitlab):49":
-      return ItemDetail(
+    }
+    write("\(gitlab):49") { item in
+      TargetConversation(
         description: """
           Exports request, error, and latency counters on `/stats`, one \
           series per provider.
 
           Closes #212.
           """,
-        trigger: comment("n7", "kim", minutesAgo: 49, item.body ?? ""),
-        comments: [],
-        commentCount: 0
+        comments: [comment("7", "kim", minutesAgo: 49, item.body ?? "")],
+        commentCount: 1
       )
-    default:
-      return ItemDetail(description: item.body, commentCount: 0)
     }
+    return conversations
   }
 }

@@ -117,16 +117,52 @@ enum RuleField: String, Codable, CaseIterable, Sendable {
   case upstreamLabel
   /// The provider's "needs you" tier; the operator and value are ignored.
   case mention
+  // What a board knows about the target itself (TrackedTarget): only its
+  // columns test these, since a notification carries none of them.
+  /// Someone the target is assigned to.
+  case assignee
+  /// Someone asked for a review who hasn't given it yet.
+  case reviewer
+  /// The provider token for where review stands ("approved"…).
+  case review
+  /// The provider token for where the target's checks stand ("failure"…).
+  case checks
+  case milestone
+  /// Whoever wrote the target's latest comment.
+  case lastCommenter
+  /// Whether any notification on the target is unread; the operator and
+  /// value are ignored.
+  case unread
+}
+
+extension RuleField {
+  /// The fields a notification carries itself — all that label and inbox
+  /// rules test.
+  static let itemFields: [RuleField] = [
+    .repo, .title, .body, .author, .kind, .reason, .state, .provider, .account, .upstreamLabel, .mention,
+  ]
+
+  /// A yes-or-no test of its own: the operator and value are ignored.
+  var isFlag: Bool {
+    self == .mention || self == .unread
+  }
 }
 
 enum RuleOperator: String, Codable, CaseIterable, Sendable {
   /// Whole-value match, case-insensitive; on `repo` a `*` wildcard is
-  /// allowed ("eclipse/*").
+  /// allowed ("eclipse/*"), and `@me` stands for the subject's own login
+  /// where it knows one (a board's card does).
   case `is`
   /// Case-insensitive substring.
   case contains
   /// Case-insensitive regular expression, anywhere in the value.
   case matches
+  /// The field has any value at all; the value is ignored.
+  case exists
+
+  /// What the rule composer may propose: `exists` needs no value, and a
+  /// proposal without one reads as a mistake.
+  static let composable: [RuleOperator] = [.is, .contains, .matches]
 }
 
 /// One test inside a rule; a rule holds when every condition holds.
