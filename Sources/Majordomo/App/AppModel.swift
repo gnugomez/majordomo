@@ -56,7 +56,7 @@ final class AppModel {
   /// What the boards' cards know about their targets, by key.
   private(set) var targets: [String: TrackedTarget] = [:]
   /// Where each board's cards go, by board id, as the engine's sweep
-  /// placed them; the views narrow it by the search and the pills
+  /// placed them; the views narrow it by the search and the filter
   /// (`placement(of:)`).
   private(set) var placements: [BoardId: BoardPlacement] = [:] {
     didSet {
@@ -96,9 +96,9 @@ final class AppModel {
   @ObservationIgnored let preferences: Preferences
   /// The conversations the preview has read.
   @ObservationIgnored let conversations = ConversationCache()
-  /// What the toolbar's filter pills narrow the inbox to, one value per
-  /// facet. Kept for the session only: a pick names one author or
-  /// repository, which a later launch may no longer have.
+  /// The toolbar filter's picks, one value per facet. Kept for the session
+  /// only: a pick names one author or repository, which a later launch may
+  /// no longer have.
   private(set) var facetPicks: [Facet: String] = [:]
   /// Items read while the unread filter was on. Their threads stay in the
   /// filtered list, drawn as read, until the user moves on — another
@@ -169,10 +169,26 @@ final class AppModel {
     set { preferences.inboxPreviewShown = newValue }
   }
 
-  /// The toolbar's date filter, remembered across launches; nil is any time.
+  /// The toolbar filter's date window, remembered across launches; nil is
+  /// any time.
   var activityWindow: ActivityWindow? { preferences.activityWindow }
-  /// The toolbar's unread filter, remembered across launches.
+  /// The toolbar filter's Unread Only, remembered across launches.
   var unreadOnly: Bool { preferences.unreadOnly }
+  /// Whether the toolbar's filter is switched on, remembered across
+  /// launches. Off, it keeps its set and narrows nothing.
+  var filterEnabled: Bool { preferences.filterEnabled }
+  /// What the filter is set to, whether or not it is on.
+  var filter: InboxFilter {
+    InboxFilter(unreadOnly: unreadOnly, window: activityWindow, picks: facetPicks)
+  }
+  /// The filter as it applies: its set while it is on, nothing while it is
+  /// off. Everything the filter narrows — the inbox, the boards, the
+  /// window's subtitle, the counts in its menu — reads this.
+  var narrowing: InboxFilter {
+    filterEnabled ? filter : InboxFilter()
+  }
+  /// Whether the filter narrows anything right now: on, with something set.
+  var filterActive: Bool { !narrowing.isEmpty }
   /// Which new items notify, and with what sound (settings → Notifications).
   var notifyScope: NotifyScope { preferences.notifyScope }
   /// "default", "none", or a system alert sound name ("Ping").
@@ -202,7 +218,7 @@ final class AppModel {
     let moved = state.revisions.moved(since: appliedRevisions)
     appliedRevisions = state.revisions
     if moved.contains(.items) {
-      if unreadOnly {
+      if narrowing.unreadOnly {
         keepNewlyRead(state.items)
       }
       items = state.items
@@ -282,18 +298,57 @@ final class AppModel {
     }
   }
 
+  // The filter's set is edited from its menu, and any edit there turns the
+  // filter on: what was just picked is what the user wants to see.
+
   func setActivityWindow(_ window: ActivityWindow?) {
     preferences.activityWindow = window
+    switchFilterOn()
   }
 
   func setUnreadOnly(_ on: Bool) {
     preferences.unreadOnly = on
+    switchFilterOn()
     releaseKeptReads()
   }
 
   /// Narrows the inbox to one value of a facet; nil lets it show any.
   func setFacet(_ facet: Facet, to value: String?) {
-    facetPicks[facet] = value
+    if facetPicks[facet] != value {
+      facetPicks[facet] = value
+    }
+    switchFilterOn()
+  }
+
+  /// The filter glyph's click, ⌘L, and the menus' Filter item: switches
+  /// the filter off or back on, its set kept either way. With nothing set
+  /// there is nothing to switch on, so it starts with Unread Only.
+  func toggleFilter() {
+    if filter.isEmpty {
+      preferences.unreadOnly = true
+      preferences.filterEnabled = true
+    } else {
+      preferences.filterEnabled.toggle()
+    }
+    releaseKeptReads()
+  }
+
+  /// Empties the filter's set and switches it off.
+  func clearFilters() {
+    if !facetPicks.isEmpty {
+      facetPicks = [:]
+    }
+    preferences.unreadOnly = false
+    preferences.activityWindow = nil
+    preferences.filterEnabled = false
+    releaseKeptReads()
+  }
+
+  private func switchFilterOn() {
+    if !preferences.filterEnabled {
+      preferences.filterEnabled = true
+      releaseKeptReads()
+    }
   }
 
   /// Lets the unread filter drop the rows it has been holding read.
@@ -587,41 +642,40 @@ final class AppModel {
     let kept: Set<String>
   }
 
-  /// Placements already narrowed for the current ones. The board, each
-  /// pill's menu, and the window's subtitle all ask on every redraw, and a
-  /// selection or a hover is a redraw.
+  /// Placements already narrowed for the current ones. The board, the
+  /// filter's menu, and the window's subtitle all ask on every redraw, and
+  /// a selection or a hover is a redraw.
   @ObservationIgnored private var narrowedPlacements: [NarrowingKey: BoardPlacement] = [:]
 
-  /// A board's cards as the engine placed them, narrowed by the search
-  /// and by the pills — all of them but `except`'s, for that pill's own
-  /// menu — and, when `filtered`, by the toolbar's filter: the date
-  /// window and Unread Only, as over the inbox. The sidebar's badge asks
-  /// unfiltered, as the inbox's badges count everything. Narrowing never
+  /// A board's cards as the engine placed them, narrowed by the search and
+  /// by `filter` — the toolbar's as it applies (`narrowing`), its picks,
+  /// date window, and Unread Only as over the inbox — leaving out
+  /// `except`'s pick, for that facet's own menu. The sidebar's badge asks
+  /// with neither, as the inbox's badges count everything. Narrowing never
   /// moves a card: each is placed on its own, so leaving some out changes
   /// nothing for the rest.
   func placement(
-    of board: Board, search: String = "", picks: [Facet: String] = [:], except: Facet? = nil,
-    filtered: Bool = false
+    of board: Board, search: String = "", filter: InboxFilter = InboxFilter(), except: Facet? = nil
   ) -> BoardPlacement {
     // Read on every call, a narrowed placement too: the views asking
     // observe what they read, and one that stopped reading the placements
     // would never hear that they changed.
     let placed = placements[board.id] ?? BoardPlacement()
-    let narrowing = picks.filter { $0.key != except }
-    let since = filtered ? activityWindow.map { minute($0.cutoff(from: now)) } : nil
-    let unread = filtered && unreadOnly
+    let picks = filter.picks.filter { $0.key != except }
+    let since = filter.window.map { minute($0.cutoff(from: now)) }
+    let unread = filter.unreadOnly
     let searching = !search.trimmingCharacters(in: .whitespaces).isEmpty
-    guard !narrowing.isEmpty || searching || since != nil || unread else {
+    guard !picks.isEmpty || searching || since != nil || unread else {
       return placed
     }
     let keptReads = unread ? keptReadIds : []
     let key = NarrowingKey(
-      board: board.id, search: search, picks: narrowing, since: since, unreadOnly: unread, kept: keptReads
+      board: board.id, search: search, picks: picks, since: since, unreadOnly: unread, kept: keptReads
     )
     if let held = narrowedPlacements[key] {
       return held
     }
-    var kept = matchingWindow(matchingFacets(matchingSearch(placed.allCards, search), narrowing), since: since)
+    var kept = matchingWindow(matchingFacets(matchingSearch(placed.allCards, search), picks), since: since)
     if unread {
       kept = matchingUnread(kept, kept: keptReads)
     }

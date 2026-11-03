@@ -1,11 +1,24 @@
 // Small builders for the tests: an item, a card, and the conditions and
 // filters they are tested against, with everything not under test left at
-// a neutral default.
+// a neutral default; and preferences kept in memory.
 
 import Foundation
 @testable import Majordomo
 
 let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+
+/// Preferences kept in memory, so nothing reaches the user's defaults.
+final class MemoryDefaults: PreferenceStore {
+  private(set) var values: [String: Any] = [:]
+
+  func object(forKey key: String) -> Any? {
+    values[key]
+  }
+
+  func set(_ value: Any?, forKey key: String) {
+    values[key] = value
+  }
+}
 
 func days(_ count: Double) -> TimeInterval {
   count * 24 * 60 * 60

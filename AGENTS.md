@@ -24,7 +24,8 @@ and RELEASING.md.
   levels; an Apple Intelligence check is a `.question` condition), edited
   by the one `FilterEditor`. The sync engine's `sweep()` compiles them once
   and works out the labels AND every board's placement off the main actor;
-  `AppModel` only narrows a published placement by search and pills. Model
+  `AppModel` only narrows a published placement by the search and the
+  toolbar's filter, and only while the filter is on (`narrowing`). Model
   answers are keyed by question (`RuleEngine.questionKey`), per item and
   per target.
 - **Changes, reactions, one push**: an engine mutation does its own work
@@ -155,45 +156,46 @@ reintroduces the bug:
   LazyVStack hasn't built is reached by scrolling to the lane and then to
   the card in the lane's `onAppear`, since `scrollTo` finds nothing in an
   unbuilt lane.
-- The filter glyph is an `NSImage` painted via a symbol configuration
-  (MainWindowView.filterGlyph): the toolbar draws item images itself as
-  templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
-  a non-template image keeps its color.
-- The filter pills are toolbar items (FilterPill, MainWindowView), not a
-  row under the toolbar: whenever the preview slides in, and often when it
-  is open as the window opens, AppKit gives the content's stretch of the
-  toolbar a backdrop of its own that ends at the toolbar's foot and stays
-  after the preview closes again. Anything laid out beneath it — an
+- The filter glyph, the filter control's label, is an `NSImage` painted
+  via a symbol configuration (FilterToolbarControl.glyph): the toolbar
+  draws item images itself as templates, so SwiftUI
+  `foregroundStyle`/`tint`/overlays never show; only a non-template image
+  keeps its color.
+- The filter is a toolbar item (FilterToolbarControl, MainWindowView),
+  not a row under the toolbar: whenever the preview slides in, and often
+  when it is open as the window opens, AppKit gives the content's stretch
+  of the toolbar a backdrop of its own that ends at the toolbar's foot and
+  stays after the preview closes again. Anything laid out beneath it — an
   overlay or a `safeAreaBar` alike — then floats over the content
   scrolling past, under a hard line. Nothing we can set reaches that
   backdrop: not `toolbarBackgroundVisibility` on the column or the split,
   the scroll edge style, the clear layer's place, or an unanimated
-  toggle. Each pill is a `.plain`-styled menu: a toolbar draws a `Menu`
-  itself from its label's image, and a text label shows as nothing but
-  the menu's indicator. Each is Equatable over its facet, its pick, and
-  whether it narrows — never over what its menu offers, which the menu
-  asks for as it is built (`offeredValues`) — so no push redraws a pill
-  (see the fade entry). They stand after the items that come and go
-  between the inbox and a board, so switching leaves them in place, and
-  where the toolbar beside the sidebar is narrower than `pillFoldWidth`
-  they fold into one Filters menu (`FilterPillMenu`), noted as a flag so a
-  resize redraws the toolbar only when it flips.
+  toggle. The control is a `Menu` with a primary action that keeps its
+  menu indicator, which the toolbar draws as one capsule split into the
+  glyph and a chevron. It is Equatable over whether the filter narrows
+  and its summary — never over what its menu offers, which the menu asks
+  for as it is built (`offeredValues`) — so no push redraws it (see the
+  fade entry), and its tooltip holds still. In a narrow window the system
+  moves it, with the preview toggle, into the toolbar's overflow menu,
+  which lists the menu but not the glyph's click; the menu's own Filter
+  item is the switch there, and the one VoiceOver can name, the chevron
+  having no name of its own.
 - A board's column headers ride a `safeAreaBar` on its one two-axis
   ScrollView (BoardView), drawn as an overlay on a clear band rather than
   laid out directly: a row as wide as the grid would widen the bar, and
   with it the pane. A header row outside the scroll view instead clips the
   cards at its foot, and a vertical ScrollView nested in a horizontal one
   hides its scroller past the grid's far end. The board's top edge effect
-  is `.hard`: once the toolbar has its own backdrop (see the filter
-  pills), a soft edge leaves the cards legible under the band, the labels
+  is `.hard`: once the toolbar has its own backdrop (see the filter), a
+  soft edge leaves the cards legible under the band, the labels
   floating over them, where a hard one covers the band either way. The
   room above the grid's first row is padding inside the scroll view, not
   room in the bar, so it scrolls away under the band with the cards.
 - Over a board the board's menu takes the place of the inbox's mark-read
   and Open items (MainWindowView), which are dropped rather than hidden:
   a hidden toolbar item still draws its empty glass capsule. Both come
-  before the pills, so the pills, the filter, and the preview toggle keep
-  their places from one to the other. Switching
+  before the filter, so the filter and the preview toggle keep their
+  places from one to the other. Switching
   between the two runs with animations disabled — SwiftUI rebuilds the
   toolbar's items either way, and animated they fade and morph. The
   board's menu is a view that reads its own state
@@ -203,8 +205,8 @@ reintroduces the bug:
 - Toolbar items redraw with a fade whenever the view that builds them
   updates, so each toolbar control is a small view given only what
   decides how it looks (`RefreshButton` watches `syncing`, the board's
-  menu the board, `PreviewToggle` whether a card is selected, each filter
-  pill its facet's pick), and
+  menu the board, `PreviewToggle` whether a card is selected,
+  `FilterToolbarControl` whether the filter narrows and by what), and
   `AppModel.apply` assigns only the slices whose revision moved
   (`StateRevisions`) — selecting a card pushes several times (the
   selection, marking it seen), and every reader woken by each push
@@ -227,7 +229,7 @@ reintroduces the bug:
   toolbar finds at the top of the pane, and with the inspector open the
   toolbar draws a hard line under itself rather than fading the content
   out beneath it. On top it holds only until the toolbar takes a backdrop
-  of its own as the inspector slides in (see the filter pills). The
+  of its own as the inspector slides in (see the filter). The
   sidebar's and the inspector's slide, the content scrolling on beneath
   both, and the toolbar's sections are all the system's.
 - The sidebar toggle is our own (`SidebarToggle`, MainWindowView), behind

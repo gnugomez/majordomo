@@ -190,7 +190,7 @@ runs one sweep over everything a filter reads, whenever any of it changes:
 the items' labels and every board's placement from one compiled set,
 published with the state, plus the questions whose answers could still move
 something — the only ones the model is asked, a budgeted few per pass. The
-views only narrow a placement by the search and the pills.
+views only narrow a placement by the search and the toolbar's filter.
 
 Any number of accounts per provider can be connected; accounts are keyed by
 `AccountId`, never by provider.

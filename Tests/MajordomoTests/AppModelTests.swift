@@ -8,19 +8,6 @@ import Synchronization
 import Testing
 @testable import Majordomo
 
-/// Preferences kept in memory, so nothing reaches the user's defaults.
-private final class MemoryDefaults: PreferenceStore {
-  private(set) var values: [String: Any] = [:]
-
-  func object(forKey key: String) -> Any? {
-    values[key]
-  }
-
-  func set(_ value: Any?, forKey key: String) {
-    values[key] = value
-  }
-}
-
 /// Whether reading `read` is told of what `write` does.
 @MainActor
 private func notifies(_ read: @escaping () -> Void, when write: () -> Void) -> Bool {

@@ -63,23 +63,23 @@ struct InboxListView: View {
           title: "No results",
           caption: "Nothing here matches \u{201C}\(model.searchText)\u{201D}."
         )
-      } else if !model.facetPicks.isEmpty {
+      } else if !model.narrowing.picks.isEmpty {
         EmptyStateView(
           symbol: "line.3.horizontal.decrease",
           title: "No matches",
-          caption: "Nothing here matches the filters above. Set one back to Any to see the rest."
+          caption: "Nothing here matches the filter. Turn it off with ⌘L, or choose Clear Filters, to see the rest."
         )
-      } else if model.unreadOnly {
+      } else if model.narrowing.unreadOnly {
         EmptyStateView(
           symbol: "checkmark.circle",
           title: "You're all caught up",
-          caption: "Nothing here is unread. Turn off Unread Only in the toolbar's filter to see the rest."
+          caption: "Nothing here is unread. Turn the filter off with ⌘L to see the rest."
         )
-      } else if let window = model.activityWindow {
+      } else if let window = model.narrowing.window {
         EmptyStateView(
           symbol: "calendar",
           title: "Nothing in the \(window.label.lowercased())",
-          caption: "Widen the date filter in the toolbar to see the rest of your inbox."
+          caption: "Turn the filter off with ⌘L, or widen its date, to see the rest of your inbox."
         )
       } else if categoryId == recentCategory.id {
         EmptyStateView(

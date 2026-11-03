@@ -108,6 +108,7 @@ private enum Keys {
     PreferenceKey<ActivityWindow?>.optionalRaw("activityWindow")
   }
   static var unreadOnly: PreferenceKey<Bool> { .plain("unreadOnly", default: false) }
+  static var filterEnabled: PreferenceKey<Bool> { .plain("filterEnabled", default: true) }
   static var notifyScope: PreferenceKey<NotifyScope> { .raw("notifyScope", default: .mentions) }
   static var notificationSound: PreferenceKey<String> { .plain("notificationSound", default: "default") }
   static var rowLayout: PreferenceKey<RowLayout> { .json("rowLayout", default: .default) }
@@ -145,6 +146,12 @@ final class Preferences {
   var unreadOnly: Bool {
     didSet { defaults[Keys.unreadOnly] = unreadOnly }
   }
+  /// Whether the toolbar's filter is switched on. It narrows only while
+  /// something is set, so unset it reads as on: a remembered unread or
+  /// date filter narrows until the user switches it off.
+  var filterEnabled: Bool {
+    didSet { defaults[Keys.filterEnabled] = filterEnabled }
+  }
   var notifyScope: NotifyScope {
     didSet { defaults[Keys.notifyScope] = notifyScope }
   }
@@ -174,6 +181,7 @@ final class Preferences {
     )
     activityWindow = defaults[Keys.activityWindow]
     unreadOnly = defaults[Keys.unreadOnly]
+    filterEnabled = defaults[Keys.filterEnabled]
     notifyScope = defaults[Keys.notifyScope]
     notificationSound = defaults[Keys.notificationSound]
     rowLayout = defaults[Keys.rowLayout]

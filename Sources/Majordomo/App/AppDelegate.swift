@@ -255,8 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     find.target = self
     editMenu.addItem(find)
 
-    // The View menu: the sidebar, through the model like the toolbar's
-    // toggle, so SwiftUI's split and the menu never disagree about it.
+    // The View menu: the sidebar and the filter, through the model like
+    // their toolbar controls, so the menu and the window never disagree.
     let viewItem = NSMenuItem()
     mainMenu.addItem(viewItem)
     let viewMenu = NSMenu(title: "View")
@@ -265,6 +265,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     sidebar.keyEquivalentModifierMask = [.control, .command]
     sidebar.target = self
     viewMenu.addItem(sidebar)
+    viewMenu.addItem(.separator())
+    let filter = NSMenuItem(title: "Filter", action: #selector(toggleFilter), keyEquivalent: "l")
+    filter.target = self
+    viewMenu.addItem(filter)
+    let clearFilters = NSMenuItem(title: "Clear Filters", action: #selector(clearFilters), keyEquivalent: "")
+    clearFilters.target = self
+    viewMenu.addItem(clearFilters)
 
     // The Window menu: the standard trio, plus the open-windows list and
     // "Bring All to Front" that AppKit maintains once it owns the menu.
@@ -491,6 +498,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
   }
 
+  /// ⌘L: the toolbar's filter switches off or back on, as a click on its
+  /// glyph does.
+  @objc private func toggleFilter() {
+    model.toggleFilter()
+  }
+
+  @objc private func clearFilters() {
+    model.clearFilters()
+  }
+
   // MARK: Windows
 
   private func openMainWindow() {
@@ -509,5 +526,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       settingsWindow = SettingsWindowController(model: model)
     }
     settingsWindow?.open()
+  }
+}
+
+extension AppDelegate: NSMenuItemValidation {
+  /// View ▸ Filter is checked while the filter narrows, as its glyph is
+  /// tinted; Clear Filters has nothing to clear until something is set.
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    switch menuItem.action {
+    case #selector(toggleFilter):
+      menuItem.state = model.filterActive ? .on : .off
+      return true
+    case #selector(clearFilters):
+      return !model.filter.isEmpty
+    default:
+      return true
+    }
   }
 }

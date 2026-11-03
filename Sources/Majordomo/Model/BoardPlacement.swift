@@ -1,6 +1,6 @@
 // Where one board's cards go, as the sync engine's sweep placed them (see
 // BoardEngine) — published with the state, so the views only narrow it by
-// the search and the pills.
+// the search and the toolbar's filter.
 
 import Foundation
 

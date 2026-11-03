@@ -6,15 +6,11 @@
 // board reads its keys itself (BoardKeyboard). Settings open in their own
 // window.
 
-import AppKit
 import SwiftUI
 
 struct MainWindowView: View {
   @Bindable var model: AppModel
 
-  /// Whether the filter pills are folded into one menu: the toolbar's
-  /// stretch beside the sidebar is too narrow to hold them side by side.
-  @State private var pillsFolded = false
   /// The widths the sidebar and the preview open at: where the user last
   /// left them. Read once, as the window opens.
   @State private var sidebarWidth = rememberedWidth(sidebarWidthKey, or: 200)
@@ -39,62 +35,44 @@ struct MainWindowView: View {
     let specs = categories(for: labels)
     // The sidebar layout decides what is selectable: an inbox hidden there
     // or gone from the tree falls back to Recent (always first in specs,
-    // never hidden). The search, date, and unread filters apply to every
-    // category alike; the sidebar's badges stay unfiltered (SidebarView
-    // counts on its own).
-    let narrowed = matchingWindow(matchingSearch(items, model.searchText), model.activityWindow, now: model.now)
+    // never hidden). The search and the filter apply to every category
+    // alike; the sidebar's badges stay unfiltered (SidebarView counts on
+    // its own).
+    let filter = model.narrowing
+    let narrowed = matchingWindow(matchingSearch(items, model.searchText), filter.window, now: model.now)
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
     let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
-    // The pills narrow the category last.
+    // The filter's picks narrow the category last.
     return Scope(
       account: account,
       category: category,
-      threads: listedThreads(matchingFacets(category.items, model.facetPicks))
+      threads: listedThreads(matchingFacets(category.items, filter.picks), filter)
     )
   }
 
-  /// Items as the list shows them: one row per thread, and while the unread
-  /// filter is on, only the unread ones and those read in place.
-  private func listedThreads(_ items: [InboxItem]) -> [InboxThread] {
+  /// Items as the list shows them: one row per thread, and while the
+  /// filter narrows to unread, only the unread ones and those read in
+  /// place.
+  private func listedThreads(_ items: [InboxItem], _ filter: InboxFilter) -> [InboxThread] {
     let threads = groupIntoThreads(items)
-    return model.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
+    return filter.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
   }
 
-  /// The pills in the toolbar, for one account's inbox or (nil) a scope
-  /// spanning every account. Provider can only narrow across accounts on
-  /// more than one provider: it shows while the accounts span them — or
-  /// while it holds a pick, which must stay clearable — and in one
-  /// account's inbox stays in place, disabled, so the toolbar keeps one
-  /// shape from inbox to inbox.
-  private func pillStates(for account: AccountState?) -> [PillState] {
-    let picks = model.facetPicks
-    let spansProviders = Set(model.accounts.map(\.provider)).count > 1
-    return Facet.allCases.compactMap { facet in
-      guard facet == .provider else {
-        return PillState(facet: facet, picked: picks[facet], narrows: true)
-      }
-      guard spansProviders || picks[facet] != nil else {
-        return nil
-      }
-      return PillState(facet: facet, picked: picks[facet], narrows: spansProviders && account == nil)
-    }
-  }
-
-  /// What a pill's menu offers once it opens: the facet's values across
-  /// what the search, the date and unread filters, and the other pills
-  /// leave of the board or the inbox's category, so every value it offers
-  /// shows something.
-  private func offeredValues(for facet: Facet) -> [String] {
-    let picks = model.facetPicks
+  /// What a facet's menu offers once it opens: the facet's values across
+  /// what the search and the rest of the filter leave of the board or the
+  /// inbox's category, each counting the rows picking it would leave. The
+  /// pick is the filter's own, checked even while the filter is off.
+  private func offeredValues(for facet: Facet) -> [FacetValue] {
+    let filter = model.narrowing
+    let picked = model.facetPicks[facet]
     if let board = model.selectedBoard {
-      let pool = model.placement(of: board, search: model.searchText, picks: picks, except: facet, filtered: true)
-        .allCards
-      return facetValues(facet, in: pool, picked: picks[facet])
+      let pool = model.placement(of: board, search: model.searchText, filter: filter, except: facet).allCards
+      return facetValues(facet, in: pool, picked: picked)
     }
     let category = resolveScope().category
-    let pool = listedThreads(matchingFacets(category.items, picks, except: facet)).flatMap(\.items)
-    return facetValues(facet, in: pool, picked: picks[facet])
+    let pool = listedThreads(matchingFacets(category.items, filter.picks, except: facet), filter)
+    return facetValues(facet, in: pool, picked: picked)
   }
 
   var body: some View {
@@ -103,10 +81,6 @@ struct MainWindowView: View {
       // toolbar's items are rebuilt either way, and animated they fade
       // and morph through a few frames.
       .transaction(value: model.selectedBoard?.id) { transaction in
-        transaction.disablesAnimations = true
-      }
-      // Likewise as the pills fold into one menu or unfold.
-      .transaction(value: pillsFolded) { transaction in
         transaction.disablesAnimations = true
       }
     // The search field sits at the toolbar's trailing edge, filtering the
@@ -185,10 +159,7 @@ struct MainWindowView: View {
         Color.clear.allowsHitTesting(false)
       }
       .toolbar {
-        contentToolbar(
-          actionTargets: actionTargets,
-          pills: pillStates(for: model.selectedBoard == nil ? scope.account : nil)
-        )
+        contentToolbar(actionTargets: actionTargets)
       }
       // The preview of what the list or the board selects: details about
       // the selection, at the trailing edge, as an inspector. In the
@@ -201,17 +172,18 @@ struct MainWindowView: View {
           .remembersWidth(previewWidthKey)
           .inspectorColumnWidth(min: previewMinWidth, ideal: previewWidth, max: previewMaxWidth)
       }
-      // The toolbar's stretch beside the sidebar runs over the content and
-      // the preview alike; where it is too short for the pills side by side
-      // they fold into one menu. Noted as a flag, so the toolbar redraws
-      // when it flips and not on every step of a resize.
-      .onGeometryChange(for: Bool.self) { $0.size.width < pillFoldWidth } action: { folded in
-        pillsFolded = folded
-      }
     }
     .toolbar(removing: .sidebarToggle)
     .navigationTitle(model.selectedBoard?.name ?? windowTitle(for: scope))
-    .navigationSubtitle(model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count))
+    .navigationSubtitle(subtitle(for: scope))
+  }
+
+  /// What the window's subtitle says: how many rows or cards show, and
+  /// while the filter narrows them, what it narrows by.
+  private func subtitle(for scope: Scope) -> String {
+    let count = model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count)
+    let filter = model.narrowing
+    return filter.isEmpty ? count : "\(count) · \(filter.summary)"
   }
 
   /// The inbox list, and the suggestion panel floating over it.
@@ -226,9 +198,9 @@ struct MainWindowView: View {
 
   // MARK: Board
 
-  /// The board's cards, narrowed by the search, the pills, and the filter.
+  /// The board's cards, narrowed by the search and the filter.
   private func boardPlacement(_ board: Board) -> BoardPlacement {
-    model.placement(of: board, search: model.searchText, picks: model.facetPicks, filtered: true)
+    model.placement(of: board, search: model.searchText, filter: model.narrowing)
   }
 
   /// The card the board has selected, while it is on the board.
@@ -263,11 +235,11 @@ struct MainWindowView: View {
           title: "No results",
           caption: "Nothing on this board matches \u{201C}\(model.searchText)\u{201D}."
         )
-      } else if !model.facetPicks.isEmpty {
+      } else if model.filterActive {
         PaneEmptyState(
           symbol: "line.3.horizontal.decrease",
           title: "No matches",
-          caption: "Nothing on this board matches the filters above. Set one back to Any to see the rest."
+          caption: "Nothing on this board matches the filter. Turn it off with ⌘L, or choose Clear Filters, to see the rest."
         )
       } else {
         PaneEmptyState(
@@ -279,20 +251,6 @@ struct MainWindowView: View {
     } else {
       BoardView(model: model, board: board, placement: placement)
     }
-  }
-
-  /// The filter glyph as an NSImage. The toolbar draws its items' images
-  /// itself, as templates, so no SwiftUI color modifier ever reaches them;
-  /// a non-template image already painted in the accent color is how the
-  /// active state shows.
-  private static func filterGlyph(active: Bool) -> NSImage {
-    let glyph = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: "Filter")!
-    guard active,
-          let painted = glyph.withSymbolConfiguration(.init(paletteColors: [.controlAccentColor])) else {
-      return glyph
-    }
-    painted.isTemplate = false
-    return painted
   }
 
   private func windowTitle(for scope: Scope) -> String {
@@ -342,17 +300,18 @@ struct MainWindowView: View {
   // MARK: Toolbar
 
   /// In groups, as fixed spacers part them: Refresh; the selection's
-  /// actions; the filter pills; the filter; the preview toggle. Mark-read
-  /// and Open are always present over the inbox, disabled while nothing is
-  /// selected, so the toolbar keeps one shape. Over a board they go —
-  /// opening and marking read live on the cards there (a double-click, the
-  /// context menu), and a board is for looking across — and the board's
-  /// menu takes their place. The pills, the filter, and the preview toggle
-  /// stand over both, after the items that come and go: everything past
-  /// them keeps its width from the inbox to a board, so switching leaves
-  /// them where they are.
+  /// actions; the filter; the preview toggle. Mark-read and Open are
+  /// always present over the inbox, disabled while nothing is selected, so
+  /// the toolbar keeps one shape. Over a board they go — opening and
+  /// marking read live on the cards there (a double-click, the context
+  /// menu), and a board is for looking across — and the board's menu takes
+  /// their place. The filter and the preview toggle stand over both, after
+  /// the items that come and go: everything past them keeps its width from
+  /// the inbox to a board, so switching leaves them where they are. In a
+  /// narrow window the system folds the search into a button first, then
+  /// the filter and the preview toggle into the overflow menu.
   @ToolbarContentBuilder
-  private func contentToolbar(actionTargets: [InboxThread], pills: [PillState]) -> some ToolbarContent {
+  private func contentToolbar(actionTargets: [InboxThread]) -> some ToolbarContent {
     ToolbarItem {
       RefreshButton(model: model)
     }
@@ -370,77 +329,18 @@ struct MainWindowView: View {
       }
     }
     ToolbarSpacer(.fixed)
-    if model.hasAccounts {
-      // Toolbar items rather than a row under the toolbar: once the
-      // preview has slid in, the toolbar draws a backdrop of its own that
-      // ends at its foot, and whatever sits beneath it floats over the
-      // content scrolling past.
-      ToolbarItemGroup {
-        if pillsFolded {
-          FilterPillMenu(model: model, pills: pills, values: offeredValues)
-            .equatable()
-        } else {
-          ForEach(pills) { pill in
-            FilterPill(model: model, pill: pill, values: offeredValues)
-              .equatable()
-          }
-        }
-      }
-      ToolbarSpacer(.fixed)
-    }
     ToolbarItem {
-      filterMenu
+      FilterToolbarControl(
+        model: model,
+        active: model.filterActive,
+        summary: model.narrowing.summary,
+        values: offeredValues
+      )
+      .equatable()
     }
     ToolbarSpacer(.fixed)
     ToolbarItem {
       PreviewToggle(model: model)
-    }
-  }
-
-  /// The filter: Unread Only, then a pull-down of rolling date windows,
-  /// behind the plain filter glyph (no menu chevron), accent-colored while
-  /// either narrows the list.
-  private var filterMenu: some View {
-    let active = model.unreadOnly || model.activityWindow != nil
-    return Menu {
-      Toggle(
-        "Unread Only",
-        isOn: Binding(
-          get: { model.unreadOnly },
-          set: { model.setUnreadOnly($0) }
-        )
-      )
-      Divider()
-      Picker(
-        "Show",
-        selection: Binding(
-          get: { model.activityWindow },
-          set: { model.setActivityWindow($0) }
-        )
-      ) {
-        Text("Any time").tag(ActivityWindow?.none)
-        Divider()
-        ForEach(ActivityWindow.allCases) { window in
-          Text(window.label).tag(Optional(window))
-        }
-      }
-      .pickerStyle(.inline)
-    } label: {
-      Image(nsImage: Self.filterGlyph(active: active))
-        .accessibilityLabel("Filter")
-    }
-    .menuIndicator(.hidden)
-    .help(filterHelp)
-  }
-
-  /// The filter's tooltip: what the list is narrowed to right now.
-  private var filterHelp: String {
-    let window = model.activityWindow?.label.lowercased()
-    switch (model.unreadOnly, window) {
-    case (false, nil): return "Filter by unread or date"
-    case (true, nil): return "Showing unread"
-    case (false, let window?): return "Showing the \(window)"
-    case (true, let window?): return "Showing unread from the \(window)"
     }
   }
 
@@ -564,11 +464,6 @@ private struct PreviewToggle: View {
 private let previewMinWidth: CGFloat = 360
 private let previewIdealWidth: CGFloat = 420
 private let previewMaxWidth: CGFloat = 900
-
-/// How wide the toolbar's stretch beside the sidebar must stand for the
-/// filter pills side by side next to the title, the other items, and an
-/// open search field; any narrower and they fold into one menu.
-private let pillFoldWidth: CGFloat = 900
 
 private let sidebarWidthKey = "sidebarWidth"
 private let previewWidthKey = "previewWidth"
