@@ -174,7 +174,7 @@ struct MainWindowView: View {
   /// What the window's subtitle says: how many rows or cards show, and
   /// while the filter narrows them, what it narrows by.
   private func subtitle(for scope: Scope) -> String {
-    let count = model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count)
+    let count = itemCount(model.selectedBoard.map { boardPlacement($0).count } ?? scope.threads.count)
     let filter = model.filter
     return filter.isEmpty ? count : "\(count) · \(filter.summary)"
   }
@@ -238,7 +238,7 @@ struct MainWindowView: View {
         PaneEmptyState(
           symbol: board.symbol,
           title: "Nothing on this board yet",
-          caption: "Cards turn up as notifications arrive about the issues and pull requests this board takes."
+          caption: "Items turn up here as notifications arrive about what this board takes."
         )
       }
     } else {
@@ -458,10 +458,6 @@ private let previewWidthKey = "previewWidth"
 private func rememberedWidth(_ key: String, or standard: CGFloat) -> CGFloat {
   let saved = UserDefaults.standard.double(forKey: key)
   return saved > 0 ? saved : standard
-}
-
-private func cardCount(_ count: Int) -> String {
-  count == 1 ? "1 card" : "\(count) cards"
 }
 
 private extension View {

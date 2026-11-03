@@ -51,7 +51,7 @@ struct BoardEditorSheet: View {
         dismiss()
       }
     } message: {
-      Text("The board and the cards you placed by hand go; the notifications stay in the inbox.")
+      Text("The board and its hand placements go; the notifications stay in the inbox.")
     }
   }
 
@@ -77,15 +77,15 @@ struct BoardEditorSheet: View {
 
   private var scopeSection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      sectionTitle("Cards", caption: "Which issues and pull requests the board takes. With no conditions it takes them all.")
+      sectionTitle("Items", caption: "Which items the board takes. With no conditions it takes them all.")
       FilterEditor(
         filter: $draft.scope,
         accounts: model.accounts,
         fields: RuleField.cardFields,
         live: true,
         newCondition: RuleCondition(field: .repo),
-        emptyText: "Every card",
-        questionHint: questionHint(model, subject: "card")
+        emptyText: "Every item",
+        questionHint: questionHint(model, subject: "item")
       )
       .padding(8)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -104,7 +104,7 @@ struct BoardEditorSheet: View {
         }
         .fixedSize()
         Stepper(value: $draft.doneDays, in: 1 ... 90) {
-          Text("Done keeps finished cards for \(draft.doneDays) \(draft.doneDays == 1 ? "day" : "days")")
+          Text("Done keeps finished items for \(draft.doneDays) \(draft.doneDays == 1 ? "day" : "days")")
         }
       }
       .controlSize(.small)
@@ -116,14 +116,14 @@ struct BoardEditorSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       sectionTitle(
         "Columns",
-        caption: "Read left to right: a card goes in the first column whose conditions hold. Open cards no column takes show under Other, finished ones under Done."
+        caption: "Read left to right: an item goes in the first column whose conditions hold. Open items no column takes show under Other, finished ones under Done."
       )
       ForEach($draft.columns) { $column in
         let index = draft.columns.firstIndex { $0.id == column.id } ?? 0
         ColumnEditor(
           column: $column,
           accounts: model.accounts,
-          questionHint: questionHint(model, subject: "card"),
+          questionHint: questionHint(model, subject: "item"),
           canMoveLeft: index > 0,
           canMoveRight: index < draft.columns.count - 1,
           onMove: { offset in
@@ -228,7 +228,7 @@ private struct ColumnEditor: View {
         fields: RuleField.cardFields,
         live: true,
         newCondition: RuleCondition(field: .assignee, op: .is, value: "@me"),
-        emptyText: "Filled by hand: no conditions, so only the cards you drag here.",
+        emptyText: "Filled by hand: no conditions, so only the items you drag here.",
         questionHint: questionHint
       )
     }

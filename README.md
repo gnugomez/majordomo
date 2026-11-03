@@ -28,10 +28,10 @@ the SDK.
   checks in your own words that the model answers on device — in labels,
   inboxes, and board columns alike; what a rule picks can ride at the top
   of the inbox in a box of its own
-- 🧭 Boards: one card per issue or pull request across every project,
-  sorted into columns by the same rules — whose move it is, what waits on
-  others, what's in progress — with review, CI, and new comments at a
-  glance, and lanes per repository
+- 🧭 Boards: every item across every project, sorted into columns by the
+  same rules — whose move it is, what waits on others, what's in
+  progress — with review, CI, and new comments at a glance, and lanes per
+  repository
 - 🔒 Everything stays on your machine — read-only, no backend, tokens
   encrypted at rest
 
@@ -94,8 +94,8 @@ GitLab, `read_api` covers all of it. On GitHub, public repositories preview
 with the `notifications` scope alone; private ones also need `repo`. GitHub
 offers no read-only scope for private repositories, so `repo` grants write
 access too. Majordomo never writes; add `repo` only if you want those
-previews. Boards read the same way and need nothing more: their cards
-refresh in the background from the same token, and moving a card between
+previews. Boards read the same way and need nothing more: their items
+refresh in the background from the same token, and moving an item between
 columns stays on your Mac.
 
 Tokens are stored AES-GCM encrypted in the app's data file; the key is a

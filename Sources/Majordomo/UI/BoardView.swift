@@ -372,12 +372,12 @@ struct BoardView: View {
     switch column.kind {
     case .column:
       board.columns.first { $0.id == column.id }?.filter.isEmpty == true
-        ? "Filled by hand: drag cards here"
-        : "Cards the rules place here, and any you drag here"
+        ? "Filled by hand: drag items here"
+        : "Items the rules place here, and any you drag here"
     case .other:
-      "Recent cards no column takes"
+      "Recent items no column takes"
     case .done:
-      "Closed and merged in the last \(board.doneDays) days"
+      "Finished in the last \(board.doneDays) days"
     }
   }
 

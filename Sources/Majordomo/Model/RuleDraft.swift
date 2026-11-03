@@ -80,7 +80,7 @@ enum RuleDraftError: LocalizedError, Equatable, Sendable {
     case .unknownField(let field):
       "“\(field)” isn't something an item can be matched on."
     case .boardOnlyField(let field):
-      "“\(field)” is only known on a board's cards, so a rule can't test a notification on it."
+      "“\(field)” is only known on a board, so a rule can't test a notification on it."
     case .unknownOperator(let op):
       "“\(op)” isn't a comparison this app can make."
     case .unknownMatch(let match):
