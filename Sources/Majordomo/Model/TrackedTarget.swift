@@ -34,6 +34,28 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
   var lastCommenter: String?
   /// The target's own last activity.
   var updatedAt: Date
+  /// The picture of each person named above — whoever opened it, its
+  /// assignees and reviewers — by login, as the provider gave it. Some
+  /// providers have no address to derive from a login alone, so the
+  /// snapshot carries theirs. nil until a refresh brings them.
+  var avatars: [String: String]? = nil
+
+  /// One person's picture by login, when the provider gave one.
+  func avatarUrl(of login: String) -> String? {
+    avatars?[login]
+  }
+
+  /// The pictures a provider listed, by login; the first one given for a
+  /// login wins, and nil stands for none at all.
+  static func avatars(_ people: [(login: String?, url: String?)]) -> [String: String]? {
+    var avatars: [String: String] = [:]
+    for person in people {
+      if let login = person.login, let url = person.url, !url.isEmpty, avatars[login] == nil {
+        avatars[login] = url
+      }
+    }
+    return avatars.isEmpty ? nil : avatars
+  }
 }
 
 /// One target the app tracks, keyed by the url its notifications share

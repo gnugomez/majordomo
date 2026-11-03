@@ -141,7 +141,7 @@ struct BoardCardView: View, Equatable {
     if !logins.isEmpty {
       HStack(spacing: -4) {
         ForEach(logins.prefix(3), id: \.self) { login in
-          PersonAvatar(login: login, avatarUrl: nil, provider: card.lead.provider, size: 18)
+          PersonAvatar(login: login, avatarUrl: card.snapshot?.avatarUrl(of: login), provider: card.lead.provider, size: 18)
             .overlay(Circle().strokeBorder(Palette.card, lineWidth: 1.5))
         }
         if logins.count > 3 {

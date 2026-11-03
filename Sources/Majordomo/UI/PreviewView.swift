@@ -233,14 +233,14 @@ private struct PreviewHeader: View {
       if let assignees = snapshot?.assignees, !assignees.isEmpty {
         GridRow {
           fieldLabel(assignees.count == 1 ? "Assignee" : "Assignees")
-          PeopleLine(logins: assignees, provider: item.provider, conversation: conversation)
+          PeopleLine(logins: assignees, provider: item.provider, snapshot: snapshot, conversation: conversation)
         }
       }
       if let reviewers = snapshot?.reviewers, !reviewers.isEmpty {
         GridRow {
           fieldLabel(reviewers.count == 1 ? "Reviewer" : "Reviewers")
             .help("Asked for a review and yet to give one")
-          PeopleLine(logins: reviewers, provider: item.provider, conversation: conversation)
+          PeopleLine(logins: reviewers, provider: item.provider, snapshot: snapshot, conversation: conversation)
         }
       }
       GridRow {
@@ -312,7 +312,9 @@ private struct PreviewHeader: View {
 private struct PeopleLine: View {
   let logins: [String]
   let provider: ProviderId
-  /// Where a face is found, when the conversation names its picture.
+  /// Where a face is found: the snapshot names the pictures of everyone
+  /// it lists, and the conversation those of whoever wrote in it.
+  let snapshot: TargetSnapshot?
   let conversation: TargetConversation?
 
   @Environment(\.searchHighlightTerms) private var highlightTerms
@@ -321,7 +323,12 @@ private struct PeopleLine: View {
     HStack(spacing: 10) {
       ForEach(logins, id: \.self) { login in
         HStack(spacing: 5) {
-          PersonAvatar(login: login, avatarUrl: conversation?.avatarUrl(of: login), provider: provider, size: 16)
+          PersonAvatar(
+            login: login,
+            avatarUrl: snapshot?.avatarUrl(of: login) ?? conversation?.avatarUrl(of: login),
+            provider: provider,
+            size: 16
+          )
           Text(highlighted(login, terms: highlightTerms))
             .lineLimit(1)
             .textSelection(.enabled)

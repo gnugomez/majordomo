@@ -90,14 +90,14 @@ private let conversationsPerQuery = 20
 /// What a target query asks of each issue or pull request; the pull-only
 /// fields come back nil on an issue.
 private let targetFragments = """
-  fragment Issue on Issue { title state updatedAt author { login } \
-  assignees(first: 10) { nodes { login } } labels(first: 20) { nodes { name } } milestone { title } \
+  fragment Issue on Issue { title state updatedAt author { login avatarUrl } \
+  assignees(first: 10) { nodes { login avatarUrl } } labels(first: 20) { nodes { name } } milestone { title } \
   comments(last: 1) { totalCount nodes { author { login } createdAt } } }
-  fragment Pull on PullRequest { title state isDraft updatedAt author { login } \
-  assignees(first: 10) { nodes { login } } labels(first: 20) { nodes { name } } milestone { title } \
+  fragment Pull on PullRequest { title state isDraft updatedAt author { login avatarUrl } \
+  assignees(first: 10) { nodes { login avatarUrl } } labels(first: 20) { nodes { name } } milestone { title } \
   comments(last: 1) { totalCount nodes { author { login } createdAt } } \
   reviews(last: 1) { nodes { author { login } submittedAt } } reviewDecision mergeable mergeStateStatus \
-  reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } \
+  reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login avatarUrl } } } } \
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
   """
 
@@ -116,6 +116,8 @@ private let conversationFragments = """
 
 private struct GQLLogin: Decodable {
   let login: String?
+  /// Asked for where the snapshot names the person.
+  let avatarUrl: String?
 }
 
 /// Someone in a conversation, with their picture.
@@ -291,7 +293,11 @@ private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
     merge: state == "open" ? mergeToken(target) : nil,
     commentCount: target.comments?.totalCount,
     lastCommenter: lastCommenter,
-    updatedAt: updatedAt
+    updatedAt: updatedAt,
+    avatars: TargetSnapshot.avatars(
+      ([target.author] + (target.assignees?.values ?? []) + (target.reviewRequests?.values.map(\.requestedReviewer) ?? []))
+        .map { (login: $0?.login, url: $0?.avatarUrl) }
+    )
   )
 }
 

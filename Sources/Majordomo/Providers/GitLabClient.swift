@@ -539,7 +539,11 @@ struct GitLabClient: ProviderClient {
       merge: mergeRequest && state == "open" ? mergeToken(target.detailed_merge_status) : nil,
       commentCount: target.user_notes_count,
       lastCommenter: people?.first?.author?.username,
-      updatedAt: updatedAt
+      updatedAt: updatedAt,
+      avatars: TargetSnapshot.avatars(
+        ([target.author] + (target.assignees ?? []) + (target.reviewers ?? []))
+          .map { (login: $0?.username, url: $0?.avatar_url) }
+      )
     )
     // A conversation whose notes didn't come is left for the next round.
     let talk = conversation ? notes.map { toConversation(target, notes: $0) } : nil
