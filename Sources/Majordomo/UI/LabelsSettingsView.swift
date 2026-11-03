@@ -46,7 +46,7 @@ struct LabelsSettingsView: View {
       .overlay {
         if model.userLabels.isEmpty {
           Text("No labels yet")
-            .font(.system(size: 12))
+            .font(.app(.callout))
             .foregroundStyle(.secondary)
         }
       }
@@ -140,7 +140,7 @@ private struct LabelSettingsRow: View {
         onChange(updated)
       }
       .textFieldStyle(.plain)
-      .font(.system(size: 13, weight: .medium))
+      .font(.app(.body, weight: .medium))
       Spacer()
       Picker(
         "Notify",

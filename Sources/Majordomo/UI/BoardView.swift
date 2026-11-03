@@ -233,9 +233,9 @@ struct BoardView: View {
               .rotationEffect(.degrees(collapsed ? 0 : 90))
               .foregroundStyle(.secondary)
             Text(lane.id.isEmpty ? "No repository" : lane.id)
-              .font(.system(size: 12, weight: .medium))
+              .font(.app(.callout, weight: .medium))
             Text("\(lane.count)")
-              .font(.system(size: 11))
+              .font(.app(.caption))
               .foregroundStyle(.secondary)
               .monospacedDigit()
           }
@@ -281,7 +281,7 @@ struct BoardView: View {
           }
         }
         .buttonStyle(.link)
-        .font(.system(size: 11, weight: .medium))
+        .font(.app(.caption, weight: .medium))
         .padding(.vertical, 4)
       }
     }
@@ -542,10 +542,10 @@ private struct ColumnHeaderRow: View {
         ForEach(columns) { column in
           HStack(spacing: 6) {
             Text(column.name)
-              .font(.system(size: 12, weight: .semibold))
+              .font(.app(.callout, weight: .semibold))
               .foregroundStyle(column.quiet ? .secondary : .primary)
             Text("\(column.count)")
-              .font(.system(size: 11, weight: .medium))
+              .font(.app(.caption, weight: .medium))
               .foregroundStyle(.secondary)
               .monospacedDigit()
           }

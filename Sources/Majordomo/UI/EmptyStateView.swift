@@ -14,9 +14,9 @@ struct EmptyStateView: View {
         .foregroundStyle(.tertiary)
         .padding(.bottom, 4)
       Text(title)
-        .font(.system(size: 13, weight: .semibold))
+        .font(.app(.body, weight: .semibold))
       Text(caption)
-        .font(.system(size: 12))
+        .font(.app(.callout))
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
     }

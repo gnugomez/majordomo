@@ -33,7 +33,7 @@ struct AddAccountSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text(updating == nil ? "Add Account" : "Update Token")
-        .font(.system(size: 15, weight: .semibold))
+        .font(.app(.heading, weight: .semibold))
         .frame(maxWidth: .infinity)
 
       if let updating {
@@ -52,18 +52,18 @@ struct AddAccountSheet: View {
         .disabled(model.connecting)
         .onSubmit(submit)
       Text(chosenSpec.tokenHint)
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .foregroundStyle(.secondary)
       if let note = chosenSpec.previewScopeNote {
         Label(note, systemImage: "exclamationmark.triangle")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
       if let error = displayError {
         Text(error)
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.red)
       }
 
@@ -107,7 +107,7 @@ struct AddAccountSheet: View {
             ProviderMark(provider: candidate.id)
               .frame(width: 14, height: 14)
             Text(candidate.displayName)
-              .font(.system(size: 13, weight: .medium))
+              .font(.app(.body, weight: .medium))
           }
           .foregroundStyle(providerId == candidate.id ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
           .padding(.vertical, 7)
@@ -138,9 +138,9 @@ struct AddAccountSheet: View {
       AccountAvatar(account: account, size: 26)
       VStack(alignment: .leading, spacing: 1) {
         Text(account.name ?? "@\(account.username ?? "unknown")")
-          .font(.system(size: 13, weight: .medium))
+          .font(.app(.body, weight: .medium))
         Text(accountDescriptor(account))
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }

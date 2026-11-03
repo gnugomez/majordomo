@@ -58,7 +58,7 @@ struct IconPickerSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Choose an Icon")
-        .font(.system(size: 15, weight: .semibold))
+        .font(.app(.heading, weight: .semibold))
         .frame(maxWidth: .infinity)
 
       // The label or folder as the sidebar will show it.
@@ -72,7 +72,7 @@ struct IconPickerSheet: View {
             .frame(width: 32, height: 32)
         }
         Text(name)
-          .font(.system(size: 13, weight: .medium))
+          .font(.app(.body, weight: .medium))
         Spacer()
       }
       .padding(10)

@@ -112,10 +112,10 @@ struct InboxesSettingsView: View {
       HStack(spacing: 8) {
         LabelGlyph(symbol: label.symbol, tint: label.tint)
         Text(label.name)
-          .font(.system(size: 13, weight: .medium))
+          .font(.app(.body, weight: .medium))
         Spacer()
         Text(label.isBuiltin ? "Built in" : "Edit it on the Labels page")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
       }
     } else if selection == catchAllInboxId {
@@ -123,15 +123,15 @@ struct InboxesSettingsView: View {
         Image(systemName: recentCategory.symbol)
           .frame(width: 20)
         Text(recentCategory.label)
-          .font(.system(size: 13, weight: .medium))
+          .font(.app(.body, weight: .medium))
         Spacer()
         Text("Built in")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
       }
     } else {
       Text("Select a row to edit it")
-        .font(.system(size: 12))
+        .font(.app(.callout))
         .foregroundStyle(.secondary)
     }
   }
@@ -248,7 +248,7 @@ private struct InboxInspector: View {
       }
       HStack(spacing: 8) {
         Text("Notify")
-          .font(.system(size: 12))
+          .font(.app(.callout))
         Picker(
           "Notify",
           selection: Binding(

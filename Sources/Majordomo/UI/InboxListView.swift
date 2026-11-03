@@ -164,7 +164,7 @@ struct InboxListView: View {
               shownCount += rowPage
             }
             .buttonStyle(.link)
-            .font(.system(size: 12, weight: .medium))
+            .font(.app(.callout, weight: .medium))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .listRowSeparator(.hidden)

@@ -55,7 +55,7 @@ struct SidebarView: View {
             .progressViewStyle(.linear)
             .controlSize(.small)
           Text("Syncing…")
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)

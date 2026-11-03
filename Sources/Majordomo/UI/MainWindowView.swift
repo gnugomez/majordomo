@@ -438,7 +438,7 @@ struct MainWindowView: View {
         Image(systemName: "envelope.open")
         if selectedThreads.count > 1 {
           Text("+\(selectedThreads.count)")
-            .font(.system(size: 11, weight: .semibold))
+            .font(.app(.caption, weight: .semibold))
         }
       }
     }
@@ -474,7 +474,7 @@ struct MainWindowView: View {
         Image(systemName: "arrow.up.forward")
         if selectedThreads.count > 1 {
           Text("+\(selectedThreads.count)")
-            .font(.system(size: 11, weight: .semibold))
+            .font(.app(.caption, weight: .semibold))
         }
       }
     }

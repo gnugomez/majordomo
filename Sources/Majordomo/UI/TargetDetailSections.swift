@@ -109,12 +109,12 @@ struct ConversationTimeline: View {
   private var heading: some View {
     HStack {
       Text("Conversation")
-        .font(.system(size: 11, weight: .semibold))
+        .font(.app(.caption, weight: .semibold))
         .foregroundStyle(.secondary)
       Spacer()
       if let count = conversation.commentCount, count > 0 {
         Text(count == 1 ? "1 comment" : "\(count) comments")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.tertiary)
       }
     }
@@ -178,7 +178,7 @@ private struct TimelineCard: View {
         }
       } else if let emptyText {
         Text(emptyText)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .italic()
           .foregroundStyle(.tertiary)
       }
@@ -201,12 +201,12 @@ private struct TimelineCard: View {
           }
         }
       Text(highlighted(author ?? "Someone", terms: highlightTerms))
-        .font(.system(size: 13, weight: .semibold))
+        .font(.app(.body, weight: .semibold))
         .lineLimit(1)
         .layoutPriority(1)
       if let action {
         Text(action)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }
@@ -241,11 +241,11 @@ private struct TimelineEventRow: View {
       EventGlyph(badge: badge, size: 22, ring: Palette.pane)
       PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 18)
       Text(highlighted(comment.author ?? "Someone", terms: highlightTerms))
-        .font(.system(size: 13, weight: .semibold))
+        .font(.app(.body, weight: .semibold))
         .lineLimit(1)
         .layoutPriority(1)
       Text(badge.label)
-        .font(.system(size: 13))
+        .font(.app(.body))
         .foregroundStyle(.secondary)
         .lineLimit(1)
       if isTargetAuthor {
@@ -271,7 +271,7 @@ private struct EarlierEntriesRow: View {
   var body: some View {
     HStack(spacing: 8) {
       Image(systemName: "ellipsis")
-        .font(.system(size: 10, weight: .bold))
+        .font(.app(.badge, weight: .bold))
         .foregroundStyle(.secondary)
         .frame(width: 22, height: 22)
         .background(Palette.card, in: Circle())
@@ -284,7 +284,7 @@ private struct EarlierEntriesRow: View {
         Link("Read on \(providerName)", destination: url)
       }
     }
-    .font(.system(size: 12))
+    .font(.app(.callout))
     .padding(.leading, 11)
   }
 }
@@ -307,14 +307,14 @@ struct TriggerJump: View {
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 6) {
             Text(comment.author ?? "Someone")
-              .font(.system(size: 13, weight: .semibold))
+              .font(.app(.body, weight: .semibold))
               .lineLimit(1)
             CapsuleTag(text: reason, tint: Color.accentColor)
             Spacer(minLength: 4)
             EntryTime(date: comment.createdAt, now: now)
           }
           Text(excerpt(of: comment.body))
-            .font(.system(size: 12))
+            .font(.app(.callout))
             .foregroundStyle(.secondary)
             .lineLimit(2)
             .multilineTextAlignment(.leading)
@@ -346,7 +346,7 @@ struct ConversationStatusRow: View {
         Text("Loading the conversation…")
           .foregroundStyle(.secondary)
       }
-      .font(.system(size: 12))
+      .font(.app(.callout))
     case .unreadable(let message):
       notice(message)
     case .waiting(let message):
@@ -358,7 +358,7 @@ struct ConversationStatusRow: View {
 
   private func notice(_ message: String) -> some View {
     Label(message, systemImage: "exclamationmark.triangle")
-      .font(.system(size: 12))
+      .font(.app(.callout))
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)

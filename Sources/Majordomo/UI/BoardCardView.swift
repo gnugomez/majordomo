@@ -33,7 +33,7 @@ struct BoardCardView: View, Equatable {
         GlyphImage(glyph: providerSpec.glyph(for: item))
           .foregroundStyle(providerSpec.color(for: item))
         locationLine(providerSpec)
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
           .lineLimit(1)
         Spacer(minLength: 4)
@@ -51,7 +51,7 @@ struct BoardCardView: View, Equatable {
       }
 
       Text(card.title)
-        .font(.system(size: 13, weight: .medium))
+        .font(.app(.body, weight: .medium))
         .lineLimit(3)
         .fixedSize(horizontal: false, vertical: true)
 
@@ -62,7 +62,7 @@ struct BoardCardView: View, Equatable {
         Spacer(minLength: 4)
         comments
         Text(relativeTime(card.activityAt, now: now))
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.tertiary)
           .monospacedDigit()
       }
@@ -124,7 +124,7 @@ struct BoardCardView: View, Equatable {
           } icon: {
             GlyphImage(glyph: Octicon.milestone, size: 10)
           }
-            .font(.system(size: 10, weight: .medium))
+            .font(.app(.badge, weight: .medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
@@ -148,7 +148,7 @@ struct BoardCardView: View, Equatable {
         }
         if logins.count > 3 {
           Text("+\(logins.count - 3)")
-            .font(.system(size: 10, weight: .medium))
+            .font(.app(.badge, weight: .medium))
             .foregroundStyle(.secondary)
             .padding(.leading, 6)
         }
@@ -163,11 +163,11 @@ struct BoardCardView: View, Equatable {
       HStack(spacing: 2) {
         GlyphImage(glyph: Octicon.comment, size: 10)
         Text("\(count)")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .monospacedDigit()
         if let new = card.newComments {
           Text("+\(new)")
-            .font(.system(size: 11, weight: .semibold))
+            .font(.app(.caption, weight: .semibold))
             .foregroundStyle(Color.accentColor)
             .help("\(new) new since you last looked")
         }

@@ -18,7 +18,7 @@ struct RuleTargetRow: View {
     HStack(spacing: 6) {
       if pills.isEmpty {
         Text(placeholder)
-          .font(.system(size: 12))
+          .font(.app(.callout))
           .foregroundStyle(.secondary)
       } else {
         ScrollView(.horizontal, showsIndicators: false) {

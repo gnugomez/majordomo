@@ -30,7 +30,7 @@ struct SettingsRow<Control: View>: View {
           .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
       }
       Text(label)
-        .font(.system(size: 13))
+        .font(.app(.body))
       Spacer()
       control
     }
@@ -45,7 +45,7 @@ struct SettingsHint: View {
 
   var body: some View {
     Text(text)
-      .font(.system(size: 11))
+      .font(.app(.caption))
       .foregroundStyle(.secondary)
       .padding(.horizontal, 4)
   }
@@ -68,9 +68,9 @@ struct AccountsSettingsView: View {
             AccountAvatar(account: account, size: 26)
             VStack(alignment: .leading, spacing: 1) {
               Text(account.name ?? "@\(account.username ?? "unknown")")
-                .font(.system(size: 13, weight: .medium))
+                .font(.app(.body, weight: .medium))
               Text(subtitle(account))
-                .font(.system(size: 11))
+                .font(.app(.caption))
                 .foregroundStyle(account.error == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
                 .lineLimit(1)
             }
@@ -89,7 +89,7 @@ struct AccountsSettingsView: View {
       .overlay {
         if model.accounts.isEmpty {
           Text("No accounts connected")
-            .font(.system(size: 12))
+            .font(.app(.callout))
             .foregroundStyle(.secondary)
         }
       }

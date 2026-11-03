@@ -13,7 +13,7 @@ struct CapsuleTag: View {
 
   var body: some View {
     Text(text)
-      .font(.system(size: 10, weight: .medium))
+      .font(.app(.badge, weight: .medium))
       .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(tint ?? Color.secondary))
       .padding(.horizontal, 6)
       .padding(.vertical, 2)
@@ -37,7 +37,7 @@ struct LabelCapsule: View {
       Image(systemName: label.symbol)
         .font(.system(size: 9, weight: .medium))
       Text(label.name)
-        .font(.system(size: 10, weight: .medium))
+        .font(.app(.badge, weight: .medium))
     }
     .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(label.tint.color))
     .padding(.horizontal, 6)

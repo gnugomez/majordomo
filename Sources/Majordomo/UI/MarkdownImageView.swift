@@ -217,7 +217,7 @@ private struct MarkdownImageFallback: View {
         .help(url.absoluteString)
       }
     }
-    .font(.system(size: 12))
+    .font(.app(.callout))
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
     .background(Palette.code, in: RoundedRectangle(cornerRadius: 6))

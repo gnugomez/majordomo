@@ -62,7 +62,7 @@ struct CollapsibleBody<Content: View>: View {
           expanded.toggle()
         }
         .buttonStyle(.link)
-        .font(.system(size: 12))
+        .font(.app(.callout))
       }
     }
   }
@@ -72,7 +72,7 @@ struct CollapsibleBody<Content: View>: View {
 struct AuthorMark: View {
   var body: some View {
     Text("Author")
-      .font(.system(size: 10, weight: .medium))
+      .font(.app(.badge, weight: .medium))
       .foregroundStyle(.secondary)
       .padding(.horizontal, 6)
       .padding(.vertical, 1.5)
@@ -109,7 +109,7 @@ struct EntryTime: View {
 
   var body: some View {
     Text(relativeTime(date, now: now))
-      .font(.system(size: 12))
+      .font(.app(.callout))
       .foregroundStyle(.secondary)
       .monospacedDigit()
       .lineLimit(1)

@@ -89,7 +89,7 @@ struct ItemRowView: View {
               selected ? AnyShapeStyle(.primary) : AnyShapeStyle(spec(for: item.provider).color(for: item))
             )
           Text(highlighted(item.title, terms: highlightTerms))
-            .font(.system(size: 13, weight: thread.read ? .regular : .semibold))
+            .font(.app(.body, weight: thread.read ? .regular : .semibold))
             .lineLimit(1)
             .truncationMode(.tail)
         }
@@ -100,7 +100,7 @@ struct ItemRowView: View {
         }
         if let excerpt {
           excerpt
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -121,7 +121,7 @@ struct ItemRowView: View {
     // and a list row keeps the height it was first measured at.
     return ZStack(alignment: .leading) {
       Text(verbatim: " ")
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .hidden()
       HStack(spacing: 4) {
         metaRun(Array(pieces[..<badges]))
@@ -147,7 +147,7 @@ struct ItemRowView: View {
     switch piece {
     case .text(let text, let truncates):
       let line = Text(highlighted(separated ? "· \(text)" : text, terms: highlightTerms))
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .truncationMode(.tail)
@@ -235,7 +235,7 @@ struct ItemRowView: View {
     } label: {
       HStack(spacing: 2) {
         Text("\(thread.items.count)")
-          .font(.system(size: 11, weight: .medium))
+          .font(.app(.caption, weight: .medium))
         Image(systemName: expanded ? "chevron.down" : "chevron.right")
           .font(.system(size: 8, weight: .semibold))
       }
@@ -272,18 +272,18 @@ struct MemberRowView: View {
           )
           if let author = member.author {
             Text(highlighted(author, terms: highlightTerms))
-              .font(.system(size: 11))
+              .font(.app(.caption))
               .foregroundStyle(.secondary)
               .lineLimit(1)
           }
           Spacer(minLength: 6)
           Text(relativeTime(member.updatedAt, now: now))
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
         }
         if let excerpt = excerptLine(for: member, layout: layout, terms: highlightTerms) {
           excerpt
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }

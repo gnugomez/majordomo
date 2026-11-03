@@ -317,14 +317,14 @@ private struct SidebarOutlineRow: View {
     HStack(spacing: 7) {
       if entry.kind == .folder {
         Image(systemName: entry.symbol)
-          .font(.system(size: 12))
+          .font(.app(.callout))
           .foregroundStyle(.secondary)
           .frame(width: 18)
         CommitTextField("Folder name", text: entry.name) { name in
           onRename(name.isEmpty ? "Folder" : name)
         }
         .textFieldStyle(.plain)
-        .font(.system(size: 13, weight: .medium))
+        .font(.app(.body, weight: .medium))
         .focused($editing)
         .onAppear {
           if startsEditing {
@@ -334,7 +334,7 @@ private struct SidebarOutlineRow: View {
       } else {
         LabelGlyph(symbol: entry.symbol, tint: entry.tint, size: 18)
         Text(entry.name)
-          .font(.system(size: 13, weight: .medium))
+          .font(.app(.body, weight: .medium))
           .foregroundStyle(entry.hidden ? .secondary : .primary)
         Spacer()
         Toggle("Shown", isOn: Binding(get: { !entry.hidden }, set: { onSetVisible($0) }))

@@ -13,7 +13,7 @@ struct RowLayoutEditor: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Inbox rows")
-        .font(.system(size: 11, weight: .semibold))
+        .font(.app(.caption, weight: .semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
 
@@ -75,12 +75,12 @@ private struct RowFieldRow: View {
     HStack(spacing: 8) {
       Toggle(isOn: Binding(get: { shown }, set: { onChange($0) })) {
         Text(field.title)
-          .font(.system(size: 13))
+          .font(.app(.body))
       }
       .toggleStyle(.checkbox)
       Spacer()
       Text(field.detail)
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .foregroundStyle(.secondary)
     }
     .padding(.vertical, 2)

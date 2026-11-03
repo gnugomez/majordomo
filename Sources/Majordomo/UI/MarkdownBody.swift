@@ -48,15 +48,15 @@ private struct MarkdownBlockList: View {
     switch block.kind {
     case .paragraph:
       Text(content)
-        .font(.system(size: 13))
+        .font(.app(.body))
         .fixedSize(horizontal: false, vertical: true)
     case .heading(let level):
       Text(content)
-        .font(.system(size: headingSize(level), weight: .semibold))
+        .font(.app(headingSize(level), weight: .semibold))
         .padding(.top, level <= 2 ? 4 : 0)
     case .code:
       Text(content)
-        .font(.system(size: 12, design: .monospaced))
+        .font(.app(.callout, design: .monospaced))
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.code, in: RoundedRectangle(cornerRadius: 6))
@@ -66,27 +66,27 @@ private struct MarkdownBlockList: View {
           .fill(.quaternary)
           .frame(width: 3)
         Text(content)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
     case .listItem(let marker, let depth):
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Text(marker)
-          .font(.system(size: 13).monospacedDigit())
+          .font(.app(.body).monospacedDigit())
           .foregroundStyle(.secondary)
         Text(content)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .fixedSize(horizontal: false, vertical: true)
       }
       .padding(.leading, CGFloat(depth - 1) * 16)
     case .task(let done, let depth):
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Image(systemName: done ? "checkmark.square.fill" : "square")
-          .font(.system(size: 12))
+          .font(.app(.callout))
           .foregroundStyle(done ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
         Text(content)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .fixedSize(horizontal: false, vertical: true)
       }
       .padding(.leading, CGFloat(depth - 1) * 16)
@@ -101,11 +101,11 @@ private struct MarkdownBlockList: View {
     }
   }
 
-  private func headingSize(_ level: Int) -> CGFloat {
+  private func headingSize(_ level: Int) -> TextSize {
     switch level {
-    case 1: 17
-    case 2: 15
-    default: 13
+    case 1: .title
+    case 2: .heading
+    default: .body
     }
   }
 }
@@ -147,7 +147,7 @@ private struct MarkdownTableView: View {
     let text = column < cells.count ? cells[column] : AttributedString()
     let alignment = column < table.alignments.count ? table.alignments[column] : .leading
     return Text(highlighted(text, terms: highlightTerms))
-      .font(.system(size: 12, weight: header ? .semibold : .regular))
+      .font(.app(.callout, weight: header ? .semibold : .regular))
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, 8)
       .padding(.vertical, 5)
@@ -173,11 +173,11 @@ private struct MarkdownFold: View {
       } label: {
         HStack(spacing: 6) {
           Image(systemName: "chevron.right")
-            .font(.system(size: 10, weight: .semibold))
+            .font(.app(.badge, weight: .semibold))
             .foregroundStyle(.secondary)
             .rotationEffect(.degrees(open ? 90 : 0))
           Text(summary)
-            .font(.system(size: 13, weight: .medium))
+            .font(.app(.body, weight: .medium))
             .multilineTextAlignment(.leading)
         }
         .contentShape(Rectangle())

@@ -161,7 +161,7 @@ struct TargetBadges: View {
       GlyphImage(glyph: badge.glyph, size: 10)
       Text(badge.label)
     }
-    .font(.system(size: 10, weight: .medium))
+    .font(.app(.badge, weight: .medium))
     .foregroundStyle(badge.color)
     .lineLimit(1)
     .fixedSize()

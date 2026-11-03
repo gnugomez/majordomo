@@ -224,22 +224,22 @@ struct PinnedLabelBox: View {
   private func header(_ box: PinnedBox) -> some View {
     HStack(spacing: 6) {
       Image(systemName: box.label.symbol)
-        .font(.system(size: 12, weight: .medium))
+        .font(.app(.callout, weight: .medium))
         .foregroundStyle(box.label.tint.color)
         .frame(width: 16)
       Text(box.label.name)
-        .font(.system(size: 12, weight: .medium))
+        .font(.app(.callout, weight: .medium))
         .foregroundStyle(.secondary)
       if box.byModel {
         Image(systemName: "apple.intelligence")
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.tertiary)
           .help("Chosen by Apple Intelligence on this Mac")
       }
       Spacer(minLength: 6)
       if box.unread > box.threads.count {
         Text("+\(box.unread - box.threads.count)")
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.tertiary)
       }
       if boxes.count > 1 {
@@ -260,7 +260,7 @@ struct PinnedLabelBox: View {
       }
       .disabled(index == 0)
       Text("\(min(index, boxes.count - 1) + 1) of \(boxes.count)")
-        .font(.system(size: 10))
+        .font(.app(.badge))
         .foregroundStyle(.tertiary)
         .monospacedDigit()
       Button {
@@ -288,7 +288,7 @@ struct PinnedLabelBox: View {
         GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
           .foregroundStyle(spec(for: item.provider).color(for: item))
         Text(item.title)
-          .font(.system(size: 12, weight: .medium))
+          .font(.app(.callout, weight: .medium))
           .lineLimit(1)
           .truncationMode(.tail)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,13 +296,13 @@ struct PinnedLabelBox: View {
           TargetBadges(status: status, density: .compact)
         }
         Text(relativeTime(item.updatedAt, now: model.now))
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.secondary)
           .fixedSize()
       }
       if let line = summaryLine(for: item) {
         line
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
           // One line, like the title: a box whose rows wrap has a height
           // that depends on its width, and the list measures the row

@@ -44,7 +44,9 @@ Layers, lower never importing higher:
   sweep the rules and boards, publish state.
 - `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
   windows, notifications, main menu.
-- `Sources/Majordomo/UI/` — the SwiftUI views.
+- `Sources/Majordomo/UI/` — the SwiftUI views. The app's own colors live
+  in `Palette.swift` and its text sizes in `Typography.swift`
+  (`.font(.app(.caption))`); reach for those rather than a literal.
 
 `Tests/MajordomoTests/` holds the Swift Testing suite, which reaches the
 app target through `@testable import Majordomo`.

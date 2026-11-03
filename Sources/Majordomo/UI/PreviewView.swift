@@ -109,7 +109,7 @@ struct PreviewView: View {
       GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
         .foregroundStyle(providerSpec.color(for: item))
       Text(highlighted(item.title, terms: highlightTerms))
-        .font(.system(size: 17, weight: .semibold))
+        .font(.app(.title, weight: .semibold))
         .textSelection(.enabled)
     }
 
@@ -168,7 +168,7 @@ struct PreviewView: View {
         }
       }
     }
-    .font(.system(size: 12))
+    .font(.app(.callout))
   }
 
   private func loadedConversation(_ load: AppModel.ConversationLoad?) -> TargetConversation? {
@@ -242,7 +242,7 @@ struct PreviewView: View {
         )
         if let author {
           Text(highlighted(author, terms: highlightTerms))
-            .font(.system(size: 13, weight: .semibold))
+            .font(.app(.body, weight: .semibold))
             .lineLimit(1)
         }
         CapsuleTag(
@@ -254,14 +254,14 @@ struct PreviewView: View {
       }
       if let comment {
         Text(excerpt(of: comment.body))
-          .font(.system(size: 13))
+          .font(.app(.body))
           .foregroundStyle(.secondary)
           .lineLimit(3)
         Button("Show in Conversation") {
           jump(to: comment.id)
         }
         .buttonStyle(.link)
-        .font(.system(size: 12))
+        .font(.app(.callout))
       } else if let bodyView = providerSpec.bodyView(for: member) {
         bodyView
       }
@@ -329,7 +329,7 @@ struct PreviewView: View {
         }
       } label: {
         Image(systemName: "plus")
-          .font(.system(size: 10, weight: .semibold))
+          .font(.app(.badge, weight: .semibold))
       }
       .menuIndicator(.hidden)
       .controlSize(.small)
