@@ -51,6 +51,10 @@ extension GitForgeSpec {
     GitForgeVisuals.checksBadge(checks)
   }
 
+  func mergeBadge(_ merge: String) -> CardBadge? {
+    GitForgeVisuals.mergeBadge(merge)
+  }
+
   func tokens(for field: RuleField) -> [String] {
     GitForgeVisuals.tokens(for: field)
   }
@@ -156,6 +160,12 @@ enum GitForgeVisuals {
     return nil
   }
 
+  /// What asks for a hand without being a failure: changes asked for, a
+  /// branch to update.
+  private static let attentionColor = dynamicColor(light: 0xBC4C00, dark: 0xDB6D28)
+  /// What is still settling, or holds without failing.
+  private static let pendingColor = dynamicColor(light: 0x9A6700, dark: 0xD29922)
+
   /// Review tokens, both forges: "approved", "changes_requested",
   /// "review_required".
   static func reviewBadge(_ review: String) -> CardBadge? {
@@ -163,10 +173,7 @@ enum GitForgeVisuals {
     case "approved":
       CardBadge(glyph: Octicon.checkCircle, label: "Approved", color: stateColor("open"))
     case "changes_requested":
-      CardBadge(
-        glyph: Octicon.fileDiff, label: "Changes requested",
-        color: dynamicColor(light: 0xBC4C00, dark: 0xDB6D28)
-      )
+      CardBadge(glyph: Octicon.fileDiff, label: "Changes requested", color: attentionColor, needsAction: true)
     case "review_required":
       CardBadge(glyph: Octicon.eye, label: "Review required", color: stateColor(""))
     default:
@@ -180,9 +187,33 @@ enum GitForgeVisuals {
     case "success":
       CardBadge(glyph: Octicon.check, label: "Checks passed", color: stateColor("open"))
     case "failure":
-      CardBadge(glyph: Octicon.x, label: "Checks failed", color: stateColor("closed"))
+      CardBadge(glyph: Octicon.x, label: "Checks failed", color: stateColor("closed"), needsAction: true)
     case "pending":
-      CardBadge(glyph: Octicon.dotFill, label: "Checks running", color: dynamicColor(light: 0x9A6700, dark: 0xD29922))
+      CardBadge(glyph: Octicon.dotFill, label: "Checks running", color: pendingColor)
+    default:
+      nil
+    }
+  }
+
+  /// Merge tokens, both forges: "conflicts"; "behind", a branch to update
+  /// from its base first; "unresolved", discussion threads still open
+  /// (GitLab); "blocked", held by something else — a required review or
+  /// check, a branch rule; "unstable", mergeable though checks that aren't
+  /// required failed (GitHub); and "ready".
+  static func mergeBadge(_ merge: String) -> CardBadge? {
+    switch merge {
+    case "conflicts":
+      CardBadge(glyph: Octicon.alert, label: "Merge conflicts", color: stateColor("closed"), needsAction: true)
+    case "behind":
+      CardBadge(glyph: Octicon.sync, label: "Branch out of date", color: attentionColor, needsAction: true)
+    case "unresolved":
+      CardBadge(glyph: Octicon.commentDiscussion, label: "Unresolved threads", color: pendingColor, needsAction: true)
+    case "blocked":
+      CardBadge(glyph: Octicon.blocked, label: "Merge blocked", color: stateColor(""))
+    case "unstable":
+      CardBadge(glyph: Octicon.merge, label: "Mergeable, checks failing", color: pendingColor)
+    case "ready":
+      CardBadge(glyph: Octicon.merge, label: "Ready to merge", color: stateColor("open"))
     default:
       nil
     }

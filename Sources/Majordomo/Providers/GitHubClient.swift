@@ -96,7 +96,7 @@ private let targetFragments = """
   fragment Pull on PullRequest { title state isDraft updatedAt author { login } \
   assignees(first: 10) { nodes { login } } labels(first: 20) { nodes { name } } milestone { title } \
   comments(last: 1) { totalCount nodes { author { login } createdAt } } \
-  reviews(last: 1) { nodes { author { login } submittedAt } } reviewDecision \
+  reviews(last: 1) { nodes { author { login } submittedAt } } reviewDecision mergeable mergeStateStatus \
   reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } \
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
   """
@@ -177,6 +177,11 @@ private struct GQLTarget: Decodable {
   let comments: GQLNodes<Comment>?
   let reviews: GQLNodes<Review>?
   let reviewDecision: String?
+  /// "MERGEABLE", "CONFLICTING", or "UNKNOWN" while GitHub works it out.
+  let mergeable: String?
+  /// What stands between the pull request and a merge: "CLEAN",
+  /// "BEHIND", "BLOCKED", "DIRTY"…
+  let mergeStateStatus: String?
   let reviewRequests: GQLNodes<ReviewRequest>?
   let commits: GQLNodes<CommitNode>?
   /// The description and latest comments, when the query asked for them.
@@ -261,10 +266,29 @@ private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
     milestone: target.milestone?.title,
     review: review,
     checks: checks,
+    merge: state == "open" ? mergeToken(target) : nil,
     commentCount: target.comments?.totalCount,
     lastCommenter: lastCommenter,
     updatedAt: updatedAt
   )
+}
+
+/// Where an open pull request stands for merging, as a merge token.
+/// Conflicts win however the rest reads; "UNKNOWN" — GitHub works
+/// mergeability out after it is first asked, and the next refresh has it
+/// — shows none, and so does the draft state, which the kind glyph shows.
+private func mergeToken(_ target: GQLTarget) -> String? {
+  if target.mergeable == "CONFLICTING" {
+    return "conflicts"
+  }
+  return switch target.mergeStateStatus {
+  case "DIRTY": "conflicts"
+  case "BEHIND": "behind"
+  case "BLOCKED": "blocked"
+  case "UNSTABLE": "unstable"
+  case "CLEAN", "HAS_HOOKS": "ready"
+  default: nil
+  }
 }
 
 private func toConversation(_ target: GQLTarget) -> TargetConversation? {

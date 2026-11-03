@@ -91,7 +91,9 @@ private struct GLTargetState: Decodable {
   /// Comments by people, GitLab's own system notes left out.
   let user_notes_count: Int?
   let head_pipeline: Pipeline?
-  /// "requested_changes" once a reviewer asks for changes (newer instances).
+  /// What stands between the merge request and a merge ("mergeable",
+  /// "conflict", "not_approved"…; "requested_changes" on newer instances
+  /// once a reviewer asks for changes).
   let detailed_merge_status: String?
 }
 
@@ -119,6 +121,21 @@ private func checksToken(_ status: String?) -> String? {
   case "failed": "failure"
   case "created", "waiting_for_resource", "preparing", "pending", "running", "scheduled": "pending"
   default: nil
+  }
+}
+
+/// A detailed merge status as a merge token. The statuses GitLab is still
+/// working out show none, as does the draft status, which the kind glyph
+/// shows; any other status that isn't mergeable holds the merge, and the
+/// review and checks marks say why.
+private func mergeToken(_ status: String?) -> String? {
+  switch status {
+  case nil, "unchecked", "checking", "preparing", "approvals_syncing", "draft_status", "not_open": nil
+  case "mergeable": "ready"
+  case "conflict", "broken_status": "conflicts"
+  case "need_rebase": "behind"
+  case "discussions_not_resolved": "unresolved"
+  default: "blocked"
   }
 }
 
@@ -456,12 +473,13 @@ struct GitLabClient: ProviderClient {
     if (target.user_notes_count ?? 0) > 0 {
       people = await latestNotes(of: url, token: token, ctx: ctx)
     }
+    let state = stateToken(
+      target.state, mergeRequest: mergeRequest,
+      draft: target.draft == true || target.work_in_progress == true, title: target.title
+    )
     let snapshot = TargetSnapshot(
       title: target.title ?? "",
-      state: stateToken(
-        target.state, mergeRequest: mergeRequest,
-        draft: target.draft == true || target.work_in_progress == true, title: target.title
-      ),
+      state: state,
       author: target.author?.username,
       assignees: (target.assignees ?? []).compactMap(\.username),
       reviewers: reviewers.filter { !approvers.contains($0) },
@@ -469,6 +487,7 @@ struct GitLabClient: ProviderClient {
       milestone: target.milestone?.title,
       review: review,
       checks: checksToken(target.head_pipeline?.status),
+      merge: mergeRequest && state == "open" ? mergeToken(target.detailed_merge_status) : nil,
       commentCount: target.user_notes_count,
       lastCommenter: people?.first?.author?.username,
       updatedAt: updatedAt

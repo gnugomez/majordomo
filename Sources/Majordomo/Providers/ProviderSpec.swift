@@ -34,12 +34,16 @@ struct Glyph: Hashable, Sendable {
   let svg: String
 }
 
-/// A small glyph-and-word mark on a board card: where review or checks
-/// stand.
+/// A small glyph-and-word mark on a card or a row: where review, checks,
+/// or merging stand.
 struct CardBadge: Sendable {
   let glyph: Glyph
   let label: String
   let color: Color
+  /// Whether it says something must be done before the target can move
+  /// on — failing checks, a conflict, changes asked for. A row short of
+  /// room keeps these and lets the good news go.
+  var needsAction = false
 }
 
 protocol ProviderSpec: Sendable {
@@ -98,6 +102,8 @@ protocol ProviderSpec: Sendable {
   func reviewBadge(_ review: String) -> CardBadge?
   /// A card's checks mark for a checks token; nil shows none.
   func checksBadge(_ checks: String) -> CardBadge?
+  /// A card's merge mark for a merge token; nil shows none.
+  func mergeBadge(_ merge: String) -> CardBadge?
   /// Values a board column's condition can pick from for a token field
   /// (kind, state, review, checks…), in the provider's own vocabulary.
   func tokens(for field: RuleField) -> [String]

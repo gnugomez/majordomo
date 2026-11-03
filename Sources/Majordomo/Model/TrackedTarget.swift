@@ -8,9 +8,9 @@
 
 import Foundation
 
-/// What a provider says about a target right now. Review and checks are
-/// provider tokens like kind and state: the spec renders them, and the
-/// core only compares them.
+/// What a provider says about a target right now. Review, checks, and
+/// merge are provider tokens like kind and state: the spec renders them,
+/// and the core only compares them.
 struct TargetSnapshot: Codable, Hashable, Sendable {
   var title: String
   var state: String?
@@ -25,6 +25,9 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
   var review: String?
   /// Where the latest checks stand ("success", "failure", "pending").
   var checks: String?
+  /// Whether it could be merged right now ("conflicts", "ready"…); nil
+  /// for what isn't open for merging, or while the provider can't tell.
+  var merge: String? = nil
   /// Comments by people, when the provider counts them.
   var commentCount: Int?
   /// Whoever wrote the latest comment or review.

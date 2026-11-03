@@ -1,8 +1,10 @@
 // One card on a board: a target at a glance. The kind glyph in its current
-// state, where it lives, its title, where review and checks stand, who it
-// is assigned to, and what moved since the user last looked — the unread
-// dot for notifications, "+N" for comments. Every mark comes from the
-// provider's spec; a card that has gone quiet fades rather than leaves.
+// state, where it lives, its title, where review, checks, and merging stand
+// (TargetBadges, the marks the inbox rows draw too), who it is assigned to,
+// and what moved since the user last looked — the unread dot for
+// notifications, "+N" for comments. Every mark of the target's tokens comes
+// from the provider's spec; a card that has gone quiet fades rather than
+// leaves.
 
 import SwiftUI
 
@@ -57,7 +59,7 @@ struct BoardCardView: View {
         .lineLimit(3)
         .fixedSize(horizontal: false, vertical: true)
 
-      badges(providerSpec)
+      badges
 
       HStack(spacing: 6) {
         assignees
@@ -105,20 +107,20 @@ struct BoardCardView: View {
     }
   }
 
+  /// Where the target stands, then its milestone and labels, wrapping.
   @ViewBuilder
-  private func badges(_ providerSpec: any ProviderSpec) -> some View {
+  private var badges: some View {
     let snapshot = card.snapshot
-    let review = snapshot?.review.flatMap(providerSpec.reviewBadge)
-    let checks = snapshot?.checks.flatMap(providerSpec.checksBadge)
+    let status = snapshot.map {
+      TargetStatus(provider: card.lead.provider, snapshot: $0, ownLogins: card.ownLogins)
+    }
+    let marked = status.map { !$0.marks.isEmpty } ?? false
     let labels = Array((snapshot?.labels ?? card.lead.upstreamLabels).prefix(visibleLabels))
     let milestone = snapshot?.milestone
-    if review != nil || checks != nil || !labels.isEmpty || milestone != nil {
+    if marked || !labels.isEmpty || milestone != nil {
       FlowLayout(spacing: 4, lineSpacing: 4) {
-        if let review {
-          badge(review)
-        }
-        if let checks {
-          badge(checks)
+        if let status {
+          TargetBadges(status: status, density: .regular)
         }
         if let milestone {
           Label {
@@ -136,18 +138,6 @@ struct BoardCardView: View {
       }
       .labelStyle(CompactLabelStyle())
     }
-  }
-
-  private func badge(_ badge: CardBadge) -> some View {
-    Label {
-      Text(badge.label)
-    } icon: {
-      GlyphImage(glyph: badge.glyph, size: 10)
-    }
-      .font(.system(size: 10, weight: .medium))
-      .foregroundStyle(badge.color)
-      .lineLimit(1)
-      .fixedSize()
   }
 
   /// Up to three faces; more fold into a count.
