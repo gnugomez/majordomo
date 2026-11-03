@@ -1,8 +1,8 @@
 // Rules in words. The settings page, the composer's confirmation, and a
 // suggestion card all describe the same conditions, so the wording lives
 // here once: a field's name, a test read as a sentence fragment, a group
-// of conditions joined by its own conjunction, and a filter's groups
-// joined by the filter's.
+// of conditions joined by its own conjunction, a filter's groups joined
+// by the filter's, and a filter as an outline to read line by line.
 
 import Foundation
 
@@ -95,6 +95,28 @@ func describe(_ filter: RuleFilter) -> String {
       return group.conditions.count > 1 ? "(\(sentence))" : sentence
     }
     .joined(separator: conjunction(filter.match))
+}
+
+/// A filter laid out to read top to bottom: whether all or any of its
+/// parts must hold, and one line per part.
+struct FilterOutline: Equatable {
+  let match: RuleMatch
+  let lines: [String]
+}
+
+/// A lone group's outline is its conditions, one a line, under the
+/// group's own all or any; several groups take a line each — each a
+/// sentence joined by its own and/or — under the filter's.
+func outline(_ filter: RuleFilter) -> FilterOutline {
+  let groups = filter.groups.filter { !$0.conditions.isEmpty }
+  guard groups.count > 1 else {
+    let only = groups.first ?? RuleGroup()
+    return FilterOutline(match: only.match, lines: only.conditions.map(describe))
+  }
+  return FilterOutline(
+    match: filter.match,
+    lines: groups.map { describeConditions($0.conditions, match: $0.match) }
+  )
 }
 
 /// The same for a whole rule.

@@ -19,7 +19,7 @@ private let log = Logger(subsystem: "dev.majordomo.app", category: "intelligence
 /// are the one output that is stored, and they are keyed by the text they
 /// were made from — so a reworded prompt reaches an item when its text next
 /// changes, not before.
-private let promptVersion = 2
+private let promptVersion = 3
 
 /// How much of a body the summarizer reads. Notification bodies run to
 /// whole issue descriptions; the opening is where the point is, and a
@@ -34,46 +34,61 @@ private let verdictBodyCap = 1500
 /// What the model may propose for a rule. Every string is constrained to
 /// the tokens the app understands; `RuleDraft.validated` still checks the
 /// result, because a constrained field is a strong hint, not a guarantee.
+/// Properties generate in declaration order, and the order is the plan:
+/// first whether the sentence needs a judgment no field can test — asked
+/// after its tests, a small model has already turned the judgment into a
+/// "title contains" — then the tests for everything else, then where it
+/// goes. The tests come as a flat list, the way a sentence lists them, and
+/// `FilterDraft(listing:match:)` makes the groups: nested groups are a
+/// shape this model fills with copies of its examples.
 @Generable
 private struct RuleProposal {
-  @Guide(description: "A short name for the rule, at most four words, naming what it does.")
-  var name: String
+  @Guide(description: "True only when the sentence judges how notifications sound, look or read.")
+  var needsJudgment: Bool
 
-  @Guide(description: "Use \"any\" when the user describes alternatives (this OR that), \"all\" when every test must hold together.", .anyOf(["all", "any"]))
-  var match: String
+  @Guide(description: "That judgment as one yes-or-no question about a notification, in the sentence's words. Empty when not needed.")
+  var question: String
 
-  @Guide(description: "The tests this rule applies. Use as few as the sentence calls for — usually one or two.", .maximumCount(4))
+  @Guide(description: "The field tests for the rest of the sentence, as few as it calls for.", .maximumCount(5))
   var conditions: [ConditionProposal]
 
-  @Guide(description: "The name of the inbox or label this rule fills. Reuse one of the existing names listed in the prompt whenever it fits.")
+  @Guide(description: "\"any\" only for alternatives on different fields; otherwise \"all\".", .anyOf(["all", "any"]))
+  var match: String
+
+  @Guide(description: "A short name for the rule, at most four words.")
+  var name: String
+
+  @Guide(description: "The inbox or label this rule fills. Reuse an existing name whenever one fits.")
   var targetName: String
 
-  @Guide(description: "True only when no existing inbox or label listed in the prompt fits and a new one must be created.")
+  @Guide(description: "True only when no existing target fits.")
   var createTarget: Bool
 
-  @Guide(description: "For a new target: \"inbox\" for an area, a team or a project the user wants to read separately; \"label\" for a quality or state that tags items in place.", .anyOf(["label", "inbox"]))
+  @Guide(description: "For a new target: \"inbox\" for a place to read things apart, \"label\" for a quality that tags items in place.", .anyOf(["label", "inbox"]))
   var targetKind: String
 
-  @Guide(description: "An SF Symbol for a new target, chosen from the allowed list.", .anyOf(NSSymbolName.suggestable))
+  @Guide(description: "An SF Symbol for a new target.", .anyOf(NSSymbolName.suggestable))
   var targetSymbol: String
 
   @Guide(description: "A color for a new target.", .anyOf(LabelTint.allCases.map(\.rawValue)))
   var targetTint: String
 }
 
-/// One test inside a proposed rule.
+/// One test inside a proposed rule. The instructions say what each field
+/// means; the guides stay short, since every word of them is spent again
+/// on every request.
 @Generable
 private struct ConditionProposal {
-  @Guide(description: "What to look at. repo is the project path \"owner/name\". title and body are the notification's text. author is the login of whoever opened the issue or pull request. kind, reason and state are the platform's own tokens. provider is \"github\" or \"gitlab\". account is an account id. upstreamLabel is a label the issue already carries on the platform. mention means the notification is in the needs-you tier and takes no value.", .anyOf(RuleField.itemFields.map(\.rawValue)))
+  @Guide(description: "What to look at.", .anyOf(RuleField.itemFields.map(\.rawValue)))
   var field: String
 
-  @Guide(description: "How to compare. \"is\" is a whole-value match (on repo a * wildcard is allowed, as in \"acme/*\"), \"contains\" is a substring, \"matches\" is a regular expression.", .anyOf(RuleOperator.composable.map(\.rawValue)))
+  @Guide(description: "\"is\" a whole value (on repo * is a wildcard), \"contains\" a substring, \"matches\" a regex.", .anyOf(RuleOperator.composable.map(\.rawValue)))
   var op: String
 
-  @Guide(description: "What to compare against: a repo path, a login, a word, or a platform token such as mentioned, assigned, review_requested, issue, pull, merge, open, merged, closed. Leave empty only for the mention field.")
+  @Guide(description: "What to compare against. Empty only for mention.")
   var value: String
 
-  @Guide(description: "True to invert the test, for a sentence that says \"not\", \"except\" or \"other than\".")
+  @Guide(description: "True for \"not\", \"except\", \"other than\".")
   var negated: Bool
 }
 
@@ -113,6 +128,31 @@ private struct VerdictProposal {
   var matches: Bool
 }
 
+/// Whether a drafted question asks about something the sentence said: it
+/// shares a word with it, beyond the ones every judgment is phrased with
+/// ("does this look like…"). Words match on their first four letters, so
+/// "risky" finds "risk" and "incidents" finds "incident".
+func isGrounded(_ question: String, in sentence: String) -> Bool {
+  let asked = Set(significantStems(question))
+  return significantStems(sentence).contains { asked.contains($0) }
+}
+
+/// The phrasing every judgment shares, which says nothing about what it
+/// asks.
+private let judgmentPhrasing: Set<String> = [
+  "does", "this", "that", "these", "those", "look", "looks", "like", "sound", "sounds", "read", "reads",
+  "seem", "seems", "feel", "feels", "notification", "notifications", "anything", "something", "with",
+  "from", "about", "have", "will", "would", "should", "there", "their", "what", "which", "into", "they",
+]
+
+private func significantStems(_ text: String) -> [String] {
+  text.lowercased()
+    .split { !$0.isLetter }
+    .map(String.init)
+    .filter { $0.count >= 4 && !judgmentPhrasing.contains($0) }
+    .map { String($0.prefix(4)) }
+}
+
 /// Apple's on-device model. An actor: requests serialize through it, so a
 /// suggestion sweep can't run several sessions at once.
 actor AppleIntelligence: IntelligenceProvider {
@@ -143,22 +183,28 @@ actor AppleIntelligence: IntelligenceProvider {
     let session = LanguageModelSession(instructions: Self.composeInstructions(labels: labels))
     let proposal: RuleProposal
     do {
-      proposal = try await session.respond(to: text, generating: RuleProposal.self).content
+      // Greedy: the same sentence drafts the same rule every time, so
+      // drafting again after a rejection means rewording, not rerolling.
+      proposal = try await session.respond(
+        to: text, generating: RuleProposal.self, options: GenerationOptions(sampling: .greedy)
+      ).content
     } catch {
       throw Self.failure(error, doing: "read that")
     }
+    var tests = proposal.conditions.map {
+      ConditionDraft(field: $0.field, op: $0.op, value: $0.value, negated: $0.negated)
+    }
+    // The question only counts when the model said a judgment is needed —
+    // a small model fills a string it was told to leave empty — and when
+    // it asks about something the sentence said: one that shares none of
+    // its words is an example from the instructions, copied.
+    let question = proposal.question.trimmingCharacters(in: .whitespacesAndNewlines)
+    if proposal.needsJudgment, !question.isEmpty, isGrounded(question, in: text) {
+      tests.append(ConditionDraft(field: RuleField.question.rawValue, value: question))
+    }
     return RuleDraft(
       name: proposal.name,
-      match: proposal.match,
-      conditions: proposal.conditions.map {
-        // The mention test has no value to compare — the app reads it as
-        // "is this in the needs-you tier". A model that fills one in
-        // anyway would show a nonsense value in the editor, so it goes.
-        let isMention = $0.field.lowercased() == RuleField.mention.rawValue.lowercased()
-        return ConditionDraft(
-          field: $0.field, op: $0.op, value: isMention ? "" : $0.value, negated: $0.negated
-        )
-      },
+      filter: FilterDraft(listing: tests, match: proposal.match),
       targetName: proposal.targetName,
       createTarget: proposal.createTarget,
       targetKind: proposal.targetKind,
@@ -265,9 +311,10 @@ actor AppleIntelligence: IntelligenceProvider {
 
   /// v\(promptVersion). Written for a small model: the vocabulary is
   /// constrained by the guides, so the instructions spend their words on
-  /// what the fields MEAN, on worked examples, and on the mistakes worth
-  /// heading off — dropping half the sentence, and confusing "and" with
-  /// "or", are the two it makes without them.
+  /// what the fields MEAN, on when a judgment earns its cost, on worked
+  /// examples, and on the mistakes worth heading off — dropping half the
+  /// sentence, padding it with tests nobody asked for, and turning the
+  /// target's words into tests are the ones it makes without them.
   private static func composeInstructions(labels: [InboxLabel]) -> String {
     """
     You turn one sentence from a developer into a filing rule for their \
@@ -275,48 +322,49 @@ actor AppleIntelligence: IntelligenceProvider {
     issues, pull requests, merge requests, mentions, review requests.
 
     Cover everything the sentence names, and nothing it does not. Each \
-    separate thing it mentions — a project, a person, a kind of \
+    thing it names to match on — a project, a person, a kind of \
     notification, a word in the text — becomes its own test. Never drop \
     one, and never add one the sentence did not ask for: no kind, no \
-    state, no "typical" extra. A sentence naming one thing gets exactly \
-    one test.
+    reason, no person it did not name.
 
-    Set match to "all" when the sentence piles up requirements that must \
-    hold together ("mentions in acme/infra", "issues from kim"). Set it to \
-    "any" only when the sentence offers alternatives for the SAME thing \
-    ("from mona or sasha", "either a bug or a crash"). When a sentence \
-    mixes the two — alternatives plus another requirement — keep the \
-    alternatives with match "any" and leave the extra requirement out: a \
-    slightly wider rule is better than a wrong one.
+    Tests on the same field are alternatives: "from mona or sasha" is two \
+    author tests, and either will do. Tests on different fields must all \
+    hold. Set match to "any" only when the sentence offers alternatives on \
+    different fields ("from kim, or anything in acme/infra").
 
     What the fields mean:
-    - repo is the project path, like acme/infra.
+    - repo is the project path, like acme/infra; contains finds a word in it.
     - author is a login, like kim or dependabot[bot].
     - reason is why it arrived: mentioned, assigned, review_requested.
     - kind is what it is: issue, pull (GitHub), merge (GitLab).
     - state is open, merged or closed.
     - title and body are the text; use contains for a word to look for.
-    - mention means "it is in the needs-you tier" and takes NO value; use \
-    it only for a bare "anything aimed at me", never for the word urgent \
-    and never together with a value.
+    - mention means "aimed at me" and takes no value; never use it for \
+    the word urgent.
 
-    Worked examples, assuming "Urgent" and "Later" are labels that exist \
-    and "Team" is an inbox that exists:
-    - "anything from dependabot can wait" → target "Later"; match all; \
-    one test: author contains dependabot.
-    - "mentions in acme/infra are urgent" → target "Urgent"; match all; \
-    two tests: reason is mentioned, and repo is acme/infra.
-    - "pull requests from mona or sasha go to the team inbox" → target \
-    "Team"; match any; two tests: author is mona, and author is sasha.
-    - "issues about crashes are urgent" → target "Urgent"; match all; two \
-    tests: kind is issue, and title contains crash.
-    Notice that the words naming the target never become tests.
+    Tests are exact and free, so prefer them. A judgment is the one part \
+    no test can express: how a notification sounds, looks or reads — \
+    "looks risky", "sounds like an outage". Only then set needsJudgment \
+    and ask it as the question, in the sentence's own words; Apple \
+    Intelligence answers it for each notification the tests let through. \
+    A project, a person, a kind, a reason or a word is never a judgment.
 
-    The target is what the sentence says to DO with those notifications, \
-    not what they are about. It is the words after "are", "is", "go to", \
-    "mark as", "file under", "can". In "mentions in acme/infra are \
-    urgent" the tests are the mentions and the project, and the target is \
-    "urgent". In "anything from dependabot can wait" the target is \
+    Examples, where "Urgent" and "Later" are labels and "Team" an inbox. \
+    Copy their shape, never their values:
+    - "anything from dependabot can wait" → no judgment; test: author \
+    contains dependabot; target "Later".
+    - "mentions in acme/infra are urgent" → no judgment; tests: reason is \
+    mentioned, repo is acme/infra; target "Urgent".
+    - "pull requests from mona or sasha go to the team inbox" → no \
+    judgment; tests: kind is pull, author is mona, author is sasha; target \
+    "Team".
+    - "merge requests that look half-finished can wait" → judgment, \
+    question "Does this look half-finished?"; test: kind is merge; target \
+    "Later".
+
+    The target is what the sentence says to DO with those notifications — \
+    the words after "are", "go to", "mark as", "can" — and its words never \
+    become tests. In "anything from dependabot can wait" the target is \
     whatever existing target means waiting.
 
     \(targetList(labels))
@@ -326,9 +374,6 @@ actor AppleIntelligence: IntelligenceProvider {
     none fits: then set createTarget true, name it in at most three words, \
     and choose "inbox" when it is a place to read things separately or \
     "label" when it marks a quality items keep wherever they are.
-
-    Never invent a field, an operator or a symbol outside the allowed \
-    lists.
     """
   }
 
