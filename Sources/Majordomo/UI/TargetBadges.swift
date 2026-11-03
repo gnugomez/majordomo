@@ -148,7 +148,7 @@ struct TargetBadges: View {
     HStack(spacing: 4) {
       ForEach(marks) { mark in
         GlyphImage(glyph: mark.badge.glyph, size: 11)
-          .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(mark.badge.color))
+          .foregroundStyle(mark.badge.color.onRow(selected: selected))
           .help(mark.badge.label)
           .accessibilityLabel(mark.badge.label)
       }

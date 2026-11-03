@@ -337,10 +337,7 @@ private struct SidebarOutlineRow: View {
           .font(.app(.body, weight: .medium))
           .foregroundStyle(entry.hidden ? .secondary : .primary)
         Spacer()
-        Toggle("Shown", isOn: Binding(get: { !entry.hidden }, set: { onSetVisible($0) }))
-          .labelsHidden()
-          .toggleStyle(.switch)
-          .controlSize(.small)
+        SettingsSwitch("Shown", isOn: Binding(get: { !entry.hidden }, set: { onSetVisible($0) }))
           .disabled(entry.isCatchAll)
           .help(entry.isCatchAll ? "Recent is the catch-all and always shows" : "Show in the sidebar")
       }

@@ -108,9 +108,7 @@ struct ConversationTimeline: View {
 
   private var heading: some View {
     HStack {
-      Text("Conversation")
-        .font(.app(.caption, weight: .semibold))
-        .foregroundStyle(.secondary)
+      SectionLabel("Conversation")
       Spacer()
       if let count = conversation.commentCount, count > 0 {
         Text(count == 1 ? "1 comment" : "\(count) comments")
@@ -166,8 +164,6 @@ private struct TimelineCard: View {
   /// What stands in for a missing body.
   var emptyText: String?
 
-  @Environment(\.searchHighlightTerms) private var highlightTerms
-
   var body: some View {
     let marked = reason != nil
     VStack(alignment: .leading, spacing: 10) {
@@ -200,26 +196,10 @@ private struct TimelineCard: View {
               .offset(x: 5, y: 5)
           }
         }
-      Text(highlighted(author ?? "Someone", terms: highlightTerms))
-        .font(.app(.body, weight: .semibold))
-        .lineLimit(1)
-        .layoutPriority(1)
-      if let action {
-        Text(action)
-          .font(.app(.body))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-      if isTargetAuthor {
-        AuthorMark()
-      }
-      if let reason {
-        CapsuleTag(text: reason, tint: Color.accentColor)
-      }
-      Spacer(minLength: 4)
-      if let date {
-        EntryTime(date: date, now: now)
-      }
+      Byline(
+        name: author ?? "Someone", action: action, isTargetAuthor: isTargetAuthor, reason: reason,
+        date: date, now: now
+      )
     }
   }
 }
@@ -234,28 +214,14 @@ private struct TimelineEventRow: View {
   let reason: String?
   let now: Date
 
-  @Environment(\.searchHighlightTerms) private var highlightTerms
-
   var body: some View {
     HStack(spacing: 8) {
       EventGlyph(badge: badge, size: 22, ring: Palette.pane)
       PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 18)
-      Text(highlighted(comment.author ?? "Someone", terms: highlightTerms))
-        .font(.app(.body, weight: .semibold))
-        .lineLimit(1)
-        .layoutPriority(1)
-      Text(badge.label)
-        .font(.app(.body))
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-      if isTargetAuthor {
-        AuthorMark()
-      }
-      if let reason {
-        CapsuleTag(text: reason, tint: Color.accentColor)
-      }
-      Spacer(minLength: 4)
-      EntryTime(date: comment.createdAt, now: now)
+      Byline(
+        name: comment.author ?? "Someone", action: badge.label, isTargetAuthor: isTargetAuthor, reason: reason,
+        date: comment.createdAt, now: now
+      )
     }
     .padding(.leading, 11)
     .padding(.trailing, 12)
@@ -306,12 +272,7 @@ struct TriggerJump: View {
         PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 28)
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 6) {
-            Text(comment.author ?? "Someone")
-              .font(.app(.body, weight: .semibold))
-              .lineLimit(1)
-            CapsuleTag(text: reason, tint: Color.accentColor)
-            Spacer(minLength: 4)
-            EntryTime(date: comment.createdAt, now: now)
+            Byline(name: comment.author ?? "Someone", reason: reason, date: comment.createdAt, now: now)
           }
           Text(excerpt(of: comment.body))
             .font(.app(.callout))

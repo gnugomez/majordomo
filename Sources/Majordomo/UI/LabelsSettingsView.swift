@@ -18,6 +18,33 @@ func notifyPolicyLabel(_ policy: LabelNotifyPolicy) -> String {
   }
 }
 
+/// A label's notification policy as a pop-up — a label's or a user
+/// inbox's; a pick hands the label back changed.
+struct NotifyPolicyPicker: View {
+  let label: InboxLabel
+  let onChange: (InboxLabel) -> Void
+
+  var body: some View {
+    Picker(
+      "Notify",
+      selection: Binding(
+        get: { label.notify },
+        set: { policy in
+          var updated = label
+          updated.notify = policy
+          onChange(updated)
+        }
+      )
+    ) {
+      ForEach(LabelNotifyPolicy.allCases, id: \.self) { policy in
+        Text(notifyPolicyLabel(policy)).tag(policy)
+      }
+    }
+    .labelsHidden()
+    .fixedSize()
+  }
+}
+
 struct LabelsSettingsView: View {
   let model: AppModel
 
@@ -43,32 +70,16 @@ struct LabelsSettingsView: View {
       }
       .listStyle(.bordered)
       .frame(height: 260)
-      .overlay {
-        if model.userLabels.isEmpty {
-          Text("No labels yet")
-            .font(.app(.callout))
-            .foregroundStyle(.secondary)
-        }
-      }
+      .emptyListNote("No labels yet", when: model.userLabels.isEmpty)
 
       HStack(spacing: 8) {
-        ControlGroup {
-          Button {
-            add()
-          } label: {
-            Image(systemName: "plus")
-          }
-          .help("Add a label")
-          Button {
-            confirmRemove = true
-          } label: {
-            Image(systemName: "minus")
-          }
-          .disabled(selected == nil)
-          .help("Remove the selected label")
-        }
-        .controlSize(.small)
-        .fixedSize()
+        AddRemoveButtons(
+          addHelp: "Add a label",
+          removeHelp: "Remove the selected label",
+          canRemove: selected != nil,
+          onAdd: add,
+          onRemove: { confirmRemove = true }
+        )
         Button("Change Icon…") {
           iconEditing = selected
         }
@@ -142,28 +153,9 @@ private struct LabelSettingsRow: View {
       .textFieldStyle(.plain)
       .font(.app(.body, weight: .medium))
       Spacer()
-      Picker(
-        "Notify",
-        selection: Binding(
-          get: { label.notify },
-          set: { policy in
-            var updated = label
-            updated.notify = policy
-            onChange(updated)
-          }
-        )
-      ) {
-        ForEach(LabelNotifyPolicy.allCases, id: \.self) { policy in
-          Text(notifyPolicyLabel(policy)).tag(policy)
-        }
-      }
-      .labelsHidden()
-      .controlSize(.small)
-      .fixedSize()
-      Toggle("Show as inbox", isOn: Binding(get: { shownAsInbox }, set: { onShowAsInbox($0) }))
-        .labelsHidden()
-        .toggleStyle(.switch)
+      NotifyPolicyPicker(label: label, onChange: onChange)
         .controlSize(.small)
+      SettingsSwitch("Show as inbox", isOn: Binding(get: { shownAsInbox }, set: { onShowAsInbox($0) }))
         .help("Show as an inbox in the sidebar")
     }
     .padding(.vertical, 2)

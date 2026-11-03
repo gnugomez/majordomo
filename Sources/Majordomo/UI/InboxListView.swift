@@ -16,7 +16,7 @@ private let spotlightRestHeight: CGFloat = 1
 private let rowPage = 200
 
 struct InboxListView: View {
-  let model: AppModel
+  @Bindable var model: AppModel
   let threads: [InboxThread]
   let categoryId: String
   /// Room above the first row for what floats over the list's top edge
@@ -85,10 +85,7 @@ struct InboxListView: View {
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
       ScrollViewReader { scroll in
-        List(selection: Binding(
-          get: { model.selectedThreadIds },
-          set: { model.selectedThreadIds = $0 }
-        )) {
+        List(selection: $model.selectedThreadIds) {
           // The room for the floating pills: a list ignores content
           // margins, so it is a clear row of their height. Keyed by that
           // height, for the reason the spotlight is keyed by its shape: a
@@ -136,7 +133,7 @@ struct InboxListView: View {
             ItemRowView(
               thread: thread,
               now: model.now,
-              labels: labels(on: thread.items),
+              labels: carriedLabels(model.userLabels, on: thread.items),
               layout: model.rowLayout,
               targetStatus: model.targetStatus(for: thread),
               selected: model.selectedThreadIds.contains(thread.id),
@@ -144,6 +141,7 @@ struct InboxListView: View {
             ) {
               toggleExpanded(thread.id)
             }
+            .equatable()
             .tag(thread.id)
             // An unfolded thread: its members as their own selectable
             // rows, right beneath the summary.
@@ -155,6 +153,7 @@ struct InboxListView: View {
                   layout: model.rowLayout,
                   selected: model.selectedThreadIds.contains(member.id)
                 )
+                .equatable()
                 .tag(member.id)
               }
             }
@@ -246,31 +245,11 @@ struct InboxListView: View {
     return "\(box.id)|\(pinned.count)|\(box.unread)|" + rows.joined(separator: ",")
   }
 
-  /// The labels any of these items carries — tags only, never an inbox.
-  private func labels(on items: [InboxItem]) -> [InboxLabel] {
-    model.userLabels.filter { label in items.contains { $0.labels.contains(label.id) } }
-  }
-
   /// "Labels ▸": one toggle per label, applied to every selected item — a
   /// checkmark means every one of them carries it.
   private func labelsMenu(for items: [InboxItem]) -> some View {
     Menu("Labels") {
-      ForEach(model.userLabels) { label in
-        let on = !items.isEmpty && items.allSatisfy { $0.labels.contains(label.id) }
-        Toggle(isOn: Binding(
-          get: { on },
-          set: { wanted in
-            for item in items {
-              model.setItemLabel(item.id, label.id, on: wanted)
-            }
-          }
-        )) {
-          Label(label.name, systemImage: label.symbol)
-        }
-      }
-      if model.userLabels.isEmpty {
-        Text("No labels yet")
-      }
+      LabelToggles(model: model, items: items)
       Divider()
       Button("Edit Labels…") {
         model.openSettings?()

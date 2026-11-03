@@ -135,15 +135,7 @@ struct AddAccountSheet: View {
   /// Whose token is being replaced — the same row the Accounts list shows.
   private func accountRow(_ account: AccountState) -> some View {
     HStack(spacing: 10) {
-      AccountAvatar(account: account, size: 26)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(account.name ?? "@\(account.username ?? "unknown")")
-          .font(.app(.body, weight: .medium))
-        Text(accountDescriptor(account))
-          .font(.app(.caption))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
+      AccountSummary(account: account, detail: accountDescriptor(account))
       Spacer()
     }
     .padding(10)

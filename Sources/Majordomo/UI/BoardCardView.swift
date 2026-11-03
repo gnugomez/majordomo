@@ -43,9 +43,7 @@ struct BoardCardView: View, Equatable {
             .help("Placed here by hand")
         }
         if card.unread {
-          Circle()
-            .fill(Color.accentColor)
-            .frame(width: 7, height: 7)
+          UnreadDot()
             .help("Unread notifications")
         }
       }

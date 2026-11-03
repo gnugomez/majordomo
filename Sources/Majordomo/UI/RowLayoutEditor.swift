@@ -12,16 +12,14 @@ struct RowLayoutEditor: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("Inbox rows")
-        .font(.app(.caption, weight: .semibold))
-        .foregroundStyle(.secondary)
+      SectionLabel("Inbox rows")
         .padding(.horizontal, 4)
 
       if let sample {
         ItemRowView(
           thread: sample,
           now: model.now,
-          labels: labels(on: sample),
+          labels: carriedLabels(model.userLabels, on: sample.items),
           layout: model.rowLayout,
           targetStatus: model.targetStatus(for: sample)
         )
@@ -57,11 +55,6 @@ struct RowLayoutEditor: View {
     }
     return marked.first { $0.lead.body != nil } ?? marked.first
       ?? threads.first { $0.lead.body != nil } ?? threads.first
-  }
-
-  /// The sample's labels, picked the way the list picks a row's.
-  private func labels(on thread: InboxThread) -> [InboxLabel] {
-    model.userLabels.filter { label in thread.items.contains { $0.labels.contains(label.id) } }
   }
 }
 

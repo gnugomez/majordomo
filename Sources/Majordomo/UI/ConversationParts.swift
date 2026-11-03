@@ -1,6 +1,7 @@
 // The pieces a conversation is drawn with, shared by the timeline and a
 // thread's message cards: the card itself, a body that folds when it runs
-// long, the "Author" mark, an event's glyph, and an entry's time.
+// long, the "Author" mark, an event's glyph, the byline, and an entry's
+// time.
 
 import SwiftUI
 
@@ -99,6 +100,49 @@ struct EventGlyph: View {
       .frame(width: size, height: size)
       .padding(size > 16 ? 2 : 1.5)
       .background(ring, in: Circle())
+  }
+}
+
+/// Who wrote an entry and when, after their face: the name, what they did
+/// when it isn't a plain comment, the Author mark, why a notification
+/// points here, then the time at the far end. Pieces of the caller's row,
+/// so they space the way the row does.
+struct Byline: View {
+  let name: String?
+  /// What they did, after the name ("approved", "opened #12").
+  var action: String?
+  var isTargetAuthor = false
+  /// Why a previewed notification points here, as the provider words it.
+  var reason: String?
+  var reasonTint: Color? = .accentColor
+  let date: Date?
+  let now: Date
+
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  var body: some View {
+    if let name {
+      Text(highlighted(name, terms: highlightTerms))
+        .font(.app(.body, weight: .semibold))
+        .lineLimit(1)
+        .layoutPriority(1)
+    }
+    if let action {
+      Text(action)
+        .font(.app(.body))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+    if isTargetAuthor {
+      AuthorMark()
+    }
+    if let reason {
+      CapsuleTag(text: reason, tint: reasonTint)
+    }
+    Spacer(minLength: 4)
+    if let date {
+      EntryTime(date: date, now: now)
+    }
   }
 }
 

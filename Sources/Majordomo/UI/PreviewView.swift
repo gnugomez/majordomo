@@ -13,9 +13,6 @@ struct PreviewView: View {
   let model: AppModel
   let thread: InboxThread?
 
-  @Environment(\.searchHighlightTerms) private var highlightTerms
-  /// The message card under the pointer, for the hover affordance.
-  @State private var hoveredMemberId: String?
   /// The comment just jumped to, lit up for a moment.
   @State private var flashedCommentId: String?
   /// Where the pane is scrolled: to a comment jumped to, or back to the
@@ -28,15 +25,25 @@ struct PreviewView: View {
     if let thread {
       let item = thread.lead
       let providerSpec = spec(for: item.provider)
+      let load = model.conversation(for: item)
+      let conversation = loadedConversation(load)
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          header(thread, providerSpec: providerSpec)
+          PreviewHeader(model: model, thread: thread)
 
-          let load = model.conversation(for: item)
-          let conversation = loadedConversation(load)
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
-              messageCard(member, providerSpec: providerSpec, conversation: conversation)
+              let comment = triggerComment(of: member, in: conversation, providerSpec: providerSpec)
+              let author = comment?.author ?? member.author
+              MessageCard(
+                member: member,
+                comment: comment,
+                avatarUrl: comment?.avatarUrl ?? author.flatMap { conversation?.avatarUrl(of: $0) },
+                selected: model.selectedMemberId == member.id,
+                now: model.now,
+                onSelect: { model.selectedMemberId = member.id },
+                onJump: jump(to:)
+              )
             }
           } else if let trigger = triggerComment(of: item, in: conversation, providerSpec: providerSpec) {
             TriggerJump(
@@ -88,87 +95,12 @@ struct PreviewView: View {
       .background(Palette.pane)
       .environment(\.bodyImages, model.bodyImages(for: item))
     } else {
-      // Scroll-backed like the populated branch: plain (non-scrolling)
-      // content makes the toolbar draw a hard edge line over this pane.
-      ScrollView {
-        EmptyStateView(
-          symbol: "tray",
-          title: "Nothing selected",
-          caption: "Select an item from the list to see its details."
-        )
-        .containerRelativeFrame(.vertical)
-      }
+      PaneEmptyState(
+        symbol: "tray",
+        title: "Nothing selected",
+        caption: "Select an item from the list to see its details."
+      )
     }
-  }
-
-  /// The title, the state and reason capsules, and the facts.
-  @ViewBuilder
-  private func header(_ thread: InboxThread, providerSpec: any ProviderSpec) -> some View {
-    let item = thread.lead
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
-        .foregroundStyle(providerSpec.color(for: item))
-      Text(highlighted(item.title, terms: highlightTerms))
-        .font(.app(.title, weight: .semibold))
-        .textSelection(.enabled)
-    }
-
-    HStack(spacing: 6) {
-      if let capsule = providerSpec.stateCapsule(for: item) {
-        CapsuleTag(text: capsule.label, tint: capsule.color)
-      }
-      if thread.items.count == 1 {
-        // A single notification's reason belongs to the header; a
-        // thread's reasons ride on its messages below.
-        CapsuleTag(
-          text: providerSpec.reasonLabel(item.reason),
-          tint: item.isMention ? Color.accentColor : nil
-        )
-      }
-      if !thread.read {
-        CapsuleTag(text: "unread", tint: Color.accentColor)
-      }
-    }
-
-    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-      GridRow {
-        fieldLabel("Provider")
-        HStack(spacing: 5) {
-          ProviderMark(provider: item.provider)
-            .foregroundStyle(.secondary)
-            .frame(width: 13, height: 13)
-          Text(item.provider.displayName)
-        }
-      }
-      GridRow {
-        fieldLabel("Repository")
-        Text(highlighted(item.repo, terms: highlightTerms)).textSelection(.enabled)
-      }
-      if let author = item.author {
-        GridRow {
-          fieldLabel("Author")
-          Text(highlighted(author, terms: highlightTerms)).textSelection(.enabled)
-        }
-      }
-      GridRow {
-        fieldLabel("Updated")
-        Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
-      }
-      GridRow {
-        fieldLabel("Labels")
-        labelsRow(thread)
-      }
-      if !item.upstreamLabels.isEmpty {
-        GridRow {
-          fieldLabel("Upstream")
-            .help("Labels the target carries at \(item.provider.displayName)")
-          Text(item.upstreamLabels.joined(separator: ", "))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-        }
-      }
-    }
-    .font(.app(.callout))
   }
 
   private func loadedConversation(_ load: AppModel.ConversationLoad?) -> TargetConversation? {
@@ -216,81 +148,86 @@ struct PreviewView: View {
       }
     }
   }
+}
 
-  /// One thread member as a message card, drawn like the timeline's: who,
-  /// why it arrived, when — then the comment it points at, named with a
-  /// way down to it, or the notification's own body. Clicking selects the
-  /// message (accent outline) and the toolbar's mark-read/open narrow to it.
-  private func messageCard(
-    _ member: InboxItem, providerSpec: any ProviderSpec, conversation: TargetConversation?
-  ) -> some View {
-    let selected = model.selectedMemberId == member.id
-    let comment = triggerComment(of: member, in: conversation, providerSpec: providerSpec)
-    let author = comment?.author ?? member.author
-    return VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 8) {
-        if !member.read {
-          Circle()
-            .fill(Color.accentColor)
-            .frame(width: 7, height: 7)
-            .help("Unread")
-        }
-        PersonAvatar(
-          login: author,
-          avatarUrl: comment?.avatarUrl ?? author.flatMap { conversation?.avatarUrl(of: $0) },
-          provider: member.provider, size: 24
-        )
-        if let author {
-          Text(highlighted(author, terms: highlightTerms))
-            .font(.app(.body, weight: .semibold))
-            .lineLimit(1)
-        }
-        CapsuleTag(
-          text: providerSpec.reasonLabel(member.reason),
-          tint: member.isMention ? Color.accentColor : nil
-        )
-        Spacer(minLength: 4)
-        EntryTime(date: member.updatedAt, now: model.now)
+/// The title, the state and reason capsules, and the facts.
+private struct PreviewHeader: View {
+  let model: AppModel
+  let thread: InboxThread
+
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  var body: some View {
+    let item = thread.lead
+    let providerSpec = spec(for: item.provider)
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
+        .foregroundStyle(providerSpec.color(for: item))
+      Text(highlighted(item.title, terms: highlightTerms))
+        .font(.app(.title, weight: .semibold))
+        .textSelection(.enabled)
+    }
+
+    HStack(spacing: 6) {
+      if let capsule = providerSpec.stateCapsule(for: item) {
+        CapsuleTag(text: capsule.label, tint: capsule.color)
       }
-      if let comment {
-        Text(excerpt(of: comment.body))
-          .font(.app(.body))
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
-        Button("Show in Conversation") {
-          jump(to: comment.id)
-        }
-        .buttonStyle(.link)
-        .font(.app(.callout))
-      } else if let bodyView = providerSpec.bodyView(for: member) {
-        bodyView
+      if thread.items.count == 1 {
+        // A single notification's reason belongs to the header; a
+        // thread's reasons ride on its messages below.
+        ReasonCapsule(item: item)
+      }
+      if !thread.read {
+        CapsuleTag(text: "unread", tint: Color.accentColor)
       }
     }
-    .conversationCard(
-      outline: selected
-        ? AnyShapeStyle(Color.accentColor)
-        : (hoveredMemberId == member.id ? AnyShapeStyle(.tertiary) : nil),
-      lineWidth: selected ? 2 : 1
-    )
-    .contentShape(RoundedRectangle(cornerRadius: 10))
-    .onHover { inside in
-      hoveredMemberId = inside ? member.id : nil
+
+    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+      GridRow {
+        fieldLabel("Provider")
+        HStack(spacing: 5) {
+          ProviderMark(provider: item.provider)
+            .foregroundStyle(.secondary)
+            .frame(width: 13, height: 13)
+          Text(item.provider.displayName)
+        }
+      }
+      GridRow {
+        fieldLabel("Repository")
+        Text(highlighted(item.repo, terms: highlightTerms)).textSelection(.enabled)
+      }
+      if let author = item.author {
+        GridRow {
+          fieldLabel("Author")
+          Text(highlighted(author, terms: highlightTerms)).textSelection(.enabled)
+        }
+      }
+      GridRow {
+        fieldLabel("Updated")
+        Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
+      }
+      GridRow {
+        fieldLabel("Labels")
+        labelsRow
+      }
+      if !item.upstreamLabels.isEmpty {
+        GridRow {
+          fieldLabel("Upstream")
+            .help("Labels the target carries at \(item.provider.displayName)")
+          Text(item.upstreamLabels.joined(separator: ", "))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+      }
     }
-    // A simultaneous gesture, not onTapGesture: clicks landing on the card's
-    // selectable text are consumed by text selection and would never reach a
-    // plain tap gesture on the container.
-    .simultaneousGesture(TapGesture().onEnded {
-      model.selectedMemberId = member.id
-    })
-    .help("Select this notification — the toolbar actions apply to just it")
+    .font(.app(.callout))
   }
 
   /// The thread's labels as pills, and the menu that edits them by hand:
   /// one toggle per label (checked when every member carries it), applied
-  /// to every member, plus a way back to what the rules decide. Tags only:
-  /// an inbox is never shown here nor applied by hand.
-  private func labelsRow(_ thread: InboxThread) -> some View {
-    let carried = model.userLabels.filter { label in thread.items.contains { $0.labels.contains(label.id) } }
+  /// to every member, plus a way back to what the rules decide.
+  private var labelsRow: some View {
+    let carried = carriedLabels(model.userLabels, on: thread.items)
     return HStack(spacing: 6) {
       ForEach(carried) { label in
         LabelCapsule(label: label)
@@ -300,22 +237,7 @@ struct PreviewView: View {
           .foregroundStyle(.tertiary)
       }
       Menu {
-        ForEach(model.userLabels) { label in
-          let on = thread.items.allSatisfy { $0.labels.contains(label.id) }
-          Toggle(isOn: Binding(
-            get: { on },
-            set: { wanted in
-              for member in thread.items {
-                model.setItemLabel(member.id, label.id, on: wanted)
-              }
-            }
-          )) {
-            Label(label.name, systemImage: label.symbol)
-          }
-        }
-        if model.userLabels.isEmpty {
-          Text("No labels yet")
-        }
+        LabelToggles(model: model, items: thread.items)
         Divider()
         Button("Reset to Rules") {
           for member in thread.items {
@@ -342,5 +264,69 @@ struct PreviewView: View {
     Text(text)
       .foregroundStyle(.secondary)
       .gridColumnAlignment(.leading)
+  }
+}
+
+/// One thread member as a message card, drawn like the timeline's: who,
+/// why it arrived, when — then the comment it points at, named with a way
+/// down to it, or the notification's own body. Clicking selects the message
+/// (accent outline) and the toolbar's mark-read/open narrow to it.
+private struct MessageCard: View {
+  let member: InboxItem
+  /// The comment it points at, while the stored conversation holds it.
+  let comment: DetailComment?
+  /// The author's picture, when the conversation names one.
+  let avatarUrl: String?
+  let selected: Bool
+  let now: Date
+  let onSelect: () -> Void
+  let onJump: (String) -> Void
+
+  @State private var hovered = false
+
+  var body: some View {
+    let providerSpec = spec(for: member.provider)
+    let author = comment?.author ?? member.author
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 8) {
+        if !member.read {
+          UnreadDot()
+            .help("Unread")
+        }
+        PersonAvatar(login: author, avatarUrl: avatarUrl, provider: member.provider, size: 24)
+        Byline(
+          name: author,
+          reason: providerSpec.reasonLabel(member.reason),
+          reasonTint: member.isMention ? Color.accentColor : nil,
+          date: member.updatedAt, now: now
+        )
+      }
+      if let comment {
+        Text(excerpt(of: comment.body))
+          .font(.app(.body))
+          .foregroundStyle(.secondary)
+          .lineLimit(3)
+        Button("Show in Conversation") {
+          onJump(comment.id)
+        }
+        .buttonStyle(.link)
+        .font(.app(.callout))
+      } else if let bodyView = providerSpec.bodyView(for: member) {
+        bodyView
+      }
+    }
+    .conversationCard(
+      outline: selected ? AnyShapeStyle(Color.accentColor) : (hovered ? AnyShapeStyle(.tertiary) : nil),
+      lineWidth: selected ? 2 : 1
+    )
+    .contentShape(RoundedRectangle(cornerRadius: 10))
+    .onHover { inside in
+      hovered = inside
+    }
+    // A simultaneous gesture, not onTapGesture: clicks landing on the card's
+    // selectable text are consumed by text selection and would never reach a
+    // plain tap gesture on the container.
+    .simultaneousGesture(TapGesture().onEnded(onSelect))
+    .help("Select this notification — the toolbar actions apply to just it")
   }
 }

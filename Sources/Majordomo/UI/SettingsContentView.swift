@@ -2,54 +2,11 @@
 // settings window shows: Accounts (the account list with its add/remove
 // pair and token update), General (launch at login, and the inbox-row
 // editor next door), and Notifications. Inboxes, Labels, and Rules have
-// files of their own.
+// files of their own; the pieces every page is built from are in
+// SettingsComponents.
 
 import AppKit
 import SwiftUI
-
-/// The rounded card every settings group sits in.
-extension View {
-  func settingsCard() -> some View {
-    background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-  }
-}
-
-/// One labeled row inside a settings card: label left, control right, with
-/// an optional leading glyph (tinted when the row stands for a label).
-struct SettingsRow<Control: View>: View {
-  var symbol: String?
-  var tint: Color?
-  let label: String
-  @ViewBuilder var control: Control
-
-  var body: some View {
-    HStack(spacing: 8) {
-      if let symbol {
-        Image(systemName: symbol)
-          .frame(width: 18)
-          .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
-      }
-      Text(label)
-        .font(.app(.body))
-      Spacer()
-      control
-    }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-  }
-}
-
-/// The explanatory caption under a settings card.
-struct SettingsHint: View {
-  let text: String
-
-  var body: some View {
-    Text(text)
-      .font(.app(.caption))
-      .foregroundStyle(.secondary)
-      .padding(.horizontal, 4)
-  }
-}
 
 struct AccountsSettingsView: View {
   let model: AppModel
@@ -65,15 +22,11 @@ struct AccountsSettingsView: View {
       List(selection: $selection) {
         ForEach(model.accounts) { account in
           HStack(spacing: 10) {
-            AccountAvatar(account: account, size: 26)
-            VStack(alignment: .leading, spacing: 1) {
-              Text(account.name ?? "@\(account.username ?? "unknown")")
-                .font(.app(.body, weight: .medium))
-              Text(subtitle(account))
-                .font(.app(.caption))
-                .foregroundStyle(account.error == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
-                .lineLimit(1)
-            }
+            AccountSummary(
+              account: account,
+              detail: account.error ?? accountDescriptor(account),
+              detailStyle: account.error == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange)
+            )
             Spacer()
             Circle()
               .fill(account.error == nil ? Color.green : Color.orange)
@@ -86,34 +39,18 @@ struct AccountsSettingsView: View {
       }
       .listStyle(.bordered)
       .frame(height: 168)
-      .overlay {
-        if model.accounts.isEmpty {
-          Text("No accounts connected")
-            .font(.app(.callout))
-            .foregroundStyle(.secondary)
-        }
-      }
+      .emptyListNote("No accounts connected", when: model.accounts.isEmpty)
 
       HStack(spacing: 8) {
         // The +/− pair: add opens the wizard sheet (any number of accounts
         // per provider), remove disconnects the selected account.
-        ControlGroup {
-          Button {
-            addSheetShown = true
-          } label: {
-            Image(systemName: "plus")
-          }
-          .help("Add an account")
-          Button {
-            confirmRemove = true
-          } label: {
-            Image(systemName: "minus")
-          }
-          .disabled(!hasSelection)
-          .help("Remove the selected account")
-        }
-        .controlSize(.small)
-        .fixedSize()
+        AddRemoveButtons(
+          addHelp: "Add an account",
+          removeHelp: "Remove the selected account",
+          canRemove: hasSelection,
+          onAdd: { addSheetShown = true },
+          onRemove: { confirmRemove = true }
+        )
         // A new token for the selected account — the remedy when one expires
         // or is revoked — leaving its items and their read state alone.
         Button("Update Token…") {
@@ -148,10 +85,6 @@ struct AccountsSettingsView: View {
 
   private var hasSelection: Bool {
     selection != nil && model.accounts.contains { $0.id == selection }
-  }
-
-  private func subtitle(_ account: AccountState) -> String {
-    account.error ?? accountDescriptor(account)
   }
 }
 
@@ -231,16 +164,10 @@ struct GeneralSettingsView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       SettingsRow(label: "Launch at login") {
-        Toggle(
+        SettingsSwitch(
           "Launch at login",
-          isOn: Binding(
-            get: { model.launchAtLogin },
-            set: { model.setLaunchAtLogin($0) }
-          )
+          isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) })
         )
-        .labelsHidden()
-        .toggleStyle(.switch)
-        .controlSize(.small)
       }
       .settingsCard()
 
