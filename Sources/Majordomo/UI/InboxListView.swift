@@ -15,6 +15,21 @@ private let spotlightRestHeight: CGFloat = 1
 /// waits.
 private let rowPage = 200
 
+/// One row of the inbox: a thread's summary, or a member of an unfolded
+/// thread. Identified as the selection tags it, so picking a row anywhere
+/// scrolls the list to it.
+private enum InboxRow: Identifiable {
+  case thread(InboxThread)
+  case member(InboxItem)
+
+  var id: String {
+    switch self {
+    case .thread(let thread): thread.id
+    case .member(let member): member.id
+    }
+  }
+}
+
 struct InboxListView: View {
   @Bindable var model: AppModel
   let threads: [InboxThread]
@@ -129,33 +144,33 @@ struct InboxListView: View {
           // selection, and no separator draws around it.
           .listRowSeparator(.hidden)
           .selectionDisabled()
-          ForEach(threads.prefix(shownCount)) { thread in
-            ItemRowView(
-              thread: thread,
-              now: model.now,
-              labels: carriedLabels(model.userLabels, on: thread.items),
-              layout: model.rowLayout,
-              targetStatus: model.targetStatus(for: thread),
-              selected: model.selectedThreadIds.contains(thread.id),
-              expanded: expandedThreadIds.contains(thread.id)
-            ) {
-              toggleExpanded(thread.id)
-            }
-            .equatable()
-            .tag(thread.id)
-            // An unfolded thread: its members as their own selectable
-            // rows, right beneath the summary.
-            if expandedThreadIds.contains(thread.id) {
-              ForEach(thread.items) { member in
-                MemberRowView(
-                  member: member,
-                  now: model.now,
-                  layout: model.rowLayout,
-                  selected: model.selectedThreadIds.contains(member.id)
-                )
-                .equatable()
-                .tag(member.id)
+          // One row per element, so the list counts its rows without
+          // building them.
+          ForEach(rows(of: threads.prefix(shownCount))) { row in
+            switch row {
+            case .thread(let thread):
+              ItemRowView(
+                thread: thread,
+                now: model.now,
+                labels: carriedLabels(model.userLabels, on: thread.items),
+                layout: model.rowLayout,
+                targetStatus: model.targetStatus(for: thread),
+                selected: model.selectedThreadIds.contains(thread.id),
+                expanded: expandedThreadIds.contains(thread.id)
+              ) {
+                toggleExpanded(thread.id)
               }
+              .equatable()
+              .tag(thread.id)
+            case .member(let member):
+              MemberRowView(
+                member: member,
+                now: model.now,
+                layout: model.rowLayout,
+                selected: model.selectedThreadIds.contains(member.id)
+              )
+              .equatable()
+              .tag(member.id)
             }
           }
           if threads.count > shownCount {
@@ -227,6 +242,17 @@ struct InboxListView: View {
           }
         }
       }
+    }
+  }
+
+  /// The inbox's rows in order: each thread's summary, and under an
+  /// unfolded one its members as their own selectable rows.
+  private func rows(of threads: ArraySlice<InboxThread>) -> [InboxRow] {
+    threads.flatMap { thread -> [InboxRow] in
+      guard expandedThreadIds.contains(thread.id) else {
+        return [.thread(thread)]
+      }
+      return [.thread(thread)] + thread.items.map(InboxRow.member)
     }
   }
 
