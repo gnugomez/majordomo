@@ -1,28 +1,19 @@
 // The little capsules: an item's state (colored) or reason (muted;
 // accent-tinted for the "needs you" tier), and the user's labels in their
-// own tints.
+// own tints. Every one is the same pill: its tint over a wash of itself,
+// or on a selected row the row's own styles (RowStyle).
 
 import SwiftUI
 
 struct CapsuleTag: View {
   let text: String
   var tint: Color?
-  /// On a selected row the tint would vanish into the accent background —
-  /// hierarchical styles adapt to both emphasized and gray selections.
   var selected = false
 
   var body: some View {
     Text(text)
-      .font(.system(size: 10, weight: .medium))
-      .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(tint ?? Color.secondary))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 2)
-      .background(
-        selected ? AnyShapeStyle(.quaternary) : AnyShapeStyle((tint ?? Color.secondary).opacity(0.14)),
-        in: Capsule()
-      )
-      .lineLimit(1)
-      .fixedSize()
+      .font(.app(.badge, weight: .medium))
+      .capsule(tint: tint ?? .secondary, selected: selected)
   }
 }
 
@@ -37,17 +28,24 @@ struct LabelCapsule: View {
       Image(systemName: label.symbol)
         .font(.system(size: 9, weight: .medium))
       Text(label.name)
-        .font(.system(size: 10, weight: .medium))
+        .font(.app(.badge, weight: .medium))
     }
-    .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(label.tint.color))
-    .padding(.horizontal, 6)
-    .padding(.vertical, 2)
-    .background(
-      selected ? AnyShapeStyle(.quaternary) : AnyShapeStyle(label.tint.color.opacity(0.14)),
-      in: Capsule()
+    .capsule(tint: label.tint.color, selected: selected)
+  }
+}
+
+/// Why a notification arrived, as its provider words it — accent-tinted
+/// when it is the user being mentioned.
+struct ReasonCapsule: View {
+  let item: InboxItem
+  var selected = false
+
+  var body: some View {
+    CapsuleTag(
+      text: spec(for: item.provider).reasonLabel(item.reason),
+      tint: item.isMention ? Color.accentColor : nil,
+      selected: selected
     )
-    .lineLimit(1)
-    .fixedSize()
   }
 }
 
@@ -57,15 +55,27 @@ struct ItemCapsule: View {
   var selected = false
 
   var body: some View {
-    let providerSpec = spec(for: item.provider)
-    if let capsule = providerSpec.stateCapsule(for: item) {
+    if let capsule = spec(for: item.provider).stateCapsule(for: item) {
       CapsuleTag(text: capsule.label, tint: capsule.color, selected: selected)
     } else {
-      CapsuleTag(
-        text: providerSpec.reasonLabel(item.reason),
-        tint: item.isMention ? Color.accentColor : nil,
-        selected: selected
-      )
+      ReasonCapsule(item: item, selected: selected)
     }
+  }
+}
+
+private extension View {
+  /// The pill itself: content in `tint` over a wash of it — on a selected
+  /// row, the row's primary style over a quaternary fill, which the
+  /// selection's own color can't swallow.
+  func capsule(tint: Color, selected: Bool) -> some View {
+    foregroundStyle(tint.onRow(selected: selected))
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background(
+        selected ? AnyShapeStyle(.quaternary) : AnyShapeStyle(tint.opacity(0.14)),
+        in: Capsule()
+      )
+      .lineLimit(1)
+      .fixedSize()
   }
 }

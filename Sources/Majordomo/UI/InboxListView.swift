@@ -15,8 +15,23 @@ private let spotlightRestHeight: CGFloat = 1
 /// waits.
 private let rowPage = 200
 
+/// One row of the inbox: a thread's summary, or a member of an unfolded
+/// thread. Identified as the selection tags it, so picking a row anywhere
+/// scrolls the list to it.
+private enum InboxRow: Identifiable {
+  case thread(InboxThread)
+  case member(InboxItem)
+
+  var id: String {
+    switch self {
+    case .thread(let thread): thread.id
+    case .member(let member): member.id
+    }
+  }
+}
+
 struct InboxListView: View {
-  let model: AppModel
+  @Bindable var model: AppModel
   let threads: [InboxThread]
   let categoryId: String
   /// Room above the first row for what floats over the list's top edge
@@ -85,10 +100,7 @@ struct InboxListView: View {
     } else {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
       ScrollViewReader { scroll in
-        List(selection: Binding(
-          get: { model.selectedThreadIds },
-          set: { model.selectedThreadIds = $0 }
-        )) {
+        List(selection: $model.selectedThreadIds) {
           // The room for the floating pills: a list ignores content
           // margins, so it is a clear row of their height. Keyed by that
           // height, for the reason the spotlight is keyed by its shape: a
@@ -132,31 +144,33 @@ struct InboxListView: View {
           // selection, and no separator draws around it.
           .listRowSeparator(.hidden)
           .selectionDisabled()
-          ForEach(threads.prefix(shownCount)) { thread in
-            ItemRowView(
-              thread: thread,
-              now: model.now,
-              labels: labels(on: thread.items),
-              layout: model.rowLayout,
-              targetStatus: model.targetStatus(for: thread),
-              selected: model.selectedThreadIds.contains(thread.id),
-              expanded: expandedThreadIds.contains(thread.id)
-            ) {
-              toggleExpanded(thread.id)
-            }
-            .tag(thread.id)
-            // An unfolded thread: its members as their own selectable
-            // rows, right beneath the summary.
-            if expandedThreadIds.contains(thread.id) {
-              ForEach(thread.items) { member in
-                MemberRowView(
-                  member: member,
-                  now: model.now,
-                  layout: model.rowLayout,
-                  selected: model.selectedThreadIds.contains(member.id)
-                )
-                .tag(member.id)
+          // One row per element, so the list counts its rows without
+          // building them.
+          ForEach(rows(of: threads.prefix(shownCount))) { row in
+            switch row {
+            case .thread(let thread):
+              ItemRowView(
+                thread: thread,
+                now: model.now,
+                labels: carriedLabels(model.userLabels, on: thread.items),
+                layout: model.rowLayout,
+                targetStatus: model.targetStatus(for: thread),
+                selected: model.selectedThreadIds.contains(thread.id),
+                expanded: expandedThreadIds.contains(thread.id)
+              ) {
+                toggleExpanded(thread.id)
               }
+              .equatable()
+              .tag(thread.id)
+            case .member(let member):
+              MemberRowView(
+                member: member,
+                now: model.now,
+                layout: model.rowLayout,
+                selected: model.selectedThreadIds.contains(member.id)
+              )
+              .equatable()
+              .tag(member.id)
             }
           }
           if threads.count > shownCount {
@@ -164,7 +178,7 @@ struct InboxListView: View {
               shownCount += rowPage
             }
             .buttonStyle(.link)
-            .font(.system(size: 12, weight: .medium))
+            .font(.app(.callout, weight: .medium))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .listRowSeparator(.hidden)
@@ -231,6 +245,17 @@ struct InboxListView: View {
     }
   }
 
+  /// The inbox's rows in order: each thread's summary, and under an
+  /// unfolded one its members as their own selectable rows.
+  private func rows(of threads: ArraySlice<InboxThread>) -> [InboxRow] {
+    threads.flatMap { thread -> [InboxRow] in
+      guard expandedThreadIds.contains(thread.id) else {
+        return [.thread(thread)]
+      }
+      return [.thread(thread)] + thread.items.map(InboxRow.member)
+    }
+  }
+
   /// The spotlight's row identity: everything that decides how tall the
   /// box draws — which label is showing, how many rows it has, and which
   /// of them carry a summary line. The empty string means there is nothing
@@ -246,31 +271,11 @@ struct InboxListView: View {
     return "\(box.id)|\(pinned.count)|\(box.unread)|" + rows.joined(separator: ",")
   }
 
-  /// The labels any of these items carries — tags only, never an inbox.
-  private func labels(on items: [InboxItem]) -> [InboxLabel] {
-    model.userLabels.filter { label in items.contains { $0.labels.contains(label.id) } }
-  }
-
   /// "Labels ▸": one toggle per label, applied to every selected item — a
   /// checkmark means every one of them carries it.
   private func labelsMenu(for items: [InboxItem]) -> some View {
     Menu("Labels") {
-      ForEach(model.userLabels) { label in
-        let on = !items.isEmpty && items.allSatisfy { $0.labels.contains(label.id) }
-        Toggle(isOn: Binding(
-          get: { on },
-          set: { wanted in
-            for item in items {
-              model.setItemLabel(item.id, label.id, on: wanted)
-            }
-          }
-        )) {
-          Label(label.name, systemImage: label.symbol)
-        }
-      }
-      if model.userLabels.isEmpty {
-        Text("No labels yet")
-      }
+      LabelToggles(model: model, items: items)
       Divider()
       Button("Edit Labels…") {
         model.openSettings?()

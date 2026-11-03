@@ -55,7 +55,7 @@ struct SidebarView: View {
             .progressViewStyle(.linear)
             .controlSize(.small)
           Text("Syncing…")
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
@@ -128,9 +128,6 @@ struct SidebarView: View {
       }
     )
   }
-
-  /// The primary identity's full name (username as fallback); the stacked
-  /// avatars carry the rest.
 }
 
 /// One row of the layout: an inbox row, or a folder that draws its rows

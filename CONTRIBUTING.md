@@ -57,7 +57,9 @@ Layers, lower never importing higher:
   `Preferences` (everything kept in UserDefaults, through one
   `PreferenceKey` mechanism) and `ConversationCache` (the conversations
   the preview reads).
-- `Sources/Majordomo/UI/` — the SwiftUI views.
+- `Sources/Majordomo/UI/` — the SwiftUI views. The app's own colors live
+  in `Palette.swift` and its text sizes in `Typography.swift`
+  (`.font(.app(.caption))`); reach for those rather than a literal.
 
 `Tests/MajordomoTests/` holds the Swift Testing suite, which reaches the
 app target through `@testable import Majordomo`.

@@ -3,8 +3,9 @@
 // when the target waits on the user's review. An inbox row draws them
 // compact — a glyph each with its words in a tooltip, no taller than a
 // line of the row's text, and only what needs doing once the row runs
-// short of room. A board card draws them regular: glyph and word, each its
-// own piece of the card's flow so they wrap rather than truncate.
+// short of room. A board card and the preview draw them regular: glyph
+// and word, each its own piece of the caller's flow so they wrap rather
+// than truncate.
 
 import SwiftUI
 
@@ -103,15 +104,14 @@ struct StatusMark: Identifiable {
 enum StatusDensity {
   /// Glyphs alone, their words in tooltips: an inbox row.
   case compact
-  /// Glyph and word: a board card.
+  /// Glyph and word: a board card, the preview.
   case regular
 }
 
 struct TargetBadges: View {
   let status: TargetStatus
   var density: StatusDensity = .compact
-  /// On a selected row the marks take the row's hierarchical style, which
-  /// AppKit flips to white on an accent selection.
+  /// On a selected row the marks take the row's own style (RowStyle).
   var selected = false
 
   var body: some View {
@@ -119,8 +119,8 @@ struct TargetBadges: View {
     case .compact:
       compact
     case .regular:
-      // Pieces of the caller's layout, one per mark, so a card's flow
-      // wraps between them.
+      // Pieces of the caller's layout, one per mark, so its flow wraps
+      // between them.
       ForEach(status.marks) { mark in
         wordMark(mark.badge)
       }
@@ -148,7 +148,7 @@ struct TargetBadges: View {
     HStack(spacing: 4) {
       ForEach(marks) { mark in
         GlyphImage(glyph: mark.badge.glyph, size: 11)
-          .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(mark.badge.color))
+          .foregroundStyle(mark.badge.color.onRow(selected: selected))
           .help(mark.badge.label)
           .accessibilityLabel(mark.badge.label)
       }
@@ -161,7 +161,7 @@ struct TargetBadges: View {
       GlyphImage(glyph: badge.glyph, size: 10)
       Text(badge.label)
     }
-    .font(.system(size: 10, weight: .medium))
+    .font(.app(.badge, weight: .medium))
     .foregroundStyle(badge.color)
     .lineLimit(1)
     .fixedSize()

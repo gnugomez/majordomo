@@ -108,13 +108,11 @@ struct ConversationTimeline: View {
 
   private var heading: some View {
     HStack {
-      Text("Conversation")
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(.secondary)
+      SectionLabel("Conversation")
       Spacer()
       if let count = conversation.commentCount, count > 0 {
         Text(count == 1 ? "1 comment" : "\(count) comments")
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.tertiary)
       }
     }
@@ -166,8 +164,6 @@ private struct TimelineCard: View {
   /// What stands in for a missing body.
   var emptyText: String?
 
-  @Environment(\.searchHighlightTerms) private var highlightTerms
-
   var body: some View {
     let marked = reason != nil
     VStack(alignment: .leading, spacing: 10) {
@@ -178,7 +174,7 @@ private struct TimelineCard: View {
         }
       } else if let emptyText {
         Text(emptyText)
-          .font(.system(size: 13))
+          .font(.app(.body))
           .italic()
           .foregroundStyle(.tertiary)
       }
@@ -200,26 +196,10 @@ private struct TimelineCard: View {
               .offset(x: 5, y: 5)
           }
         }
-      Text(highlighted(author ?? "Someone", terms: highlightTerms))
-        .font(.system(size: 13, weight: .semibold))
-        .lineLimit(1)
-        .layoutPriority(1)
-      if let action {
-        Text(action)
-          .font(.system(size: 13))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-      if isTargetAuthor {
-        AuthorMark()
-      }
-      if let reason {
-        CapsuleTag(text: reason, tint: Color.accentColor)
-      }
-      Spacer(minLength: 4)
-      if let date {
-        EntryTime(date: date, now: now)
-      }
+      Byline(
+        name: author ?? "Someone", action: action, isTargetAuthor: isTargetAuthor, reason: reason,
+        date: date, now: now
+      )
     }
   }
 }
@@ -234,28 +214,14 @@ private struct TimelineEventRow: View {
   let reason: String?
   let now: Date
 
-  @Environment(\.searchHighlightTerms) private var highlightTerms
-
   var body: some View {
     HStack(spacing: 8) {
-      EventGlyph(badge: badge, size: 22, ring: ConversationShades.pane)
+      EventGlyph(badge: badge, size: 22, ring: Palette.pane)
       PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 18)
-      Text(highlighted(comment.author ?? "Someone", terms: highlightTerms))
-        .font(.system(size: 13, weight: .semibold))
-        .lineLimit(1)
-        .layoutPriority(1)
-      Text(badge.label)
-        .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-      if isTargetAuthor {
-        AuthorMark()
-      }
-      if let reason {
-        CapsuleTag(text: reason, tint: Color.accentColor)
-      }
-      Spacer(minLength: 4)
-      EntryTime(date: comment.createdAt, now: now)
+      Byline(
+        name: comment.author ?? "Someone", action: badge.label, isTargetAuthor: isTargetAuthor, reason: reason,
+        date: comment.createdAt, now: now
+      )
     }
     .padding(.leading, 11)
     .padding(.trailing, 12)
@@ -271,20 +237,20 @@ private struct EarlierEntriesRow: View {
   var body: some View {
     HStack(spacing: 8) {
       Image(systemName: "ellipsis")
-        .font(.system(size: 10, weight: .bold))
+        .font(.app(.badge, weight: .bold))
         .foregroundStyle(.secondary)
         .frame(width: 22, height: 22)
-        .background(ConversationShades.card, in: Circle())
+        .background(Palette.card, in: Circle())
         .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
         .padding(2)
-        .background(ConversationShades.pane, in: Circle())
+        .background(Palette.pane, in: Circle())
       Text(count == 1 ? "1 earlier comment" : "\(count) earlier comments")
         .foregroundStyle(.secondary)
       if let url {
         Link("Read on \(providerName)", destination: url)
       }
     }
-    .font(.system(size: 12))
+    .font(.app(.callout))
     .padding(.leading, 11)
   }
 }
@@ -306,15 +272,10 @@ struct TriggerJump: View {
         PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 28)
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 6) {
-            Text(comment.author ?? "Someone")
-              .font(.system(size: 13, weight: .semibold))
-              .lineLimit(1)
-            CapsuleTag(text: reason, tint: Color.accentColor)
-            Spacer(minLength: 4)
-            EntryTime(date: comment.createdAt, now: now)
+            Byline(name: comment.author ?? "Someone", reason: reason, date: comment.createdAt, now: now)
           }
           Text(excerpt(of: comment.body))
-            .font(.system(size: 12))
+            .font(.app(.callout))
             .foregroundStyle(.secondary)
             .lineLimit(2)
             .multilineTextAlignment(.leading)
@@ -346,7 +307,7 @@ struct ConversationStatusRow: View {
         Text("Loading the conversation…")
           .foregroundStyle(.secondary)
       }
-      .font(.system(size: 12))
+      .font(.app(.callout))
     case .unreadable(let message):
       notice(message)
     case .waiting(let message):
@@ -358,7 +319,7 @@ struct ConversationStatusRow: View {
 
   private func notice(_ message: String) -> some View {
     Label(message, systemImage: "exclamationmark.triangle")
-      .font(.system(size: 12))
+      .font(.app(.callout))
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)

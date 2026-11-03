@@ -1,7 +1,8 @@
-// Someone's face in a conversation: the picture the provider linked, or
-// the one its spec derives from the login, fetched like a body's images
-// (the environment's BodyImageSource, cached on disk); their initial in a
-// steady color until it arrives, or when there is none.
+// Someone's face — in a conversation, or among a board card's assignees:
+// the picture the provider linked, or the one its spec derives from the
+// login, fetched like a body's images (the environment's BodyImageSource,
+// cached on disk); their initial in a steady color until it arrives, or
+// when there is none.
 
 import SwiftUI
 
@@ -13,7 +14,9 @@ struct PersonAvatar: View {
 
   @Environment(\.bodyImages) private var source
   @Environment(\.displayScale) private var displayScale
-  @State private var loaded: BodyImage?
+  /// The picture fetched, with the address it came from: a view handed
+  /// another person keeps its state, and must not show the last one's face.
+  @State private var loaded: (url: URL, image: BodyImage)?
 
   private var url: URL? {
     if let avatarUrl, let url = source?.resolve(avatarUrl) {
@@ -26,7 +29,7 @@ struct PersonAvatar: View {
     let url = url
     let pixels = size * displayScale
     Group {
-      if let shown = loaded ?? url.flatMap({ source?.cachedImage(at: $0, pixelWidth: pixels) }) {
+      if let shown = loadedImage(for: url) ?? url.flatMap({ source?.cachedImage(at: $0, pixelWidth: pixels) }) {
         Image(nsImage: shown.image)
           .resizable()
           .interpolation(.high)
@@ -40,28 +43,27 @@ struct PersonAvatar: View {
     .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
     .accessibilityHidden(true)
     .task(id: url) {
-      guard let source, let url else {
+      guard let source, let url, let image = await source.image(at: url, pixelWidth: pixels) else {
         return
       }
-      loaded = await source.image(at: url, pixelWidth: pixels)
+      loaded = (url, image)
     }
+  }
+
+  private func loadedImage(for url: URL?) -> BodyImage? {
+    guard let loaded, loaded.url == url else {
+      return nil
+    }
+    return loaded.image
   }
 
   private var initial: some View {
     Circle()
-      .fill(tint)
+      .fill(Palette.face(for: login))
       .overlay {
         Text((login?.prefix(1) ?? "?").uppercased())
           .font(.system(size: size * 0.48, weight: .semibold))
           .foregroundStyle(.white)
       }
-  }
-
-  /// One color per login, the same on every launch (String's own hash is
-  /// seeded per run).
-  private var tint: Color {
-    let palette: [LabelTint] = [.red, .orange, .green, .teal, .blue, .indigo, .purple, .pink, .brown]
-    let sum = (login ?? "").unicodeScalars.reduce(0) { $0 + Int($1.value) }
-    return palette[sum % palette.count].color.opacity(0.85)
   }
 }

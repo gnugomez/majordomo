@@ -54,15 +54,6 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
     case .excerpt: "Its summary, or a couple of lines of its text"
     }
   }
-
-  /// Badges ride the trailing end of the meta line, behind the flexible
-  /// gap; the rest reads inline from the left.
-  var isBadge: Bool {
-    switch self {
-    case .labels, .status, .target: true
-    case .repo, .author, .time, .provider, .excerpt: false
-    }
-  }
 }
 
 /// The fields an inbox row shows, in the order it shows them.

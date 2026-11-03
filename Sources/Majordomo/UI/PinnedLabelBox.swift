@@ -14,16 +14,6 @@ import SwiftUI
 
 /// Unread rows the box shows at most, after which it says how many more.
 private let pinnedRowCap = 3
-/// The model's own colors, for the light that marks what it chose. The
-/// system vends no style for them, so they are named here — and only here,
-/// since nothing else in the app speaks in them.
-private let intelligenceColors: [Color] = [
-  Color(red: 1.00, green: 0.18, blue: 0.33),
-  Color(red: 0.69, green: 0.32, blue: 0.87),
-  Color(red: 0.00, green: 0.48, blue: 1.00),
-  Color(red: 0.20, green: 0.78, blue: 0.95),
-  Color(red: 1.00, green: 0.58, blue: 0.00),
-]
 
 /// Where the light comes up from: the foot of the card, in the middle.
 private let glowOrigin = UnitPoint(x: 0.5, y: 1.0)
@@ -189,7 +179,7 @@ struct PinnedLabelBox: View {
           // the card. Growing the mask is what makes the light rise, and
           // the same mask over the edge is what carries it into the border.
           let colors = LinearGradient(
-            colors: intelligenceColors, startPoint: .leading, endPoint: .trailing
+            colors: Palette.intelligence, startPoint: .leading, endPoint: .trailing
           )
           let light = RadialGradient(
             colors: [.white, .white.opacity(0.55), .clear],
@@ -234,22 +224,22 @@ struct PinnedLabelBox: View {
   private func header(_ box: PinnedBox) -> some View {
     HStack(spacing: 6) {
       Image(systemName: box.label.symbol)
-        .font(.system(size: 12, weight: .medium))
+        .font(.app(.callout, weight: .medium))
         .foregroundStyle(box.label.tint.color)
         .frame(width: 16)
       Text(box.label.name)
-        .font(.system(size: 12, weight: .medium))
+        .font(.app(.callout, weight: .medium))
         .foregroundStyle(.secondary)
       if box.byModel {
         Image(systemName: "apple.intelligence")
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.tertiary)
           .help("Chosen by Apple Intelligence on this Mac")
       }
       Spacer(minLength: 6)
       if box.unread > box.threads.count {
         Text("+\(box.unread - box.threads.count)")
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.tertiary)
       }
       if boxes.count > 1 {
@@ -270,7 +260,7 @@ struct PinnedLabelBox: View {
       }
       .disabled(index == 0)
       Text("\(min(index, boxes.count - 1) + 1) of \(boxes.count)")
-        .font(.system(size: 10))
+        .font(.app(.badge))
         .foregroundStyle(.tertiary)
         .monospacedDigit()
       Button {
@@ -298,7 +288,7 @@ struct PinnedLabelBox: View {
         GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
           .foregroundStyle(spec(for: item.provider).color(for: item))
         Text(item.title)
-          .font(.system(size: 12, weight: .medium))
+          .font(.app(.callout, weight: .medium))
           .lineLimit(1)
           .truncationMode(.tail)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -306,13 +296,13 @@ struct PinnedLabelBox: View {
           TargetBadges(status: status, density: .compact)
         }
         Text(relativeTime(item.updatedAt, now: model.now))
-          .font(.system(size: 10))
+          .font(.app(.badge))
           .foregroundStyle(.secondary)
           .fixedSize()
       }
       if let line = summaryLine(for: item) {
         line
-          .font(.system(size: 11))
+          .font(.app(.caption))
           .foregroundStyle(.secondary)
           // One line, like the title: a box whose rows wrap has a height
           // that depends on its width, and the list measures the row

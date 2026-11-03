@@ -14,9 +14,9 @@
 // MemberRowView is one unfolded member, indented beneath its summary; the
 // excerpt switch governs its snippet too, so turning excerpts off quiets
 // the whole list.
-// Selected rows swap every fixed color for hierarchical styles, which AppKit
-// flips to white on an emphasized (accent) selection and keeps dark on an
-// unfocused gray one — explicit colors would do neither.
+// Selected rows swap every fixed color for the row's own styles (RowStyle).
+// Both rows are Equatable over what they draw, so a list redrawn for one
+// row's sake — a selection, a read — leaves the others alone.
 
 import SwiftUI
 
@@ -53,7 +53,7 @@ private enum MetaPiece {
   }
 }
 
-struct ItemRowView: View {
+struct ItemRowView: View, Equatable {
   let thread: InboxThread
   let now: Date
   /// The labels any member of the thread carries, in folder order.
@@ -69,6 +69,19 @@ struct ItemRowView: View {
 
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
+  /// Everything but the expand action, which only ever toggles this
+  /// thread; the clock counts only as the time it reads.
+  nonisolated static func == (lhs: ItemRowView, rhs: ItemRowView) -> Bool {
+    lhs.thread.id == rhs.thread.id && lhs.thread.items == rhs.thread.items
+      && lhs.time == rhs.time && lhs.labels == rhs.labels && lhs.layout == rhs.layout
+      && lhs.targetStatus == rhs.targetStatus && lhs.selected == rhs.selected && lhs.expanded == rhs.expanded
+  }
+
+  /// How long ago the thread last moved, as the row says it.
+  private nonisolated var time: String {
+    relativeTime(thread.lead.updatedAt, now: now)
+  }
+
   var body: some View {
     let item = targetStatus?.presenting(thread.lead) ?? thread.lead
     let pieces = metaPieces(for: item)
@@ -78,18 +91,14 @@ struct ItemRowView: View {
     HStack(alignment: excerpt == nil ? .center : .top, spacing: 8) {
       // The unread gutter: a leading accent dot, with the space reserved
       // on read rows so everything stays aligned.
-      Circle()
-        .fill(thread.read ? AnyShapeStyle(.clear) : (selected ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor)))
-        .frame(width: 8, height: 8)
+      UnreadDot(unread: !thread.read, size: 8, selected: selected)
         .padding(.top, excerpt == nil ? 0 : 4)
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 4) {
           GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
-            .foregroundStyle(
-              selected ? AnyShapeStyle(.primary) : AnyShapeStyle(spec(for: item.provider).color(for: item))
-            )
+            .foregroundStyle(spec(for: item.provider).color(for: item).onRow(selected: selected))
           Text(highlighted(item.title, terms: highlightTerms))
-            .font(.system(size: 13, weight: thread.read ? .regular : .semibold))
+            .font(.app(.body, weight: thread.read ? .regular : .semibold))
             .lineLimit(1)
             .truncationMode(.tail)
         }
@@ -100,7 +109,7 @@ struct ItemRowView: View {
         }
         if let excerpt {
           excerpt
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -121,7 +130,7 @@ struct ItemRowView: View {
     // and a list row keeps the height it was first measured at.
     return ZStack(alignment: .leading) {
       Text(verbatim: " ")
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .hidden()
       HStack(spacing: 4) {
         metaRun(Array(pieces[..<badges]))
@@ -147,7 +156,7 @@ struct ItemRowView: View {
     switch piece {
     case .text(let text, let truncates):
       let line = Text(highlighted(separated ? "· \(text)" : text, terms: highlightTerms))
-        .font(.system(size: 11))
+        .font(.app(.caption))
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .truncationMode(.tail)
@@ -195,7 +204,7 @@ struct ItemRowView: View {
           add(.text(author, truncates: true), to: &pieces)
         }
       case .time:
-        add(.text(relativeTime(item.updatedAt, now: now), truncates: false), to: &pieces)
+        add(.text(time, truncates: false), to: &pieces)
       case .provider:
         pieces.append(.mark(item.provider))
       case .labels:
@@ -235,11 +244,11 @@ struct ItemRowView: View {
     } label: {
       HStack(spacing: 2) {
         Text("\(thread.items.count)")
-          .font(.system(size: 11, weight: .medium))
+          .font(.app(.caption, weight: .medium))
         Image(systemName: expanded ? "chevron.down" : "chevron.right")
           .font(.system(size: 8, weight: .semibold))
       }
-      .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor))
+      .foregroundStyle(Color.accentColor.onRow(selected: selected))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -249,7 +258,7 @@ struct ItemRowView: View {
 
 /// One unfolded thread member: indented under the summary row, with its
 /// own unread dot, reason, author, time, and a body snippet.
-struct MemberRowView: View {
+struct MemberRowView: View, Equatable {
   let member: InboxItem
   let now: Date
   var layout: RowLayout = .default
@@ -257,33 +266,36 @@ struct MemberRowView: View {
 
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
+  nonisolated static func == (lhs: MemberRowView, rhs: MemberRowView) -> Bool {
+    lhs.member == rhs.member && lhs.time == rhs.time && lhs.layout == rhs.layout && lhs.selected == rhs.selected
+  }
+
+  /// How long ago the member arrived, as the row says it.
+  private nonisolated var time: String {
+    relativeTime(member.updatedAt, now: now)
+  }
+
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
-      Circle()
-        .fill(member.read ? AnyShapeStyle(.clear) : (selected ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor)))
-        .frame(width: 8, height: 8)
+      UnreadDot(unread: !member.read, size: 8, selected: selected)
         .padding(.top, 4)
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 4) {
-          CapsuleTag(
-            text: spec(for: member.provider).reasonLabel(member.reason),
-            tint: member.isMention ? Color.accentColor : nil,
-            selected: selected
-          )
+          ReasonCapsule(item: member, selected: selected)
           if let author = member.author {
             Text(highlighted(author, terms: highlightTerms))
-              .font(.system(size: 11))
+              .font(.app(.caption))
               .foregroundStyle(.secondary)
               .lineLimit(1)
           }
           Spacer(minLength: 6)
-          Text(relativeTime(member.updatedAt, now: now))
-            .font(.system(size: 11))
+          Text(time)
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
         }
         if let excerpt = excerptLine(for: member, layout: layout, terms: highlightTerms) {
           excerpt
-            .font(.system(size: 11))
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -300,6 +312,7 @@ struct MemberRowView: View {
 /// by the glyph that says so and wrapping under it; otherwise the item's
 /// own text. nil when the layout hides the line, or when there is nothing
 /// to show.
+@MainActor
 private func excerptLine(for item: InboxItem, layout: RowLayout, terms: [String]) -> Text? {
   guard layout.shows(.excerpt) else {
     return nil
@@ -312,11 +325,39 @@ private func excerptLine(for item: InboxItem, layout: RowLayout, terms: [String]
 
 /// A body flattened to preview text — inline markdown only, so code fences
 /// and quote markers don't render as syntax noise.
+@MainActor
 private func bodySnippet(_ body: String?, terms: [String]) -> AttributedString? {
   guard let body else {
     return nil
   }
-  let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-  let inline = (try? AttributedString(markdown: body, options: options)) ?? AttributedString(body)
-  return highlighted(inline, terms: terms)
+  return highlighted(InlineSnippets.parsed(body), terms: terms)
+}
+
+/// Bodies parsed for a row's excerpt, by their text: a list redraws its
+/// rows far more often than their bodies change.
+@MainActor
+private enum InlineSnippets {
+  private final class Parsed {
+    let text: AttributedString
+
+    init(_ text: AttributedString) {
+      self.text = text
+    }
+  }
+
+  private static let held: NSCache<NSString, Parsed> = {
+    let cache = NSCache<NSString, Parsed>()
+    cache.countLimit = 1000
+    return cache
+  }()
+
+  static func parsed(_ body: String) -> AttributedString {
+    if let parsed = held.object(forKey: body as NSString) {
+      return parsed.text
+    }
+    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    let inline = (try? AttributedString(markdown: body, options: options)) ?? AttributedString(body)
+    held.setObject(Parsed(inline), forKey: body as NSString)
+    return inline
+  }
 }

@@ -9,7 +9,7 @@ import AppKit
 import SwiftUI
 
 struct MainWindowView: View {
-  let model: AppModel
+  @Bindable var model: AppModel
 
   /// How tall the floating filter pills stand; the list's rows start below.
   @State private var pillBarHeight: CGFloat = 0
@@ -91,8 +91,8 @@ struct MainWindowView: View {
     // (AppDelegate's Edit menu) can focus the field from outside the view
     // tree.
     .searchable(
-      text: Binding(get: { model.searchText }, set: { model.searchText = $0 }),
-      isPresented: Binding(get: { model.searchPresented }, set: { model.searchPresented = $0 }),
+      text: $model.searchText,
+      isPresented: $model.searchPresented,
       placement: .toolbar,
       prompt: "Search"
     )
@@ -101,19 +101,13 @@ struct MainWindowView: View {
     // The columns carry their own minimum widths; the window's minimum
     // height lives here (hosting sizingOptions [.minSize] enforces both).
     .frame(minHeight: 420)
-    .sheet(item: Binding(get: { model.editingBoard }, set: { model.editingBoard = $0 })) { board in
+    .sheet(item: $model.editingBoard) { board in
       BoardEditorSheet(model: model, board: board)
     }
   }
 
   private var sidebarColumn: some View {
-    SidebarView(
-      model: model,
-      selection: Binding(
-        get: { model.sidebarSelection },
-        set: { model.sidebarSelection = $0 }
-      )
-    )
+    SidebarView(model: model, selection: $model.sidebarSelection)
     // The widths go outside the note of the width: wrapped in its
     // onGeometryChange, the split no longer finds them.
     .remembersWidth(sidebarWidthKey)
@@ -200,16 +194,23 @@ struct MainWindowView: View {
       // height above its first row. They stay up when the filters empty
       // the list, so they can be undone.
       .overlay(alignment: .top) {
-        if model.hasAccounts {
-          FilterPillBar(model: model, facets: scope.facets)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-        }
+        pills(scope.facets)
       }
       // The suggestion panel floats over the foot of the list, and only
       // while the model has something to offer.
       .overlay(alignment: .bottom) {
         SuggestionPanel(model: model)
       }
+  }
+
+  /// The filter pills, noting how tall they stand for the content to
+  /// leave that room above its first row; none without an account.
+  @ViewBuilder
+  private func pills(_ facets: [FacetChoices]) -> some View {
+    if model.hasAccounts {
+      FilterPillBar(model: model, facets: facets)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
+    }
   }
 
   // MARK: Board
@@ -238,10 +239,7 @@ struct MainWindowView: View {
     return boardPane(board, placement: placement)
       // The board leaves their height above its column headers.
       .overlay(alignment: .top) {
-        if model.hasAccounts {
-          FilterPillBar(model: model, facets: facets)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-        }
+        pills(facets)
       }
       .onChange(of: selected?.id, initial: true) {
         if let selected {
@@ -253,26 +251,26 @@ struct MainWindowView: View {
   @ViewBuilder
   private func boardPane(_ board: Board, placement: BoardPlacement) -> some View {
     if !model.hasAccounts {
-      boardEmptyState(
+      PaneEmptyState(
         symbol: "tray",
         title: "No accounts connected",
         caption: "Add an account in Settings to fill your boards."
       )
     } else if placement.count == 0 {
       if !model.searchText.isEmpty {
-        boardEmptyState(
+        PaneEmptyState(
           symbol: "magnifyingglass",
           title: "No results",
           caption: "Nothing on this board matches \u{201C}\(model.searchText)\u{201D}."
         )
       } else if !model.facetPicks.isEmpty {
-        boardEmptyState(
+        PaneEmptyState(
           symbol: "line.3.horizontal.decrease",
           title: "No matches",
           caption: "Nothing on this board matches the filters above. Set one back to Any to see the rest."
         )
       } else {
-        boardEmptyState(
+        PaneEmptyState(
           symbol: board.symbol,
           title: "Nothing on this board yet",
           caption: "Cards turn up as notifications arrive about the issues and pull requests this board takes."
@@ -280,15 +278,6 @@ struct MainWindowView: View {
       }
     } else {
       BoardView(model: model, board: board, placement: placement, topInset: pillBarHeight)
-    }
-  }
-
-  /// Scroll-backed for the same reason as PreviewView's empty state: plain
-  /// content makes the toolbar draw a hard edge over the pane.
-  private func boardEmptyState(symbol: String, title: String, caption: String) -> some View {
-    ScrollView {
-      EmptyStateView(symbol: symbol, title: title, caption: caption)
-        .containerRelativeFrame(.vertical)
     }
   }
 
@@ -340,7 +329,11 @@ struct MainWindowView: View {
     if let board = model.selectedBoard {
       PreviewView(model: model, thread: selectedCard(on: board).map { InboxThread(id: $0.id, items: $0.items) })
     } else if selectedThreads.count > 1 {
-      multiSelectionPlaceholder(count: selectedThreads.count)
+      PaneEmptyState(
+        symbol: "square.stack",
+        title: "\(selectedThreads.count) items selected",
+        caption: "Open them all with a double-click, or mark them read from the toolbar."
+      )
     } else {
       PreviewView(model: model, thread: selected)
     }
@@ -434,30 +427,11 @@ struct MainWindowView: View {
     Button {
       model.markRead(Set(selectedThreads.flatMap(\.itemIds)))
     } label: {
-      HStack(spacing: 3) {
-        Image(systemName: "envelope.open")
-        if selectedThreads.count > 1 {
-          Text("+\(selectedThreads.count)")
-            .font(.system(size: 11, weight: .semibold))
-        }
-      }
+      CountedGlyph(symbol: "envelope.open", count: selectedThreads.count)
     }
     .keyboardShortcut("u", modifiers: [.shift, .command])
     .disabled(!selectedThreads.contains { !$0.read })
     .help(selectedThreads.count > 1 ? "Mark \(selectedThreads.count) as read" : "Mark as read")
-  }
-
-  /// Scroll-backed for the same reason as PreviewView's empty state: plain
-  /// content makes the toolbar draw a hard edge over the pane.
-  private func multiSelectionPlaceholder(count: Int) -> some View {
-    ScrollView {
-      EmptyStateView(
-        symbol: "square.stack",
-        title: "\(count) items selected",
-        caption: "Open them all with a double-click, or mark them read from the toolbar."
-      )
-      .containerRelativeFrame(.vertical)
-    }
   }
 
   // MARK: Toolbar buttons
@@ -468,15 +442,7 @@ struct MainWindowView: View {
         model.openThread(thread.itemIds)
       }
     } label: {
-      // The count rides along in the glyph once the action spans more than
-      // one thread.
-      HStack(spacing: 3) {
-        Image(systemName: "arrow.up.forward")
-        if selectedThreads.count > 1 {
-          Text("+\(selectedThreads.count)")
-            .font(.system(size: 11, weight: .semibold))
-        }
-      }
+      CountedGlyph(symbol: "arrow.up.forward", count: selectedThreads.count)
     }
     .keyboardShortcut("o")
     .disabled(selectedThreads.isEmpty)
@@ -494,6 +460,23 @@ struct MainWindowView: View {
 
 private func itemCount(_ count: Int) -> String {
   count == 1 ? "1 item" : "\(count) items"
+}
+
+/// A selection action's glyph, the count riding along once the action
+/// spans more than one thread.
+private struct CountedGlyph: View {
+  let symbol: String
+  let count: Int
+
+  var body: some View {
+    HStack(spacing: 3) {
+      Image(systemName: symbol)
+      if count > 1 {
+        Text("+\(count)")
+          .font(.app(.caption, weight: .semibold))
+      }
+    }
+  }
 }
 
 /// Refresh, in a view of its own so it redraws when a sync starts or ends

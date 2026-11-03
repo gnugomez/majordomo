@@ -1,6 +1,7 @@
 // The pieces a conversation is drawn with, shared by the timeline and a
 // thread's message cards: the card itself, a body that folds when it runs
-// long, the "Author" mark, an event's glyph, and an entry's time.
+// long, the "Author" mark, an event's glyph, the byline, and an entry's
+// time.
 
 import SwiftUI
 
@@ -16,7 +17,7 @@ extension View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
         RoundedRectangle(cornerRadius: 10)
-          .fill(ConversationShades.card)
+          .fill(Palette.card)
           .overlay {
             if let tint {
               RoundedRectangle(cornerRadius: 10).fill(tint)
@@ -62,7 +63,7 @@ struct CollapsibleBody<Content: View>: View {
           expanded.toggle()
         }
         .buttonStyle(.link)
-        .font(.system(size: 12))
+        .font(.app(.callout))
       }
     }
   }
@@ -72,7 +73,7 @@ struct CollapsibleBody<Content: View>: View {
 struct AuthorMark: View {
   var body: some View {
     Text("Author")
-      .font(.system(size: 10, weight: .medium))
+      .font(.app(.badge, weight: .medium))
       .foregroundStyle(.secondary)
       .padding(.horizontal, 6)
       .padding(.vertical, 1.5)
@@ -87,7 +88,7 @@ struct AuthorMark: View {
 struct EventGlyph: View {
   let badge: CardBadge
   var size: CGFloat = 24
-  var ring: Color = ConversationShades.card
+  var ring: Color = Palette.card
 
   var body: some View {
     Circle()
@@ -102,6 +103,49 @@ struct EventGlyph: View {
   }
 }
 
+/// Who wrote an entry and when, after their face: the name, what they did
+/// when it isn't a plain comment, the Author mark, why a notification
+/// points here, then the time at the far end. Pieces of the caller's row,
+/// so they space the way the row does.
+struct Byline: View {
+  let name: String?
+  /// What they did, after the name ("approved", "opened #12").
+  var action: String?
+  var isTargetAuthor = false
+  /// Why a previewed notification points here, as the provider words it.
+  var reason: String?
+  var reasonTint: Color? = .accentColor
+  let date: Date?
+  let now: Date
+
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  var body: some View {
+    if let name {
+      Text(highlighted(name, terms: highlightTerms))
+        .font(.app(.body, weight: .semibold))
+        .lineLimit(1)
+        .layoutPriority(1)
+    }
+    if let action {
+      Text(action)
+        .font(.app(.body))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+    if isTargetAuthor {
+      AuthorMark()
+    }
+    if let reason {
+      CapsuleTag(text: reason, tint: reasonTint)
+    }
+    Spacer(minLength: 4)
+    if let date {
+      EntryTime(date: date, now: now)
+    }
+  }
+}
+
 /// How long ago, the date in full on hover.
 struct EntryTime: View {
   let date: Date
@@ -109,7 +153,7 @@ struct EntryTime: View {
 
   var body: some View {
     Text(relativeTime(date, now: now))
-      .font(.system(size: 12))
+      .font(.app(.callout))
       .foregroundStyle(.secondary)
       .monospacedDigit()
       .lineLimit(1)

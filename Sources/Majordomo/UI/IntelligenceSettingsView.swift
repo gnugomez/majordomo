@@ -20,48 +20,30 @@ struct IntelligenceSettingsView: View {
     VStack(alignment: .leading, spacing: 6) {
       VStack(spacing: 0) {
         SettingsRow(symbol: "apple.intelligence", label: "Use Apple Intelligence") {
-          Toggle(
+          SettingsSwitch(
             "Use Apple Intelligence",
-            isOn: Binding(
-              get: { model.intelligenceEnabled },
-              set: { model.setIntelligenceEnabled($0) }
-            )
+            isOn: Binding(get: { model.intelligenceEnabled }, set: { model.setIntelligenceEnabled($0) })
           )
-          .labelsHidden()
-          .toggleStyle(.switch)
-          .controlSize(.small)
           .disabled(!available)
         }
 
         Divider().padding(.leading, 40)
 
         SettingsRow(symbol: summaryGlyph, label: "Summarize notifications") {
-          Toggle(
+          SettingsSwitch(
             "Summarize notifications",
-            isOn: Binding(
-              get: { model.summariesEnabled },
-              set: { model.setSummariesEnabled($0) }
-            )
+            isOn: Binding(get: { model.summariesEnabled }, set: { model.setSummariesEnabled($0) })
           )
-          .labelsHidden()
-          .toggleStyle(.switch)
-          .controlSize(.small)
           .disabled(!available || !model.intelligenceEnabled)
         }
 
         Divider().padding(.leading, 40)
 
         SettingsRow(symbol: "sparkles", label: "Suggest labels from patterns") {
-          Toggle(
+          SettingsSwitch(
             "Suggest labels from patterns",
-            isOn: Binding(
-              get: { model.suggestionsEnabled },
-              set: { model.setSuggestionsEnabled($0) }
-            )
+            isOn: Binding(get: { model.suggestionsEnabled }, set: { model.setSuggestionsEnabled($0) })
           )
-          .labelsHidden()
-          .toggleStyle(.switch)
-          .controlSize(.small)
           .disabled(!available || !model.intelligenceEnabled)
         }
       }

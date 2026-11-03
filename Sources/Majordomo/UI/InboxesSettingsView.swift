@@ -109,29 +109,33 @@ struct InboxesSettingsView: View {
         onRemove: { confirmRemoveInbox = true }
       )
     } else if let selection, let label = model.label(selection) {
-      HStack(spacing: 8) {
+      editedElsewhere(label.name, note: label.isBuiltin ? "Built in" : "Edit it on the Labels page") {
         LabelGlyph(symbol: label.symbol, tint: label.tint)
-        Text(label.name)
-          .font(.system(size: 13, weight: .medium))
-        Spacer()
-        Text(label.isBuiltin ? "Built in" : "Edit it on the Labels page")
-          .font(.system(size: 11))
-          .foregroundStyle(.secondary)
       }
     } else if selection == catchAllInboxId {
-      HStack(spacing: 8) {
+      editedElsewhere(recentCategory.label, note: "Built in") {
         Image(systemName: recentCategory.symbol)
           .frame(width: 20)
-        Text(recentCategory.label)
-          .font(.system(size: 13, weight: .medium))
-        Spacer()
-        Text("Built in")
-          .font(.system(size: 11))
-          .foregroundStyle(.secondary)
       }
     } else {
       Text("Select a row to edit it")
-        .font(.system(size: 12))
+        .font(.app(.callout))
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  /// A row this page names but doesn't edit: its glyph and name, and
+  /// where it is edited instead.
+  private func editedElsewhere<Glyph: View>(
+    _ name: String, note: String, @ViewBuilder glyph: () -> Glyph
+  ) -> some View {
+    HStack(spacing: 8) {
+      glyph()
+      Text(name)
+        .font(.app(.body, weight: .medium))
+      Spacer()
+      Text(note)
+        .font(.app(.caption))
         .foregroundStyle(.secondary)
     }
   }
@@ -248,24 +252,8 @@ private struct InboxInspector: View {
       }
       HStack(spacing: 8) {
         Text("Notify")
-          .font(.system(size: 12))
-        Picker(
-          "Notify",
-          selection: Binding(
-            get: { inbox.notify },
-            set: { policy in
-              var updated = inbox
-              updated.notify = policy
-              onChange(updated)
-            }
-          )
-        ) {
-          ForEach(LabelNotifyPolicy.allCases, id: \.self) { policy in
-            Text(notifyPolicyLabel(policy)).tag(policy)
-          }
-        }
-        .labelsHidden()
-        .fixedSize()
+          .font(.app(.callout))
+        NotifyPolicyPicker(label: inbox, onChange: onChange)
         Spacer()
         Button("Remove Inbox…", action: onRemove)
       }
