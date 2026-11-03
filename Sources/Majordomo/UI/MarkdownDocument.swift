@@ -204,7 +204,7 @@ private struct MarkdownParser {
         continue
       }
       if inline.contains(.code) {
-        piece.backgroundColor = ConversationShades.code
+        piece.backgroundColor = Palette.code
       }
       add(piece, cell: cell)
     }

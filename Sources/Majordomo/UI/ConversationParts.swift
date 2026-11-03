@@ -16,7 +16,7 @@ extension View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
         RoundedRectangle(cornerRadius: 10)
-          .fill(ConversationShades.card)
+          .fill(Palette.card)
           .overlay {
             if let tint {
               RoundedRectangle(cornerRadius: 10).fill(tint)
@@ -87,7 +87,7 @@ struct AuthorMark: View {
 struct EventGlyph: View {
   let badge: CardBadge
   var size: CGFloat = 24
-  var ring: Color = ConversationShades.card
+  var ring: Color = Palette.card
 
   var body: some View {
     Circle()

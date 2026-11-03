@@ -29,12 +29,6 @@ private let gridInset: CGFloat = 8
 private let headerBand: CGFloat = 44
 private let headerGap: CGFloat = 8
 
-private let stripBackground = Color(nsColor: NSColor(name: nil) { appearance in
-  appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    ? NSColor(white: 1, alpha: 0.05)
-    : NSColor(white: 0, alpha: 0.04)
-})
-
 struct BoardView: View {
   let model: AppModel
   let board: Board
@@ -294,7 +288,7 @@ struct BoardView: View {
     .padding(6)
     .frame(width: columnWidth, alignment: .top)
     .frame(minHeight: max(44, stretch), maxHeight: .infinity, alignment: .top)
-    .background(stripBackground, in: RoundedRectangle(cornerRadius: 12))
+    .background(Palette.boardColumn, in: RoundedRectangle(cornerRadius: 12))
     .contentShape(Rectangle())
     .overlay {
       if dropTarget == key {
@@ -322,13 +316,18 @@ struct BoardView: View {
   }
 
   private func cardView(_ card: BoardCard) -> some View {
-    BoardCardView(
+    // The faces come the way a preview's do, through the account the
+    // card's lead notification came through.
+    let faces = model.bodyImages(for: card.lead)
+    return BoardCardView(
       card: card,
       now: model.now,
       selected: model.selectedCardId == card.id,
       pinned: placement.pinned.contains(card.id),
       showsRepo: board.lanes != .repository
     )
+    .equatable()
+    .environment(\.bodyImages, faces)
     .contentShape(RoundedRectangle(cornerRadius: 9))
     .onTapGesture {
       // The second click of a double-click is the browser's, not a toggle.
@@ -353,6 +352,7 @@ struct BoardView: View {
     })
     .draggable(card.id) {
       BoardCardView(card: card, now: model.now, selected: false, pinned: false, showsRepo: true)
+        .environment(\.bodyImages, faces)
         .frame(width: columnWidth - 12)
     }
     .contextMenu {

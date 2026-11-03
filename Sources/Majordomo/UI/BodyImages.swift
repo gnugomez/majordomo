@@ -2,7 +2,8 @@
 // BodyImageSource for the item it shows in the environment — where a
 // source written in a body points, and a fetch through the account the
 // item came through (AppModel.bodyImages) — so MarkdownBody and the
-// avatars need nothing of the app model. Fetched bytes stay in ImageCache;
+// avatars need nothing of the app model; a board puts one in for each card,
+// for its faces. Fetched bytes stay in ImageCache;
 // decoded pictures stay in memory here, downsampled off the main actor to
 // the width they are drawn at.
 

@@ -14,16 +14,6 @@ import SwiftUI
 
 /// Unread rows the box shows at most, after which it says how many more.
 private let pinnedRowCap = 3
-/// The model's own colors, for the light that marks what it chose. The
-/// system vends no style for them, so they are named here — and only here,
-/// since nothing else in the app speaks in them.
-private let intelligenceColors: [Color] = [
-  Color(red: 1.00, green: 0.18, blue: 0.33),
-  Color(red: 0.69, green: 0.32, blue: 0.87),
-  Color(red: 0.00, green: 0.48, blue: 1.00),
-  Color(red: 0.20, green: 0.78, blue: 0.95),
-  Color(red: 1.00, green: 0.58, blue: 0.00),
-]
 
 /// Where the light comes up from: the foot of the card, in the middle.
 private let glowOrigin = UnitPoint(x: 0.5, y: 1.0)
@@ -189,7 +179,7 @@ struct PinnedLabelBox: View {
           // the card. Growing the mask is what makes the light rise, and
           // the same mask over the edge is what carries it into the border.
           let colors = LinearGradient(
-            colors: intelligenceColors, startPoint: .leading, endPoint: .trailing
+            colors: Palette.intelligence, startPoint: .leading, endPoint: .trailing
           )
           let light = RadialGradient(
             colors: [.white, .white.opacity(0.55), .clear],

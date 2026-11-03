@@ -59,7 +59,7 @@ private struct MarkdownBlockList: View {
         .font(.system(size: 12, design: .monospaced))
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ConversationShades.code, in: RoundedRectangle(cornerRadius: 6))
+        .background(Palette.code, in: RoundedRectangle(cornerRadius: 6))
     case .quote:
       HStack(alignment: .top, spacing: 10) {
         RoundedRectangle(cornerRadius: 1.5)
@@ -125,7 +125,7 @@ private struct MarkdownTableView: View {
             cell(table.header, column, header: true)
           }
         }
-        .background(ConversationShades.code)
+        .background(Palette.code)
       }
       ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
         if index > 0 || !table.header.isEmpty {

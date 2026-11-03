@@ -18,7 +18,7 @@ struct MarkdownImageGroup: View {
     let pictures = images.filter { !$0.isBadge }
     VStack(alignment: .leading, spacing: 8) {
       if !badges.isEmpty {
-        WrappingRow(spacing: 4) {
+        FlowLayout(spacing: 4) {
           ForEach(Array(badges.enumerated()), id: \.offset) { _, badge in
             MarkdownBadge(image: badge)
           }
@@ -119,7 +119,7 @@ struct MarkdownImageView: View {
       height = width * tall / asked
     }
     return RoundedRectangle(cornerRadius: 6)
-      .fill(ConversationShades.code)
+      .fill(Palette.code)
       .frame(maxWidth: image.width ?? .infinity)
       .frame(height: height)
       .overlay {
@@ -175,7 +175,7 @@ private struct MarkdownBadge: View {
         CapsuleTag(text: image.alt.isEmpty ? "badge" : image.alt)
       } else {
         Capsule()
-          .fill(ConversationShades.code)
+          .fill(Palette.code)
           .frame(width: 60, height: height)
       }
     }
@@ -220,58 +220,6 @@ private struct MarkdownImageFallback: View {
     .font(.system(size: 12))
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
-    .background(ConversationShades.code, in: RoundedRectangle(cornerRadius: 6))
-  }
-}
-
-/// Lays its pieces out left to right, starting a new line when the next
-/// one doesn't fit.
-private struct WrappingRow: Layout {
-  var spacing: CGFloat
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let lines = arrange(subviews, width: proposal.width ?? .infinity)
-    let width = lines.map(\.width).max() ?? 0
-    let height = lines.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, lines.count - 1))
-    return CGSize(width: width, height: height)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    var y = bounds.minY
-    for line in arrange(subviews, width: bounds.width) {
-      var x = bounds.minX
-      for index in line.indices {
-        let size = subviews[index].sizeThatFits(.unspecified)
-        subviews[index].place(at: CGPoint(x: x, y: y + (line.height - size.height) / 2), proposal: .unspecified)
-        x += size.width + spacing
-      }
-      y += line.height + spacing
-    }
-  }
-
-  private struct Line {
-    var indices: [Int] = []
-    var width: CGFloat = 0
-    var height: CGFloat = 0
-  }
-
-  private func arrange(_ subviews: Subviews, width: CGFloat) -> [Line] {
-    var lines: [Line] = []
-    var line = Line()
-    for index in subviews.indices {
-      let size = subviews[index].sizeThatFits(.unspecified)
-      let needed = line.indices.isEmpty ? size.width : line.width + spacing + size.width
-      if needed > width, !line.indices.isEmpty {
-        lines.append(line)
-        line = Line()
-      }
-      line.width = line.indices.isEmpty ? size.width : line.width + spacing + size.width
-      line.height = max(line.height, size.height)
-      line.indices.append(index)
-    }
-    if !line.indices.isEmpty {
-      lines.append(line)
-    }
-    return lines
+    .background(Palette.code, in: RoundedRectangle(cornerRadius: 6))
   }
 }

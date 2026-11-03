@@ -1,7 +1,8 @@
-// Someone's face in a conversation: the picture the provider linked, or
-// the one its spec derives from the login, fetched like a body's images
-// (the environment's BodyImageSource, cached on disk); their initial in a
-// steady color until it arrives, or when there is none.
+// Someone's face — in a conversation, or among a board card's assignees:
+// the picture the provider linked, or the one its spec derives from the
+// login, fetched like a body's images (the environment's BodyImageSource,
+// cached on disk); their initial in a steady color until it arrives, or
+// when there is none.
 
 import SwiftUI
 
@@ -49,19 +50,11 @@ struct PersonAvatar: View {
 
   private var initial: some View {
     Circle()
-      .fill(tint)
+      .fill(Palette.face(for: login))
       .overlay {
         Text((login?.prefix(1) ?? "?").uppercased())
           .font(.system(size: size * 0.48, weight: .semibold))
           .foregroundStyle(.white)
       }
-  }
-
-  /// One color per login, the same on every launch (String's own hash is
-  /// seeded per run).
-  private var tint: Color {
-    let palette: [LabelTint] = [.red, .orange, .green, .teal, .blue, .indigo, .purple, .pink, .brown]
-    let sum = (login ?? "").unicodeScalars.reduce(0) { $0 + Int($1.value) }
-    return palette[sum % palette.count].color.opacity(0.85)
   }
 }

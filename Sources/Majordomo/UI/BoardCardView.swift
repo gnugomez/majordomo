@@ -14,13 +14,9 @@ private let quietAfter: TimeInterval = 14 * 24 * 60 * 60
 /// Upstream labels a card shows at most; the preview has the rest.
 private let visibleLabels = 2
 
-private let cardBackground = Color(nsColor: NSColor(name: nil) { appearance in
-  appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    ? NSColor(white: 0.2, alpha: 1)
-    : .white
-})
-
-struct BoardCardView: View {
+/// Equatable over what it draws, so a board redrawn for another card's
+/// sake leaves this one alone.
+struct BoardCardView: View, Equatable {
   let card: BoardCard
   let now: Date
   let selected: Bool
@@ -73,7 +69,7 @@ struct BoardCardView: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(cardBackground, in: RoundedRectangle(cornerRadius: 9))
+    .background(Palette.card, in: RoundedRectangle(cornerRadius: 9))
     .overlay {
       RoundedRectangle(cornerRadius: 9)
         .strokeBorder(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.separator), lineWidth: selected ? 2 : 0.5)
@@ -147,8 +143,8 @@ struct BoardCardView: View {
     if !logins.isEmpty {
       HStack(spacing: -4) {
         ForEach(logins.prefix(3), id: \.self) { login in
-          LoginAvatar(login: login, provider: card.lead.provider, size: 18)
-            .overlay(Circle().strokeBorder(cardBackground, lineWidth: 1.5))
+          PersonAvatar(login: login, avatarUrl: nil, provider: card.lead.provider, size: 18)
+            .overlay(Circle().strokeBorder(Palette.card, lineWidth: 1.5))
         }
         if logins.count > 3 {
           Text("+\(logins.count - 3)")
@@ -185,59 +181,6 @@ struct BoardCardView: View {
   }
 }
 
-/// Lays its pieces out left to right, starting a new line when the next
-/// one doesn't fit — a card's badges wrap rather than truncate.
-private struct FlowLayout: Layout {
-  var spacing: CGFloat
-  var lineSpacing: CGFloat
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let lines = arrange(subviews, width: proposal.width ?? .infinity)
-    let width = lines.map(\.width).max() ?? 0
-    let height = lines.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(0, lines.count - 1))
-    return CGSize(width: width, height: height)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    var y = bounds.minY
-    for line in arrange(subviews, width: bounds.width) {
-      var x = bounds.minX
-      for index in line.indices {
-        let size = subviews[index].sizeThatFits(.unspecified)
-        subviews[index].place(at: CGPoint(x: x, y: y + (line.height - size.height) / 2), proposal: .unspecified)
-        x += size.width + spacing
-      }
-      y += line.height + lineSpacing
-    }
-  }
-
-  private struct Line {
-    var indices: [Int] = []
-    var width: CGFloat = 0
-    var height: CGFloat = 0
-  }
-
-  private func arrange(_ subviews: Subviews, width: CGFloat) -> [Line] {
-    var lines: [Line] = []
-    var line = Line()
-    for index in subviews.indices {
-      let size = subviews[index].sizeThatFits(.unspecified)
-      let needed = line.indices.isEmpty ? size.width : line.width + spacing + size.width
-      if needed > width, !line.indices.isEmpty {
-        lines.append(line)
-        line = Line()
-      }
-      line.width = line.indices.isEmpty ? size.width : line.width + spacing + size.width
-      line.height = max(line.height, size.height)
-      line.indices.append(index)
-    }
-    if !line.indices.isEmpty {
-      lines.append(line)
-    }
-    return lines
-  }
-}
-
 /// Glyph and title close together, at the badges' small size.
 private struct CompactLabelStyle: LabelStyle {
   func makeBody(configuration: Configuration) -> some View {
@@ -245,90 +188,5 @@ private struct CompactLabelStyle: LabelStyle {
       configuration.icon
       configuration.title
     }
-  }
-}
-
-/// A login's face: the provider's avatar where one can be derived from the
-/// login alone, its initial in a steady color otherwise — and always in
-/// demo mode, whose logins are made up. Faces come from AvatarImages, so a
-/// card scrolled back into view doesn't fetch and decode its faces again.
-struct LoginAvatar: View {
-  let login: String
-  let provider: ProviderId
-  var size: CGFloat = 18
-
-  @State private var loaded: NSImage?
-
-  private var url: URL? {
-    isDemo ? nil : spec(for: provider).fallbackAvatarURL(username: login)
-  }
-
-  var body: some View {
-    Group {
-      if let image = loaded ?? url.flatMap(AvatarImages.shared.cached) {
-        Image(nsImage: image)
-          .resizable()
-          .scaledToFill()
-      } else {
-        Circle()
-          .fill(tint)
-          .overlay {
-            Text(login.prefix(1).uppercased())
-              .font(.system(size: size * 0.5, weight: .semibold))
-              .foregroundStyle(.white)
-          }
-      }
-    }
-    .frame(width: size, height: size)
-    .clipShape(Circle())
-    .task(id: url) {
-      if let url, AvatarImages.shared.cached(url) == nil {
-        loaded = await AvatarImages.shared.load(url)
-      }
-    }
-  }
-
-  /// One color per login, the same on every launch (String's own hash is
-  /// seeded per run).
-  private var tint: Color {
-    let palette: [LabelTint] = [.red, .orange, .green, .teal, .blue, .indigo, .purple, .pink, .brown]
-    let sum = login.unicodeScalars.reduce(0) { $0 + Int($1.value) }
-    return palette[sum % palette.count].color.opacity(0.85)
-  }
-}
-
-/// Avatars fetched once per run and held in memory, with one fetch in
-/// flight per address however many cards show the same face.
-@MainActor
-final class AvatarImages {
-  static let shared = AvatarImages()
-
-  private let images = NSCache<NSURL, NSImage>()
-  private var inFlight: [URL: Task<NSImage?, Never>] = [:]
-
-  func cached(_ url: URL) -> NSImage? {
-    images.object(forKey: url as NSURL)
-  }
-
-  func load(_ url: URL) async -> NSImage? {
-    if let image = cached(url) {
-      return image
-    }
-    if let running = inFlight[url] {
-      return await running.value
-    }
-    let task = Task<NSImage?, Never> {
-      guard let (data, _) = try? await providerSession.data(from: url) else {
-        return nil
-      }
-      return NSImage(data: data)
-    }
-    inFlight[url] = task
-    let image = await task.value
-    inFlight[url] = nil
-    if let image {
-      images.setObject(image, forKey: url as NSURL)
-    }
-    return image
   }
 }

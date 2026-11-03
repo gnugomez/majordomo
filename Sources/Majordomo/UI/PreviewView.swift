@@ -85,7 +85,7 @@ struct PreviewView: View {
         await model.loadConversation(for: item)
       }
       // The pane goes slightly gray so the white cards read as cards.
-      .background(ConversationShades.pane)
+      .background(Palette.pane)
       .environment(\.bodyImages, model.bodyImages(for: item))
     } else {
       // Scroll-backed like the populated branch: plain (non-scrolling)
