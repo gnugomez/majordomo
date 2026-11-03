@@ -11,10 +11,11 @@ import SwiftUI
 struct MainWindowView: View {
   @Bindable var model: AppModel
 
-  /// The widths the sidebar and the preview open at: where the user last
-  /// left them. Read once, as the window opens.
+  /// The width the sidebar opens at: where the user last left it. Read
+  /// once, as the window opens.
   @State private var sidebarWidth = rememberedWidth(sidebarWidthKey, or: 200)
-  @State private var previewWidth = rememberedWidth(previewWidthKey, or: previewIdealWidth)
+  /// The preview's widths: one beside the inbox, one beside the boards.
+  @State private var previewWidths = PreviewWidths()
 
   /// Everything the sidebar selection resolves to for one render pass.
   private struct Scope {
@@ -128,6 +129,8 @@ struct MainWindowView: View {
     let pickedMember = selected?.items.first { $0.id == model.selectedMemberId }
     let actionTargets = pickedMember.map { [InboxThread(id: $0.id, items: [$0])] } ?? selectedThreads
 
+    let place = PreviewPlace(onBoard: model.selectedBoard != nil)
+
     let columnVisibility = Binding<NavigationSplitViewVisibility>(
       get: { model.sidebarShown ? .all : .detailOnly },
       set: { model.sidebarShown = $0 != .detailOnly }
@@ -162,8 +165,15 @@ struct MainWindowView: View {
       // layout whenever it opens in a window narrower than that.
       .inspector(isPresented: previewPresented) {
         previewPane(selectedThreads: selectedThreads, selected: selected)
-          .remembersWidth(previewWidthKey)
-          .inspectorColumnWidth(min: previewMinWidth, ideal: previewWidth, max: previewMaxWidth)
+          .remembersPreviewWidth(in: place, of: previewWidths, while: previewPresented)
+          // The ideal is the place's width, which the preview opens at. Open
+          // across a move between the inbox and a board, it keeps the width
+          // it had until it next opens.
+          .inspectorColumnWidth(
+            min: PreviewPlace.widths.lowerBound,
+            ideal: previewWidths.width(in: place),
+            max: PreviewPlace.widths.upperBound
+          )
       }
     }
     .toolbar(removing: .sidebarToggle)
@@ -446,13 +456,7 @@ private struct PreviewToggle: View {
   }
 }
 
-/// How wide the preview stands: the narrowest, at first, and the widest.
-private let previewMinWidth: CGFloat = 360
-private let previewIdealWidth: CGFloat = 420
-private let previewMaxWidth: CGFloat = 900
-
 private let sidebarWidthKey = "sidebarWidth"
-private let previewWidthKey = "previewWidth"
 
 /// The width a column was last left at, or `standard` the first time.
 private func rememberedWidth(_ key: String, or standard: CGFloat) -> CGFloat {
@@ -473,6 +477,21 @@ private extension View {
     onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
       if width > 0 {
         UserDefaults.standard.set(Double(width), forKey: key)
+      }
+    }
+  }
+
+  /// Notes the width the preview is left at in `place`, as
+  /// `remembersWidth` does for a column — only while `shown`: a preview
+  /// closing, or closed, keeps the width it was left at.
+  func remembersPreviewWidth(
+    in place: PreviewPlace,
+    of widths: PreviewWidths,
+    while shown: Binding<Bool>
+  ) -> some View {
+    onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+      if shown.wrappedValue {
+        widths.note(width, in: place)
       }
     }
   }
