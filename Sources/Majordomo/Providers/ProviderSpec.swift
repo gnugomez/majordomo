@@ -95,6 +95,14 @@ protocol ProviderSpec: Sendable {
   /// The comment the notification points at, by the id its target's
   /// conversation gives it (DetailComment.id); nil when it points at none.
   func triggerCommentId(for item: InboxItem) -> String?
+  /// A conversation entry's mark for an event token (DetailComment.event,
+  /// a review's verdict): its glyph and color, and the words that follow
+  /// the author's name ("approved"). nil reads as a plain comment.
+  func eventBadge(_ event: String) -> CardBadge?
+  /// Where a link or image a target's body names points, resolved the way
+  /// the provider renders the body for the item's target — a forge's own
+  /// uploads sit under the project. nil when it names nothing on the web.
+  func bodyURL(_ reference: String, for item: InboxItem) -> URL?
   /// Whether a state token means the target is done with — Done on a
   /// board, and no more refreshes until new activity.
   func isFinished(state: String) -> Bool
@@ -114,6 +122,14 @@ extension ProviderSpec {
 
   func bodyView(for item: InboxItem) -> AnyView? {
     item.body.map { AnyView(MarkdownBody(text: $0)) }
+  }
+
+  func eventBadge(_ event: String) -> CardBadge? {
+    nil
+  }
+
+  func bodyURL(_ reference: String, for item: InboxItem) -> URL? {
+    resolveBodyReference(reference, page: item.url)
   }
 }
 

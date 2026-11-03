@@ -38,7 +38,8 @@ Layers, lower never importing higher:
   one `ProviderSpec` (presentation) per provider, registered in
   `providerSpecs`.
 - `Sources/Majordomo/Store/` — the JSON persistence and token encryption,
-  and the targets' conversations, a file each beside the store.
+  the targets' conversations, a file each beside the store, and the images
+  previews have shown, kept within a size under the user's Caches.
 - `Sources/Majordomo/Sync/` — the sync engine (an actor): fetch, reconcile,
   sweep the rules and boards, publish state.
 - `Sources/Majordomo/App/` — the AppKit shell: status item and tray menu,
@@ -73,13 +74,21 @@ Adding a provider means:
    tokens, and refreshes the targets boards and previews are built from
    (`fetchTargets`, at most `targetBatchLimit` per round: state,
    assignees, reviewers, review, checks, and merge tokens, the latest
-   commenter, and for the keys it is asked to, the description and latest
-   comments as Markdown). The engine asks after new activity first, then fills in
-   the conversations it lacks; a target the provider won't show comes
-   back unreadable with the reason, and keys left out of the answer are
-   asked again next round. Errors are human-readable `ProviderError`
-   strings, which render verbatim in the UI, a missing token scope named
-   as such;
+   commenter, and for the keys it is asked to, the conversation: who
+   opened the target and when, its description and latest comments as
+   Markdown, each with its author's picture, and events worth a place
+   among them — a review's verdict — as entries carrying an event token,
+   words optional (`TargetConversation`, `DetailComment`; every field a
+   refresh may not fill is optional, so stored files from before it still
+   read). The engine asks after new activity first, then fills in the
+   conversations it lacks; a target the provider won't show comes back
+   unreadable with the reason, and keys left out of the answer are asked
+   again next round. Errors are human-readable `ProviderError` strings,
+   which render verbatim in the UI, a missing token scope named as such.
+   The images a body shows come through the client too (`fetchImage`,
+   anonymous by default): the account's token goes only to the provider's
+   own API origin over https — never to an image host — and
+   `RedirectGuard` strips it from any redirect off that origin;
 2. a `ProviderSpec` with the presentation for those tokens and its built-in
    labels and rules (`GitForgeBuckets` builds the git-forge set), plus a
    `previewScopeNote` when previews need a scope beyond the token hint's,
@@ -89,7 +98,10 @@ Adding a provider means:
    say something must be done — what a cramped inbox row keeps), and the
    token vocabulary the board editor offers. The badges draw on board
    cards and, through `TargetBadges`, on inbox rows, whose glyph and
-   capsule read the target's current state once it has been refreshed;
+   capsule read the target's current state once it has been refreshed.
+   For previews: the mark an event token wears in the conversation
+   (`eventBadge`) and where a link or image a body writes points
+   (`bodyURL` — GitLab's uploads are relative to the project);
 3. one registration line in `providerSpecs`.
 
 Label rules, a board's scope, and each board column all hold one kind of

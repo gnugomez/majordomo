@@ -790,6 +790,23 @@ final class AppModel {
     }
   }
 
+  // MARK: Images
+
+  /// Where a preview of `item` gets the images its bodies show: sources
+  /// resolved by the item's provider against its target, pictures fetched
+  /// through the account the item came through.
+  func bodyImages(for item: InboxItem) -> BodyImageSource {
+    let providerSpec = spec(for: item.provider)
+    let engine = engine
+    let account = item.accountId
+    let page = item.url
+    return BodyImageSource(
+      key: "\(account) \(page)",
+      resolve: { providerSpec.bodyURL($0, for: item) },
+      fetch: { url in await engine?.image(url, account: account, page: page) }
+    )
+  }
+
   // MARK: Launch at login
 
   func refreshLaunchAtLogin() {

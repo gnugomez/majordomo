@@ -1,26 +1,13 @@
 // Right pane of the main window: everything AppModel knows about the
-// selected thread, then its target in full — the comment that raised the
-// notification, the description, the latest comments — as the background
-// refresh stored it, read from disk. A target the refresh hasn't reached
-// yet is asked for ahead of it. A multi-member thread stacks its messages
-// as cards under the shared header.
+// selected thread, then its target in full — who opened it and what it
+// says, the latest comments and reviews — as the background refresh stored
+// it, read from disk, as a timeline of cards on a gray pane. A target the
+// refresh hasn't reached yet is asked for ahead of it. A multi-member
+// thread stacks its messages as cards of the same kind under the shared
+// header. The images the bodies show come through the item's own account
+// (AppModel.bodyImages), handed down in the environment.
 
 import SwiftUI
-
-/// The conversation shades: a quiet gray pane with white message cards in
-/// light mode, a near-black pane with lifted gray cards in dark mode.
-/// Neither is a plain system color — windowBackgroundColor sits LIGHTER
-/// than textBackgroundColor in dark mode, which would invert the scheme.
-private let conversationPane = Color(nsColor: NSColor(name: nil) { appearance in
-  appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    ? NSColor(white: 0.12, alpha: 1)
-    : NSColor(white: 0.95, alpha: 1)
-})
-private let messageCardBackground = Color(nsColor: NSColor(name: nil) { appearance in
-  appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    ? NSColor(white: 0.2, alpha: 1)
-    : .white
-})
 
 struct PreviewView: View {
   let model: AppModel
@@ -29,6 +16,13 @@ struct PreviewView: View {
   @Environment(\.searchHighlightTerms) private var highlightTerms
   /// The message card under the pointer, for the hover affordance.
   @State private var hoveredMemberId: String?
+  /// The comment just jumped to, lit up for a moment.
+  @State private var flashedCommentId: String?
+  /// Where the pane is scrolled: to a comment jumped to, or back to the
+  /// title for another thread.
+  @State private var scrollPosition = ScrollPosition()
+  /// Where the comments the notifications point at sit in the pane.
+  @State private var commentOffsets = CommentOffsets()
 
   var body: some View {
     if let thread {
@@ -36,84 +30,21 @@ struct PreviewView: View {
       let providerSpec = spec(for: item.provider)
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
-          HStack(alignment: .firstTextBaseline, spacing: 8) {
-            GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
-              .foregroundStyle(providerSpec.color(for: item))
-            Text(highlighted(item.title, terms: highlightTerms))
-              .font(.system(size: 17, weight: .semibold))
-              .textSelection(.enabled)
-          }
-
-          HStack(spacing: 6) {
-            if let capsule = providerSpec.stateCapsule(for: item) {
-              CapsuleTag(text: capsule.label, tint: capsule.color)
-            }
-            if thread.items.count == 1 {
-              // A single notification's reason belongs to the header; a
-              // thread's reasons ride on its messages below.
-              CapsuleTag(
-                text: providerSpec.reasonLabel(item.reason),
-                tint: item.isMention ? Color.accentColor : nil
-              )
-            }
-            if !thread.read {
-              CapsuleTag(text: "unread", tint: Color.accentColor)
-            }
-          }
-
-          Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-            GridRow {
-              fieldLabel("Provider")
-              HStack(spacing: 5) {
-                ProviderMark(provider: item.provider)
-                  .foregroundStyle(.secondary)
-                  .frame(width: 13, height: 13)
-                Text(item.provider.displayName)
-              }
-            }
-            GridRow {
-              fieldLabel("Repository")
-              Text(highlighted(item.repo, terms: highlightTerms)).textSelection(.enabled)
-            }
-            if let author = item.author {
-              GridRow {
-                fieldLabel("Author")
-                Text(highlighted(author, terms: highlightTerms)).textSelection(.enabled)
-              }
-            }
-            GridRow {
-              fieldLabel("Updated")
-              Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
-            }
-            GridRow {
-              fieldLabel("Labels")
-              labelsRow(thread)
-            }
-            if !item.upstreamLabels.isEmpty {
-              GridRow {
-                fieldLabel("Upstream")
-                  .help("Labels the target carries at \(item.provider.displayName)")
-                Text(item.upstreamLabels.joined(separator: ", "))
-                  .foregroundStyle(.secondary)
-                  .textSelection(.enabled)
-              }
-            }
-          }
-          .font(.system(size: 12))
+          header(thread, providerSpec: providerSpec)
 
           let load = model.conversation(for: item)
           let conversation = loadedConversation(load)
-          // The comment the notification points at, when the stored
-          // conversation still holds it.
-          let trigger = providerSpec.triggerCommentId(for: item).flatMap { id in
-            conversation?.comments.first { $0.id == id }
-          }
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
-              messageCard(member, providerSpec: providerSpec)
+              messageCard(member, providerSpec: providerSpec, conversation: conversation)
             }
-          } else if let trigger {
-            TriggerCard(comment: trigger, now: model.now)
+          } else if let trigger = triggerComment(of: item, in: conversation, providerSpec: providerSpec) {
+            TriggerJump(
+              comment: trigger, reason: providerSpec.reasonLabel(item.reason), provider: item.provider,
+              now: model.now
+            ) {
+              jump(to: trigger.id)
+            }
           } else if conversation == nil, let bodyView = providerSpec.bodyView(for: item) {
             // The notification's own excerpt stands in until the target
             // is in, or when it can't be.
@@ -122,11 +53,23 @@ struct PreviewView: View {
           }
           ConversationStatusRow(load: load)
           if let conversation {
-            targetSections(conversation, triggerId: trigger?.id, of: thread, providerSpec: providerSpec)
+            Divider()
+            ConversationTimeline(
+              conversation: conversation, item: item, triggers: triggers(of: thread, providerSpec: providerSpec),
+              flashedId: flashedCommentId, now: model.now,
+              placed: commentOffsets.note
+            )
           }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .coordinateSpace(.named(CommentOffsets.space))
+      }
+      .scrollPosition($scrollPosition)
+      // Another thread reads from its title down.
+      .onChange(of: thread.id) {
+        commentOffsets.forget()
+        scrollPosition.scrollTo(edge: .top)
       }
       // The stored conversation, read at once; one not in yet is asked for
       // once the selection settles, so arrowing down the list doesn't send
@@ -141,12 +84,9 @@ struct PreviewView: View {
         }
         await model.loadConversation(for: item)
       }
-      // The pane goes slightly gray so the white message cards read as
-      // cards. Single notifications keep the plain page look — there's no
-      // card to set off.
-      .background(
-        thread.items.count > 1 ? AnyShapeStyle(conversationPane) : AnyShapeStyle(.clear)
-      )
+      // The pane goes slightly gray so the white cards read as cards.
+      .background(ConversationShades.pane)
+      .environment(\.bodyImages, model.bodyImages(for: item))
     } else {
       // Scroll-backed like the populated branch: plain (non-scrolling)
       // content makes the toolbar draw a hard edge line over this pane.
@@ -161,33 +101,74 @@ struct PreviewView: View {
     }
   }
 
-  /// The target's description and latest comments, under what the
-  /// notification itself says.
+  /// The title, the state and reason capsules, and the facts.
   @ViewBuilder
-  private func targetSections(
-    _ conversation: TargetConversation, triggerId: String?, of thread: InboxThread, providerSpec: any ProviderSpec
-  ) -> some View {
+  private func header(_ thread: InboxThread, providerSpec: any ProviderSpec) -> some View {
     let item = thread.lead
-    if conversation.description != nil || !conversation.comments.isEmpty {
-      Divider()
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      GlyphImage(glyph: providerSpec.glyph(for: item), size: 16)
+        .foregroundStyle(providerSpec.color(for: item))
+      Text(highlighted(item.title, terms: highlightTerms))
+        .font(.system(size: 17, weight: .semibold))
+        .textSelection(.enabled)
     }
-    if let description = conversation.description {
-      // A fresh look at another target starts collapsed again.
-      DescriptionSection(text: description)
-        .id(item.id)
+
+    HStack(spacing: 6) {
+      if let capsule = providerSpec.stateCapsule(for: item) {
+        CapsuleTag(text: capsule.label, tint: capsule.color)
+      }
+      if thread.items.count == 1 {
+        // A single notification's reason belongs to the header; a
+        // thread's reasons ride on its messages below.
+        CapsuleTag(
+          text: providerSpec.reasonLabel(item.reason),
+          tint: item.isMention ? Color.accentColor : nil
+        )
+      }
+      if !thread.read {
+        CapsuleTag(text: "unread", tint: Color.accentColor)
+      }
     }
-    if !conversation.comments.isEmpty {
-      ConversationSection(
-        comments: conversation.comments,
-        // Only a single notification's card shows the comment it came from.
-        triggerId: thread.items.count == 1 ? triggerId : nil,
-        reason: providerSpec.reasonLabel(item.reason),
-        commentCount: conversation.commentCount,
-        providerName: item.provider.displayName,
-        url: URL(string: item.url),
-        now: model.now
-      )
+
+    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+      GridRow {
+        fieldLabel("Provider")
+        HStack(spacing: 5) {
+          ProviderMark(provider: item.provider)
+            .foregroundStyle(.secondary)
+            .frame(width: 13, height: 13)
+          Text(item.provider.displayName)
+        }
+      }
+      GridRow {
+        fieldLabel("Repository")
+        Text(highlighted(item.repo, terms: highlightTerms)).textSelection(.enabled)
+      }
+      if let author = item.author {
+        GridRow {
+          fieldLabel("Author")
+          Text(highlighted(author, terms: highlightTerms)).textSelection(.enabled)
+        }
+      }
+      GridRow {
+        fieldLabel("Updated")
+        Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
+      }
+      GridRow {
+        fieldLabel("Labels")
+        labelsRow(thread)
+      }
+      if !item.upstreamLabels.isEmpty {
+        GridRow {
+          fieldLabel("Upstream")
+            .help("Labels the target carries at \(item.provider.displayName)")
+          Text(item.upstreamLabels.joined(separator: ", "))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+      }
     }
+    .font(.system(size: 12))
   }
 
   private func loadedConversation(_ load: AppModel.ConversationLoad?) -> TargetConversation? {
@@ -197,48 +178,100 @@ struct PreviewView: View {
     return nil
   }
 
-  /// One thread member as a message card: why it arrived, from whom, when
-  /// — then its body. Clicking selects the message (accent outline) and the
-  /// toolbar's mark-read/open narrow to it.
-  private func messageCard(_ member: InboxItem, providerSpec: any ProviderSpec) -> some View {
+  /// The comment a notification points at, when the stored conversation
+  /// still holds it.
+  private func triggerComment(
+    of item: InboxItem, in conversation: TargetConversation?, providerSpec: any ProviderSpec
+  ) -> DetailComment? {
+    providerSpec.triggerCommentId(for: item).flatMap { id in
+      conversation?.comments.first { $0.id == id }
+    }
+  }
+
+  /// The comments the thread's notifications point at, with why each
+  /// arrived — the first member's reason where two point at one comment.
+  private func triggers(of thread: InboxThread, providerSpec: any ProviderSpec) -> [String: String] {
+    var triggers: [String: String] = [:]
+    for member in thread.items {
+      if let id = providerSpec.triggerCommentId(for: member), triggers[id] == nil {
+        triggers[id] = providerSpec.reasonLabel(member.reason)
+      }
+    }
+    return triggers
+  }
+
+  /// Scrolls the timeline to a comment and lights it up for a moment.
+  private func jump(to commentId: String) {
+    if let offset = commentOffsets.offset(of: commentId) {
+      withAnimation(.smooth) {
+        // A little of what it answers stays in view above it.
+        scrollPosition.scrollTo(y: max(offset - 12, 0))
+      }
+    }
+    flashedCommentId = commentId
+    Task {
+      try? await Task.sleep(for: .seconds(1.2))
+      if flashedCommentId == commentId {
+        flashedCommentId = nil
+      }
+    }
+  }
+
+  /// One thread member as a message card, drawn like the timeline's: who,
+  /// why it arrived, when — then the comment it points at, named with a
+  /// way down to it, or the notification's own body. Clicking selects the
+  /// message (accent outline) and the toolbar's mark-read/open narrow to it.
+  private func messageCard(
+    _ member: InboxItem, providerSpec: any ProviderSpec, conversation: TargetConversation?
+  ) -> some View {
     let selected = model.selectedMemberId == member.id
+    let comment = triggerComment(of: member, in: conversation, providerSpec: providerSpec)
+    let author = comment?.author ?? member.author
     return VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 6) {
+      HStack(spacing: 8) {
         if !member.read {
           Circle()
             .fill(Color.accentColor)
-            .frame(width: 6, height: 6)
+            .frame(width: 7, height: 7)
+            .help("Unread")
+        }
+        PersonAvatar(
+          login: author,
+          avatarUrl: comment?.avatarUrl ?? author.flatMap { conversation?.avatarUrl(of: $0) },
+          provider: member.provider, size: 24
+        )
+        if let author {
+          Text(highlighted(author, terms: highlightTerms))
+            .font(.system(size: 13, weight: .semibold))
+            .lineLimit(1)
         }
         CapsuleTag(
           text: providerSpec.reasonLabel(member.reason),
           tint: member.isMention ? Color.accentColor : nil
         )
-        if let author = member.author {
-          Text(highlighted(author, terms: highlightTerms))
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-        }
-        Text(relativeTime(member.updatedAt, now: model.now))
-          .font(.system(size: 12))
-          .foregroundStyle(.tertiary)
+        Spacer(minLength: 4)
+        EntryTime(date: member.updatedAt, now: model.now)
       }
-      if let bodyView = providerSpec.bodyView(for: member) {
+      if let comment {
+        Text(excerpt(of: comment.body))
+          .font(.system(size: 13))
+          .foregroundStyle(.secondary)
+          .lineLimit(3)
+        Button("Show in Conversation") {
+          jump(to: comment.id)
+        }
+        .buttonStyle(.link)
+        .font(.system(size: 12))
+      } else if let bodyView = providerSpec.bodyView(for: member) {
         bodyView
       }
     }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(messageCardBackground, in: RoundedRectangle(cornerRadius: 10))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .strokeBorder(
-          selected
-            ? AnyShapeStyle(Color.accentColor)
-            : (hoveredMemberId == member.id ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.quaternary)),
-          lineWidth: selected ? 2 : 1
-        )
+    .conversationCard(
+      outline: selected
+        ? AnyShapeStyle(Color.accentColor)
+        : (hoveredMemberId == member.id ? AnyShapeStyle(.tertiary) : nil),
+      lineWidth: selected ? 2 : 1
     )
-    .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
     .contentShape(RoundedRectangle(cornerRadius: 10))
     .onHover { inside in
       hoveredMemberId = inside ? member.id : nil

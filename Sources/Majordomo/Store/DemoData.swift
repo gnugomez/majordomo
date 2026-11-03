@@ -459,18 +459,32 @@ enum DemoData {
   }
 
   /// The fixture targets' conversations: written out for a few of them — a
-  /// mention with its comment, a review with a conversation — and for the
-  /// rest just the description their newest item carries.
+  /// mention with its comment, a review with a conversation, reviews and
+  /// approvals, a screenshot — and for the rest just the description their
+  /// newest item carries.
   static func conversations(in file: StoreFile) -> [String: TargetConversation] {
     let now = Date()
-    func comment(_ id: String, _ author: String, minutesAgo: Double, _ body: String) -> DetailComment {
-      DetailComment(id: id, author: author, createdAt: now.addingTimeInterval(-minutesAgo * 60), body: body)
+    func ago(_ minutes: Double) -> Date {
+      now.addingTimeInterval(-minutes * 60)
+    }
+    func comment(
+      _ id: String, _ author: String, minutesAgo: Double, _ body: String, event: String? = nil,
+      provider: ProviderId = .github
+    ) -> DetailComment {
+      DetailComment(
+        id: id, author: author, avatarUrl: provider == .gitlab ? gitlabAvatar(author) : nil,
+        createdAt: ago(minutesAgo), body: body, event: event
+      )
     }
 
     var conversations: [String: TargetConversation] = [:]
     for item in file.items.values.sorted(by: { $0.updatedAt < $1.updatedAt }) {
       if let key = GitForgeVisuals.targetUrl(item.url)?.key {
-        conversations[key] = TargetConversation(description: item.body, commentCount: 0)
+        conversations[key] = TargetConversation(
+          description: item.body, author: item.author,
+          authorAvatarUrl: item.provider == .gitlab ? item.author.map(gitlabAvatar) : nil,
+          createdAt: item.updatedAt.addingTimeInterval(-2 * 24 * 60 * 60), commentCount: 0
+        )
       }
     }
     func write(_ itemId: String, _ conversation: (StoredItem) -> TargetConversation) {
@@ -482,6 +496,8 @@ enum DemoData {
     write("\(github):26") { item in
       TargetConversation(
         description: item.body,
+        author: item.author,
+        createdAt: ago(4 * 24 * 60),
         comments: [
           comment("1", "kim", minutesAgo: 3 * 24 * 60, "Same here with a 2.4 GB export from Figma."),
           comment("2", "mona", minutesAgo: 2 * 24 * 60, """
@@ -516,10 +532,37 @@ enum DemoData {
           - [x] Benchmarks against the multipart path
           - [ ] Remove the old code path
           """,
+        author: item.author,
+        createdAt: ago(2 * 24 * 60),
         comments: [
-          comment("1", "hubot", minutesAgo: 30, "Benchmarks look great — **3× less memory** on the 1 GB fixture."),
+          comment("1", "hubot", minutesAgo: 3 * 60, """
+            Benchmarks look great — **3× less memory** on the 1 GB fixture, and \
+            flat no matter the file size:
+
+            <img width="520" alt="Peak memory, multipart against streaming" src="\(chartImage)" />
+            """),
+          comment("review-11", "kim", minutesAgo: 95, """
+            The retry path still re-reads the part from disk — with streaming \
+            there is no file to go back to. Can it replay from the buffered \
+            chunk instead?
+
+            <details>
+            <summary>Where it happens</summary>
+
+            ```swift
+            let part = try Data(contentsOf: partURL)   // gone after streaming
+            try await upload(part, attempt: attempt + 1)
+            ```
+
+            </details>
+            """, event: "changes_requested"),
+          comment("2", "mona", minutesAgo: 40, """
+            Good catch — retries now replay the in-memory chunk, capped at \
+            `maxChunkSize`. Pushed in `8c1f2e4`.
+            """),
+          comment("review-12", "sasha", minutesAgo: 12, "", event: "approved"),
         ],
-        commentCount: 1
+        commentCount: 2
       )
     }
     write("\(gitlab):49") { item in
@@ -528,12 +571,60 @@ enum DemoData {
           Exports request, error, and latency counters on `/stats`, one \
           series per provider.
 
+          ![Grafana panel for /stats](/uploads/5f3a9c1e7b2d4e6f8a0b1c2d3e4f5a6b/stats-panel.png)
+
           Closes #212.
           """,
-        comments: [comment("7", "kim", minutesAgo: 49, item.body ?? "")],
+        author: item.author,
+        authorAvatarUrl: item.author.map(gitlabAvatar),
+        createdAt: ago(26 * 60),
+        comments: [
+          comment("7", "kim", minutesAgo: 49, item.body ?? "", provider: .gitlab),
+          comment("8", "priya", minutesAgo: 30, "", event: "approved", provider: .gitlab),
+        ],
         commentCount: 1
       )
     }
     return conversations
+  }
+
+  // MARK: Images
+
+  /// Where the fixtures' screenshot is written: an upload's address, as
+  /// GitHub would give it.
+  private static let chartImage = "https://github.com/user-attachments/assets/6f1c2a9e-4b7d-4c3e-9a51-2d8e0b7f3c14"
+
+  /// The people the fixtures name, each with a face among the resources.
+  private static let people = ["mona", "hubot", "kim", "sasha", "priya", "octocat", "lin"]
+
+  /// A person's face on the demo GitLab instance.
+  private static func gitlabAvatar(_ login: String) -> String {
+    "https://gitlab.acme.dev/uploads/-/system/user/avatar/\(login)/avatar.png"
+  }
+
+  /// A fixture image by its address — the screenshot, or a person's face
+  /// wherever a provider would serve it — read from the app's resources.
+  /// nil for anything else, which the preview shows as a link.
+  static func image(_ url: URL) -> Data? {
+    let name: String
+    if url.absoluteString == chartImage {
+      name = "demo-chart"
+    } else if let login = people.first(where: { login in
+      url.pathComponents.contains { $0 == login || $0 == "\(login).png" }
+    }) {
+      name = "demo-avatar-\(login)"
+    } else {
+      return nil
+    }
+    return resources?.url(forResource: name, withExtension: "png").flatMap { try? Data(contentsOf: $0) }
+  }
+
+  /// The SwiftPM resource bundle: in Contents/Resources in the packaged
+  /// app, where Bundle.module doesn't look; Bundle.module under `swift run`.
+  private static var resources: Bundle? {
+    if let url = Bundle.main.resourceURL?.appending(path: "Majordomo_Majordomo.bundle"), let bundle = Bundle(url: url) {
+      return bundle
+    }
+    return .module
   }
 }

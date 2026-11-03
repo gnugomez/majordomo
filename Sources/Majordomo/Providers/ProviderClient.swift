@@ -109,6 +109,20 @@ protocol ProviderClient: Sendable {
   /// leaves its keys out of the answer, to be asked again; a throw means
   /// the round failed as a whole.
   func fetchTargets(_ config: AccountConfig, keys: [String], conversations: Set<String>) async throws -> TargetRound
+  /// The bytes of an image a target's body shows: `url` as the spec's
+  /// `bodyURL` resolved it, `page` the target's url, for a provider whose
+  /// private images need its API's help to find. The account's token goes
+  /// only to the provider's own API origin over https; every other request
+  /// carries no credentials. Throws when the image can't be had — the
+  /// preview shows a link in its place.
+  func fetchImage(_ config: AccountConfig, url: URL, page: String) async throws -> Data
+}
+
+extension ProviderClient {
+  /// Public images only.
+  func fetchImage(_ config: AccountConfig, url: URL, page: String) async throws -> Data {
+    try await fetchPublicImage(url)
+  }
 }
 
 /// Caps provider-supplied body text at fetch time — a description can carry
