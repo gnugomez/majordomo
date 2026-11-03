@@ -695,9 +695,10 @@ private struct StickToLeadingEdge: ViewModifier {
   }
 }
 
-/// The column headers, floating over the grid in glass: lined up with
-/// their columns at the grid's sideways offset, and clipped to the pane —
-/// which runs on under the sidebar, so they pass beneath it with the cards.
+/// The column headers, plain titles with their counts over the grid:
+/// lined up with their columns at the grid's sideways offset, and clipped
+/// to the pane — which runs on under the sidebar, so they pass beneath it
+/// with the cards.
 private struct ColumnHeaderRow: View {
   struct Header: Identifiable {
     let id: String
@@ -731,24 +732,22 @@ private struct ColumnHeaderRow: View {
   }
 
   private var labels: some View {
-    GlassEffectContainer(spacing: columnGap) {
-      HStack(spacing: columnGap) {
-        ForEach(columns) { column in
-          HStack(spacing: 6) {
-            Text(column.name)
-              .font(.app(.callout, weight: .semibold))
-              .foregroundStyle(column.quiet ? .secondary : .primary)
-            Text("\(column.count)")
-              .font(.app(.caption, weight: .medium))
-              .foregroundStyle(.secondary)
-              .monospacedDigit()
-          }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .glassEffect(.regular, in: .capsule)
-          .help(column.help)
-          .frame(width: columnWidth, alignment: .leading)
+    HStack(spacing: columnGap) {
+      ForEach(columns) { column in
+        HStack(spacing: 6) {
+          Text(column.name)
+            .font(.app(.callout, weight: .semibold))
+            .foregroundStyle(column.quiet ? .secondary : .primary)
+          Text("\(column.count)")
+            .font(.app(.caption, weight: .medium))
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
         }
+        // In from the column's edge as far as its cards' text.
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .help(column.help)
+        .frame(width: columnWidth, alignment: .leading)
       }
     }
   }
