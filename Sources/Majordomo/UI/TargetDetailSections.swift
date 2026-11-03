@@ -94,19 +94,14 @@ struct ConversationTimeline: View {
           }
         }
       }
-      .background(alignment: .leading) {
-        // The thread line, through the faces. Each card clears it from
-        // under itself (`coversLine`), so it shows between the cards and
-        // through the events' glyphs.
-        Rectangle()
-          .fill(.separator)
-          .frame(width: 1)
-          .padding(.leading, 23.5)
-          .padding(.vertical, 18)
+      // The thread line, through the faces: drawn between the cards rather
+      // than under them, since a card's wash lets what lies beneath show,
+      // and passing behind the events' solid glyphs.
+      .backgroundPreferenceValue(TimelineCardFrames.self) { cards in
+        GeometryReader { proxy in
+          ThreadLine(height: proxy.size.height, cards: cards.map { proxy[$0] })
+        }
       }
-      // What the cards clear the line from: this stack alone, not the
-      // inspector's material behind it.
-      .compositingGroup()
     }
   }
 
@@ -186,9 +181,10 @@ private struct TimelineCard: View {
     .conversationCard(
       outline: marked ? AnyShapeStyle(Color.accentColor.opacity(flashed ? 1 : 0.65)) : nil,
       lineWidth: flashed ? 2.5 : 1.5,
-      tint: marked ? Color.accentColor.opacity(flashed ? 0.12 : 0.04) : nil,
-      coversLine: true
+      tint: marked ? Color.accentColor.opacity(flashed ? 0.12 : 0.04) : nil
     )
+    // Where the thread line stops: the wash lets what lies beneath show.
+    .anchorPreference(key: TimelineCardFrames.self, value: .bounds) { [$0] }
     .animation(.easeOut(duration: 0.4), value: flashed)
   }
 
@@ -328,5 +324,41 @@ struct ConversationStatusRow: View {
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
+  }
+}
+
+/// The frames of the timeline's cards, which the thread line stops at.
+private struct TimelineCardFrames: SwiftUI.PreferenceKey {
+  static var defaultValue: [Anchor<CGRect>] { [] }
+
+  static func reduce(value: inout [Anchor<CGRect>], nextValue: () -> [Anchor<CGRect>]) {
+    value.append(contentsOf: nextValue())
+  }
+}
+
+/// The line down the faces, in segments that run between the cards.
+private struct ThreadLine: View {
+  let height: CGFloat
+  let cards: [CGRect]
+
+  /// Through the middle of the faces, and short of the stack's ends.
+  private let x: CGFloat = 23.5
+  private let inset: CGFloat = 18
+
+  var body: some View {
+    Path { path in
+      var top = inset
+      for card in cards.sorted(by: { $0.minY < $1.minY }) where card.maxY > top {
+        if card.minY > top {
+          path.addRect(CGRect(x: x, y: top, width: 1, height: card.minY - top))
+        }
+        top = card.maxY
+      }
+      let bottom = height - inset
+      if bottom > top {
+        path.addRect(CGRect(x: x, y: top, width: 1, height: bottom - top))
+      }
+    }
+    .fill(.separator)
   }
 }
