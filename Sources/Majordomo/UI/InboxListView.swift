@@ -63,19 +63,19 @@ struct InboxListView: View {
           title: "No results",
           caption: "Nothing here matches \u{201C}\(model.searchText)\u{201D}."
         )
-      } else if !model.narrowing.picks.isEmpty {
+      } else if !model.filter.picks.isEmpty {
         EmptyStateView(
           symbol: "line.3.horizontal.decrease",
           title: "No matches",
           caption: "Nothing here matches the filter. Turn it off with ⌘L, or choose Clear Filters, to see the rest."
         )
-      } else if model.narrowing.unreadOnly {
+      } else if model.filter.unreadOnly {
         EmptyStateView(
           symbol: "checkmark.circle",
           title: "You're all caught up",
           caption: "Nothing here is unread. Turn the filter off with ⌘L to see the rest."
         )
-      } else if let window = model.narrowing.window {
+      } else if let window = model.filter.window {
         EmptyStateView(
           symbol: "calendar",
           title: "Nothing in the \(window.label.lowercased())",

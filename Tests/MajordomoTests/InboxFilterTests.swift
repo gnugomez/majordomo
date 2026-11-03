@@ -33,71 +33,62 @@ struct InboxFilterTests {
     #expect(!InboxFilter(picks: [.author: "mona"]).isEmpty)
   }
 
-  // MARK: On and off
+  // MARK: Picking and clearing
 
-  @Test func anEditTurnsTheFilterOnAndSwitchingOffKeepsTheSet() {
+  @Test func aPickAppliesAtOnce() {
     let model = freshModel()
     model.clearFilters()
-    #expect(!model.filterEnabled)
     model.setFacet(.author, to: "mona")
     #expect(model.filterActive)
-    #expect(model.narrowing.picks == [.author: "mona"])
-
-    model.toggleFilter()
-    #expect(!model.filterActive)
-    #expect(model.narrowing.isEmpty)
-    #expect(model.filter.picks == [.author: "mona"])
-
-    model.toggleFilter()
-    #expect(model.narrowing.picks == [.author: "mona"])
+    #expect(model.filter == InboxFilter(picks: [.author: "mona"]))
   }
 
-  @Test func whileOffNothingOfTheSetNarrows() {
+  @Test func theGlyphWithNothingPickedFiltersToUnread() {
+    let model = freshModel()
+    model.clearFilters()
+    model.toggleFilter()
+    #expect(model.filter == InboxFilter(unreadOnly: true))
+  }
+
+  @Test func theGlyphWithAnythingPickedClearsEverything() {
     let model = freshModel()
     model.setUnreadOnly(true)
     model.setActivityWindow(.week)
     model.setFacet(.repository, to: "acme/app")
     model.toggleFilter()
-    #expect(model.narrowing == InboxFilter())
-    #expect(model.filter == InboxFilter(unreadOnly: true, window: .week, picks: [.repository: "acme/app"]))
+    #expect(model.filter.isEmpty)
+    #expect(!model.filterActive)
   }
 
-  @Test func switchingOnWithNothingSetStartsWithUnreadOnly() {
+  @Test func aPickClearedFromTheGlyphNeverComesBackWithTheNext() {
+    // An author picked, the glyph clicked, then a date picked: the date
+    // alone narrows — nothing held aside returns with it.
     let model = freshModel()
     model.clearFilters()
+    model.setFacet(.author, to: "mona")
     model.toggleFilter()
-    #expect(model.filterActive)
-    #expect(model.narrowing == InboxFilter(unreadOnly: true))
+    model.setActivityWindow(.twoDays)
+    #expect(model.filter == InboxFilter(window: .twoDays))
   }
 
-  @Test func clearFiltersEmptiesTheSetAndSwitchesItOff() {
+  @Test func clearFiltersEmptiesTheSet() {
     let model = freshModel()
     model.setUnreadOnly(true)
     model.setActivityWindow(.twoDays)
     model.setFacet(.author, to: "mona")
     model.clearFilters()
     #expect(model.filter.isEmpty)
-    #expect(!model.filterEnabled)
   }
 
-  @Test func theSwitchOutlivesALaunchAndThePicksDoNot() {
+  @Test func unreadAndTheDateOutliveALaunchAndThePicksDoNot() {
     let model = freshModel()
     model.setUnreadOnly(true)
+    model.setActivityWindow(.week)
     model.setFacet(.author, to: "mona")
-    model.toggleFilter()
-    #expect(defaults.values["filterEnabled"] as? Bool == false)
 
     let relaunched = freshModel()
-    #expect(!relaunched.filterEnabled)
-    #expect(relaunched.unreadOnly)
+    #expect(relaunched.filter == InboxFilter(unreadOnly: true, window: .week))
     #expect(relaunched.facetPicks.isEmpty)
-  }
-
-  @Test func unsetTheSwitchReadsOnSoARememberedFilterKeepsNarrowing() {
-    defaults.set(true, forKey: "unreadOnly")
-    let model = freshModel()
-    #expect(model.filterActive)
-    #expect(model.narrowing.unreadOnly)
   }
 
   @Test func readsAreKeptInPlaceOnlyWhileTheFilterNarrowsToUnread() {
@@ -113,7 +104,7 @@ struct InboxFilterTests {
     model.apply(state)
     #expect(model.keptReadIds == ["acct:1"])
 
-    // Switching lets go of them, and while off nothing is held.
+    // Clearing lets go of them, and without Unread Only nothing is held.
     model.toggleFilter()
     #expect(model.keptReadIds.isEmpty)
     state.items[1].read = true
@@ -122,7 +113,7 @@ struct InboxFilterTests {
     #expect(model.keptReadIds.isEmpty)
   }
 
-  @Test func aBoardNarrowsOnlyWhileTheFilterIsOn() {
+  @Test func aBoardNarrowsByWhatIsPicked() {
     let model = freshModel()
     let board = Board(id: "b", name: "Work", symbol: "eye", columns: [])
     let unread = card("unread", items: [item("unread:1", read: false)])
@@ -139,9 +130,9 @@ struct InboxFilterTests {
     model.apply(state)
 
     model.setUnreadOnly(true)
-    #expect(model.placement(of: board, filter: model.narrowing).allCards.map(\.id) == ["unread"])
+    #expect(model.placement(of: board, filter: model.filter).allCards.map(\.id) == ["unread"])
     model.toggleFilter()
-    #expect(model.placement(of: board, filter: model.narrowing).count == 2)
+    #expect(model.placement(of: board, filter: model.filter).count == 2)
   }
 
   // MARK: The facet menus' counts

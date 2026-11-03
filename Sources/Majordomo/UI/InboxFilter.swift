@@ -1,7 +1,6 @@
 // What the toolbar's filter narrows the inbox and the boards by: unread,
-// a date window, and one pick per facet. The filter keeps its set while it
-// is switched off; what applies is `AppModel.narrowing`, the set while the
-// filter is on and nothing while it is off.
+// a date window, and one pick per facet (`AppModel.filter`). Whatever is
+// picked applies; nothing picked narrows nothing.
 
 import Foundation
 

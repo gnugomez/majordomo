@@ -177,9 +177,9 @@ reintroduces the bug:
   for as it is built (`offeredValues`) — so no push redraws it (see the
   fade entry), and its tooltip holds still. In a narrow window the system
   moves it, with the preview toggle, into the toolbar's overflow menu,
-  which lists the menu but not the glyph's click; the menu's own Filter
-  item is the switch there, and the one VoiceOver can name, the chevron
-  having no name of its own.
+  which lists the menu but not the glyph's click; the menu's Unread Only
+  and Clear Filters do what the click does, there and for VoiceOver,
+  which names no chevron.
 - A board's column headers ride a `safeAreaBar` on its one two-axis
   ScrollView (BoardView), drawn as an overlay on a clear band rather than
   laid out directly: a row as wide as the grid would widen the bar, and

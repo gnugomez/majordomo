@@ -174,21 +174,16 @@ final class AppModel {
   var activityWindow: ActivityWindow? { preferences.activityWindow }
   /// The toolbar filter's Unread Only, remembered across launches.
   var unreadOnly: Bool { preferences.unreadOnly }
-  /// Whether the toolbar's filter is switched on, remembered across
-  /// launches. Off, it keeps its set and narrows nothing.
-  var filterEnabled: Bool { preferences.filterEnabled }
-  /// What the filter is set to, whether or not it is on.
+  /// What the toolbar's filter narrows by: whatever is picked applies,
+  /// and nothing picked narrows nothing. Everything the filter narrows —
+  /// the inbox, the boards, the window's subtitle, the counts in its menu
+  /// — reads this. There is no switched-off set held aside: one that
+  /// came back with the next pick narrowed by what no longer showed.
   var filter: InboxFilter {
     InboxFilter(unreadOnly: unreadOnly, window: activityWindow, picks: facetPicks)
   }
-  /// The filter as it applies: its set while it is on, nothing while it is
-  /// off. Everything the filter narrows — the inbox, the boards, the
-  /// window's subtitle, the counts in its menu — reads this.
-  var narrowing: InboxFilter {
-    filterEnabled ? filter : InboxFilter()
-  }
-  /// Whether the filter narrows anything right now: on, with something set.
-  var filterActive: Bool { !narrowing.isEmpty }
+  /// Whether the filter narrows anything right now.
+  var filterActive: Bool { !filter.isEmpty }
   /// Which new items notify, and with what sound (settings → Notifications).
   var notifyScope: NotifyScope { preferences.notifyScope }
   /// "default", "none", or a system alert sound name ("Ping").
@@ -218,7 +213,7 @@ final class AppModel {
     let moved = state.revisions.moved(since: appliedRevisions)
     appliedRevisions = state.revisions
     if moved.contains(.items) {
-      if narrowing.unreadOnly {
+      if filter.unreadOnly {
         keepNewlyRead(state.items)
       }
       items = state.items
@@ -298,17 +293,15 @@ final class AppModel {
     }
   }
 
-  // The filter's set is edited from its menu, and any edit there turns the
-  // filter on: what was just picked is what the user wants to see.
+  // The filter's set is edited from its menu, and what is picked there
+  // applies at once.
 
   func setActivityWindow(_ window: ActivityWindow?) {
     preferences.activityWindow = window
-    switchFilterOn()
   }
 
   func setUnreadOnly(_ on: Bool) {
     preferences.unreadOnly = on
-    switchFilterOn()
     releaseKeptReads()
   }
 
@@ -317,38 +310,27 @@ final class AppModel {
     if facetPicks[facet] != value {
       facetPicks[facet] = value
     }
-    switchFilterOn()
   }
 
-  /// The filter glyph's click, ⌘L, and the menu's Turn Filter On/Off: switches
-  /// the filter off or back on, its set kept either way. With nothing set
-  /// there is nothing to switch on, so it starts with Unread Only.
+  /// The filter glyph's click and ⌘L: with nothing picked, Unread Only —
+  /// Mail's quick filter; with anything picked, everything cleared, so the
+  /// glyph never leaves a pick behind that no longer shows.
   func toggleFilter() {
     if filter.isEmpty {
-      preferences.unreadOnly = true
-      preferences.filterEnabled = true
+      setUnreadOnly(true)
     } else {
-      preferences.filterEnabled.toggle()
+      clearFilters()
     }
-    releaseKeptReads()
   }
 
-  /// Empties the filter's set and switches it off.
+  /// Empties the filter: every view shows everything again.
   func clearFilters() {
     if !facetPicks.isEmpty {
       facetPicks = [:]
     }
     preferences.unreadOnly = false
     preferences.activityWindow = nil
-    preferences.filterEnabled = false
     releaseKeptReads()
-  }
-
-  private func switchFilterOn() {
-    if !preferences.filterEnabled {
-      preferences.filterEnabled = true
-      releaseKeptReads()
-    }
   }
 
   /// Lets the unread filter drop the rows it has been holding read.
@@ -648,7 +630,7 @@ final class AppModel {
   @ObservationIgnored private var narrowedPlacements: [NarrowingKey: BoardPlacement] = [:]
 
   /// A board's cards as the engine placed them, narrowed by the search and
-  /// by `filter` — the toolbar's as it applies (`narrowing`), its picks,
+  /// by `filter` — the toolbar's (`AppModel.filter`), its picks,
   /// date window, and Unread Only as over the inbox — leaving out
   /// `except`'s pick, for that facet's own menu. The sidebar's badge asks
   /// with neither, as the inbox's badges count everything. Narrowing never

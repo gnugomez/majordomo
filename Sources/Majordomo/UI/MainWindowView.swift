@@ -38,7 +38,7 @@ struct MainWindowView: View {
     // never hidden). The search and the filter apply to every category
     // alike; the sidebar's badges stay unfiltered (SidebarView counts on
     // its own).
-    let filter = model.narrowing
+    let filter = model.filter
     let narrowed = matchingWindow(matchingSearch(items, model.searchText), filter.window, now: model.now)
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
@@ -64,7 +64,7 @@ struct MainWindowView: View {
   /// inbox's category, each counting the rows picking it would leave. The
   /// pick is the filter's own, checked even while the filter is off.
   private func offeredValues(for facet: Facet) -> [FacetValue] {
-    let filter = model.narrowing
+    let filter = model.filter
     let picked = model.facetPicks[facet]
     if let board = model.selectedBoard {
       let pool = model.placement(of: board, search: model.searchText, filter: filter, except: facet).allCards
@@ -182,7 +182,7 @@ struct MainWindowView: View {
   /// while the filter narrows them, what it narrows by.
   private func subtitle(for scope: Scope) -> String {
     let count = model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count)
-    let filter = model.narrowing
+    let filter = model.filter
     return filter.isEmpty ? count : "\(count) · \(filter.summary)"
   }
 
@@ -200,7 +200,7 @@ struct MainWindowView: View {
 
   /// The board's cards, narrowed by the search and the filter.
   private func boardPlacement(_ board: Board) -> BoardPlacement {
-    model.placement(of: board, search: model.searchText, filter: model.narrowing)
+    model.placement(of: board, search: model.searchText, filter: model.filter)
   }
 
   /// The card the board has selected, while it is on the board.
@@ -333,7 +333,7 @@ struct MainWindowView: View {
       FilterToolbarControl(
         model: model,
         active: model.filterActive,
-        summary: model.narrowing.summary,
+        summary: model.filter.summary,
         values: offeredValues
       )
       .equatable()

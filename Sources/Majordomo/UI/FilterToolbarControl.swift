@@ -1,10 +1,9 @@
-// The toolbar's filter, as Mail has it: one split control, the filter
-// glyph and a chevron. A click on the glyph switches the filter off or back
-// on, keeping what it is set to; the chevron opens its menu — the switch
-// again, Unread Only, a date window, a pick per facet, and Clear Filters.
-// What the filter holds shows in the window's subtitle while it is on, not
-// as tokens in the search field: Escape and a fresh search clear those,
-// and they can't show a set that is switched off.
+// The toolbar's filter, as Mail draws it: one split control, the filter
+// glyph and a chevron. A click on the glyph filters to unread when nothing
+// is picked and clears the filter when anything is; the chevron opens its
+// menu — Unread Only, a date window, a pick per facet, and Clear Filters.
+// Whatever is picked applies; it shows in the window's subtitle, not as
+// tokens in the search field, which Escape and a fresh search would clear.
 
 import AppKit
 import SwiftUI
@@ -42,8 +41,8 @@ struct FilterToolbarControl: View, Equatable {
     } primaryAction: {
       model.toggleFilter()
     }
-    .help("Turn the filter on or off, or set what it shows")
-    .accessibilityValue(active ? "On: \(summary)" : "Off")
+    .help("Show only unread, or clear the filter; the arrow sets what it shows")
+    .accessibilityValue(active ? "Filtering by \(summary)" : "No filter")
   }
 
   /// The filter glyph as an NSImage. The toolbar draws its items' images
@@ -69,13 +68,6 @@ private struct FilterMenuItems: View {
   let values: FacetValues
 
   var body: some View {
-    // The glyph's click, here too, worded as what it does: the toolbar's
-    // overflow menu lists this menu but not the click, and VoiceOver names
-    // no chevron.
-    Button(model.filterActive ? "Turn Filter Off" : "Turn Filter On") {
-      model.toggleFilter()
-    }
-    Divider()
     Toggle("Unread Only", isOn: Binding(get: { model.unreadOnly }, set: { model.setUnreadOnly($0) }))
     Divider()
     Picker("Date", selection: Binding(get: { model.activityWindow }, set: { model.setActivityWindow($0) })) {
