@@ -194,16 +194,23 @@ struct MainWindowView: View {
       // height above its first row. They stay up when the filters empty
       // the list, so they can be undone.
       .overlay(alignment: .top) {
-        if model.hasAccounts {
-          FilterPillBar(model: model, facets: scope.facets)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-        }
+        pills(scope.facets)
       }
       // The suggestion panel floats over the foot of the list, and only
       // while the model has something to offer.
       .overlay(alignment: .bottom) {
         SuggestionPanel(model: model)
       }
+  }
+
+  /// The filter pills, noting how tall they stand for the content to
+  /// leave that room above its first row; none without an account.
+  @ViewBuilder
+  private func pills(_ facets: [FacetChoices]) -> some View {
+    if model.hasAccounts {
+      FilterPillBar(model: model, facets: facets)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
+    }
   }
 
   // MARK: Board
@@ -232,10 +239,7 @@ struct MainWindowView: View {
     return boardPane(board, placement: placement)
       // The board leaves their height above its column headers.
       .overlay(alignment: .top) {
-        if model.hasAccounts {
-          FilterPillBar(model: model, facets: facets)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-        }
+        pills(facets)
       }
       .onChange(of: selected?.id, initial: true) {
         if let selected {
