@@ -34,9 +34,6 @@ struct InboxListView: View {
   @Bindable var model: AppModel
   let threads: [InboxThread]
   let categoryId: String
-  /// Room above the first row for what floats over the list's top edge
-  /// (the filter pills); the rows scroll on beneath it.
-  var topInset: CGFloat = 0
 
   /// Threads unfolded into their member rows (the count button toggles).
   @State private var expandedThreadIds: Set<String> = []
@@ -101,17 +98,6 @@ struct InboxListView: View {
       let pinned = categoryId == recentCategory.id ? pinnedBoxes(model: model, threads: threads) : []
       ScrollViewReader { scroll in
         List(selection: $model.selectedThreadIds) {
-          // The room for the floating pills: a list ignores content
-          // margins, so it is a clear row of their height. Keyed by that
-          // height, for the reason the spotlight is keyed by its shape: a
-          // row is measured once, and only a replaced row is measured again.
-          ForEach([max(topInset, spotlightRestHeight)], id: \.self) { height in
-            Color.clear
-              .frame(height: height)
-              .listRowInsets(EdgeInsets())
-          }
-          .listRowSeparator(.hidden)
-          .selectionDisabled()
           // The spotlight rides in a row of the list, so it scrolls away
           // with the notifications. A list row is measured once, when it
           // arrives, and keeps that height however its content changes

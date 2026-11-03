@@ -11,8 +11,9 @@ import SwiftUI
 struct MainWindowView: View {
   @Bindable var model: AppModel
 
-  /// How tall the floating filter pills stand; the list's rows start below.
-  @State private var pillBarHeight: CGFloat = 0
+  /// Whether the filter pills are folded into one menu: the toolbar's
+  /// stretch beside the sidebar is too narrow to hold them side by side.
+  @State private var pillsFolded = false
   /// The widths the sidebar and the preview open at: where the user last
   /// left them. Read once, as the window opens.
   @State private var sidebarWidth = rememberedWidth(sidebarWidthKey, or: 200)
@@ -26,8 +27,6 @@ struct MainWindowView: View {
     var category: Category
     /// The category's items grouped into threads: one row per target.
     var threads: [InboxThread]
-    /// The pills under the toolbar, each with what its menu offers.
-    var facets: [FacetChoices]
   }
 
   private func resolveScope() -> Scope {
@@ -46,18 +45,11 @@ struct MainWindowView: View {
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
     let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
-    // The pills narrow the category last. Each pill's menu lists what the
-    // other pills and filters leave, so every value it offers shows rows.
-    let picks = model.facetPicks
-    let facets = offeredFacets(for: account).map { facet in
-      let pool = listedThreads(matchingFacets(category.items, picks, except: facet)).flatMap(\.items)
-      return facetChoices(facet, in: pool, picked: picks[facet])
-    }
+    // The pills narrow the category last.
     return Scope(
       account: account,
       category: category,
-      threads: listedThreads(matchingFacets(category.items, picks)),
-      facets: facets
+      threads: listedThreads(matchingFacets(category.items, model.facetPicks))
     )
   }
 
@@ -68,14 +60,39 @@ struct MainWindowView: View {
     return model.unreadOnly ? matchingUnread(threads, kept: model.keptReadIds) : threads
   }
 
-  /// The pills a scope offers. Provider can only narrow a scope spanning
-  /// accounts on more than one provider, so it shows just then — or while
-  /// it holds a pick, which must stay clearable.
-  private func offeredFacets(for account: AccountState?) -> [Facet] {
-    let providers = Set((account.map { [$0] } ?? model.accounts).map(\.provider))
-    return Facet.allCases.filter { facet in
-      facet != .provider || providers.count > 1 || model.facetPicks[.provider] != nil
+  /// The pills in the toolbar, for one account's inbox or (nil) a scope
+  /// spanning every account. Provider can only narrow across accounts on
+  /// more than one provider: it shows while the accounts span them — or
+  /// while it holds a pick, which must stay clearable — and in one
+  /// account's inbox stays in place, disabled, so the toolbar keeps one
+  /// shape from inbox to inbox.
+  private func pillStates(for account: AccountState?) -> [PillState] {
+    let picks = model.facetPicks
+    let spansProviders = Set(model.accounts.map(\.provider)).count > 1
+    return Facet.allCases.compactMap { facet in
+      guard facet == .provider else {
+        return PillState(facet: facet, picked: picks[facet], narrows: true)
+      }
+      guard spansProviders || picks[facet] != nil else {
+        return nil
+      }
+      return PillState(facet: facet, picked: picks[facet], narrows: spansProviders && account == nil)
     }
+  }
+
+  /// What a pill's menu offers once it opens: the facet's values across
+  /// what the search, the date and unread filters, and the other pills
+  /// leave of the board or the inbox's category, so every value it offers
+  /// shows something.
+  private func offeredValues(for facet: Facet) -> [String] {
+    let picks = model.facetPicks
+    if let board = model.selectedBoard {
+      let pool = model.placement(of: board, search: model.searchText, picks: picks, except: facet).allCards
+      return facetValues(facet, in: pool, picked: picks[facet])
+    }
+    let category = resolveScope().category
+    let pool = listedThreads(matchingFacets(category.items, picks, except: facet)).flatMap(\.items)
+    return facetValues(facet, in: pool, picked: picks[facet])
   }
 
   var body: some View {
@@ -84,6 +101,10 @@ struct MainWindowView: View {
       // toolbar's items are rebuilt either way, and animated they fade
       // and morph through a few frames.
       .transaction(value: model.selectedBoard?.id) { transaction in
+        transaction.disablesAnimations = true
+      }
+      // Likewise as the pills fold into one menu or unfold.
+      .transaction(value: pillsFolded) { transaction in
         transaction.disablesAnimations = true
       }
     // The search field sits at the toolbar's trailing edge, filtering the
@@ -162,7 +183,10 @@ struct MainWindowView: View {
         Color.clear.allowsHitTesting(false)
       }
       .toolbar {
-        contentToolbar(actionTargets: actionTargets)
+        contentToolbar(
+          actionTargets: actionTargets,
+          pills: pillStates(for: model.selectedBoard == nil ? scope.account : nil)
+        )
       }
       // The preview of what the list or the board selects: details about
       // the selection, at the trailing edge, as an inspector. In the
@@ -175,42 +199,27 @@ struct MainWindowView: View {
           .remembersWidth(previewWidthKey)
           .inspectorColumnWidth(min: previewMinWidth, ideal: previewWidth, max: previewMaxWidth)
       }
+      // The toolbar's stretch beside the sidebar runs over the content and
+      // the preview alike; where it is too short for the pills side by side
+      // they fold into one menu. Noted as a flag, so the toolbar redraws
+      // when it flips and not on every step of a resize.
+      .onGeometryChange(for: Bool.self) { $0.size.width < pillFoldWidth } action: { folded in
+        pillsFolded = folded
+      }
     }
     .toolbar(removing: .sidebarToggle)
     .navigationTitle(model.selectedBoard?.name ?? windowTitle(for: scope))
     .navigationSubtitle(model.selectedBoard.map { cardCount(boardPlacement($0).count) } ?? itemCount(scope.threads.count))
   }
 
-  /// The inbox list, the filter pills and the suggestion panel floating
-  /// over it.
+  /// The inbox list, and the suggestion panel floating over it.
   private func inboxList(_ scope: Scope) -> some View {
-    let pillRoom = model.hasAccounts ? pillBarHeight : 0
-    return InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id, topInset: pillRoom)
-      // The filter pills float over the list, just under the toolbar.
-      // An overlay rather than a safe-area inset or bar: either of those
-      // extends the toolbar's edge effect down over the pills, fading the
-      // rows out beneath them, where floating they sit on the rows
-      // themselves, seen through the glass. The list leaves room their
-      // height above its first row. They stay up when the filters empty
-      // the list, so they can be undone.
-      .overlay(alignment: .top) {
-        pills(scope.facets)
-      }
+    InboxListView(model: model, threads: scope.threads, categoryId: scope.category.id)
       // The suggestion panel floats over the foot of the list, and only
       // while the model has something to offer.
       .overlay(alignment: .bottom) {
         SuggestionPanel(model: model)
       }
-  }
-
-  /// The filter pills, noting how tall they stand for the content to
-  /// leave that room above its first row; none without an account.
-  @ViewBuilder
-  private func pills(_ facets: [FacetChoices]) -> some View {
-    if model.hasAccounts {
-      FilterPillBar(model: model, facets: facets)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillBarHeight = $0 }
-    }
   }
 
   // MARK: Board
@@ -225,22 +234,11 @@ struct MainWindowView: View {
     model.selectedCardId.flatMap { boardPlacement(board).byId[$0] }
   }
 
-  /// A board, the filter pills floating over it as over the inbox.
+  /// A board, marking the card it has selected seen.
   private func boardContent(_ board: Board) -> some View {
     let placement = boardPlacement(board)
-    // The inbox's pills, over the board: each menu lists what the search
-    // and the other pills leave on it. A board spans every account, so the
-    // provider pill shows whenever more than one provider is connected.
-    let facets = offeredFacets(for: nil).map { facet in
-      let pool = model.placement(of: board, search: model.searchText, picks: model.facetPicks, except: facet).byId
-      return facetChoices(facet, in: Array(pool.values), picked: model.facetPicks[facet])
-    }
     let selected = selectedCard(on: board)
     return boardPane(board, placement: placement)
-      // The board leaves their height above its column headers.
-      .overlay(alignment: .top) {
-        pills(facets)
-      }
       .onChange(of: selected?.id, initial: true) {
         if let selected {
           model.markSeen(selected)
@@ -277,7 +275,7 @@ struct MainWindowView: View {
         )
       }
     } else {
-      BoardView(model: model, board: board, placement: placement, topInset: pillBarHeight)
+      BoardView(model: model, board: board, placement: placement)
     }
   }
 
@@ -342,14 +340,16 @@ struct MainWindowView: View {
   // MARK: Toolbar
 
   /// In groups, as fixed spacers part them: Refresh; the selection's
-  /// actions; the filter; the preview toggle. Mark-read and Open are always
-  /// present over the inbox, disabled while nothing is selected, so the
-  /// toolbar keeps one shape. Over a board they go — opening and marking
-  /// read live on the cards there (a double-click, the context menu), and
-  /// a board is for looking across — and the board's menu stands in for
-  /// the filter.
+  /// actions; the filter pills; the filter; the preview toggle. Mark-read
+  /// and Open are always present over the inbox, disabled while nothing is
+  /// selected, so the toolbar keeps one shape. Over a board they go —
+  /// opening and marking read live on the cards there (a double-click, the
+  /// context menu), and a board is for looking across — and the board's
+  /// menu stands in for the filter. The pills stand over both, after the
+  /// items that come and go: everything past them keeps its width from the
+  /// inbox to a board, so switching leaves them where they are.
   @ToolbarContentBuilder
-  private func contentToolbar(actionTargets: [InboxThread]) -> some ToolbarContent {
+  private func contentToolbar(actionTargets: [InboxThread], pills: [PillState]) -> some ToolbarContent {
     ToolbarItem {
       RefreshButton(model: model)
     }
@@ -360,6 +360,24 @@ struct MainWindowView: View {
       }
       ToolbarItem {
         openButton(for: actionTargets)
+      }
+      ToolbarSpacer(.fixed)
+    }
+    if model.hasAccounts {
+      // Toolbar items rather than a row under the toolbar: once the
+      // preview has slid in, the toolbar draws a backdrop of its own that
+      // ends at its foot, and whatever sits beneath it floats over the
+      // content scrolling past.
+      ToolbarItemGroup {
+        if pillsFolded {
+          FilterPillMenu(model: model, pills: pills, values: offeredValues)
+            .equatable()
+        } else {
+          ForEach(pills) { pill in
+            FilterPill(model: model, pill: pill, values: offeredValues)
+              .equatable()
+          }
+        }
       }
       ToolbarSpacer(.fixed)
     }
@@ -543,6 +561,11 @@ private struct PreviewToggle: View {
 private let previewMinWidth: CGFloat = 360
 private let previewIdealWidth: CGFloat = 420
 private let previewMaxWidth: CGFloat = 900
+
+/// How wide the toolbar's stretch beside the sidebar must stand for the
+/// filter pills side by side next to the title, the other items, and an
+/// open search field; any narrower and they fold into one menu.
+private let pillFoldWidth: CGFloat = 900
 
 private let sidebarWidthKey = "sidebarWidth"
 private let previewWidthKey = "previewWidth"

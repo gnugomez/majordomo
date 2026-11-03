@@ -1,4 +1,4 @@
-// The fields the pills under the toolbar narrow the inbox — or a board —
+// The fields the toolbar's filter pills narrow the inbox — or a board —
 // by: one author, provider, or repository at a time. Like the search and
 // date filters they narrow what shows and leave the sidebar badges alone.
 
@@ -64,24 +64,13 @@ func matchingFacets<Subject: FacetSubject>(
   }
 }
 
-/// One pill's menu: the values on offer, and the one picked.
-struct FacetChoices: Identifiable, Sendable {
-  let facet: Facet
-  /// Distinct, in menu order.
-  let values: [String]
-  let picked: String?
-
-  var id: Facet { facet }
-}
-
-/// The values a facet takes across these subjects, sorted for a menu.
-/// The pick is always among them, even once nothing carries it any more,
-/// so the menu still shows it checked and it can be cleared.
-func facetChoices<Subject: FacetSubject>(_ facet: Facet, in subjects: [Subject], picked: String?) -> FacetChoices {
+/// The values a facet takes across these subjects, distinct and sorted for
+/// a pill's menu. The pick is always among them, even once nothing carries
+/// it any more, so the menu still shows it checked and it can be cleared.
+func facetValues<Subject: FacetSubject>(_ facet: Facet, in subjects: [Subject], picked: String?) -> [String] {
   var values = Set(subjects.compactMap { $0.facetValue(facet) })
   if let picked {
     values.insert(picked)
   }
-  let sorted = values.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-  return FacetChoices(facet: facet, values: sorted, picked: picked)
+  return values.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 }

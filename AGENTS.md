@@ -144,22 +144,34 @@ reintroduces the bug:
   (MainWindowView.filterGlyph): the toolbar draws item images itself as
   templates, so SwiftUI `foregroundStyle`/`tint`/overlays never show; only
   a non-template image keeps its color.
-- The filter pills float over the inbox as an overlay (MainWindowView), not
-  a `safeAreaInset` or `safeAreaBar`: either pulls the toolbar's scroll edge
-  effect down over the pills, fading the rows beneath them and drawing a
-  hard line at its foot. A List ignores `contentMargins` on macOS, so the
-  room above the first row is a clear spacer row (InboxListView), keyed by
-  its height for the spotlight's reason — a row is measured once, and only
-  a replaced row is measured again. Over a board the same overlay sits
-  above the column headers, which a plain top padding moves down (no List
-  there to measure).
+- The filter pills are toolbar items (FilterPill, MainWindowView), not a
+  row under the toolbar: whenever the preview slides in, and often when it
+  is open as the window opens, AppKit gives the content's stretch of the
+  toolbar a backdrop of its own that ends at the toolbar's foot and stays
+  after the preview closes again. Anything laid out beneath it — an
+  overlay or a `safeAreaBar` alike — then floats over the content
+  scrolling past, under a hard line. Nothing we can set reaches that
+  backdrop: not `toolbarBackgroundVisibility` on the column or the split,
+  the scroll edge style, the clear layer's place, or an unanimated
+  toggle. Each pill is a `.plain`-styled menu: a toolbar draws a `Menu`
+  itself from its label's image, and a text label shows as nothing but
+  the menu's indicator. Each is Equatable over its facet, its pick, and
+  whether it narrows — never over what its menu offers, which the menu
+  asks for as it is built (`offeredValues`) — so no push redraws a pill
+  (see the fade entry). They stand after the items that come and go
+  between the inbox and a board, so switching leaves them in place, and
+  where the toolbar beside the sidebar is narrower than `pillFoldWidth`
+  they fold into one Filters menu (`FilterPillMenu`), noted as a flag so a
+  resize redraws the toolbar only when it flips.
 - A board's column headers ride a `safeAreaBar` on its one two-axis
   ScrollView (BoardView), drawn as an overlay on a clear band rather than
   laid out directly: a row as wide as the grid would widen the bar, and
-  with it the pane, pushing the pills off its leading edge. A header row
-  outside the scroll view instead clips the cards at its foot, and a
-  vertical ScrollView nested in a horizontal one hides its scroller past
-  the grid's far end.
+  with it the pane. A header row outside the scroll view instead clips the
+  cards at its foot, and a vertical ScrollView nested in a horizontal one
+  hides its scroller past the grid's far end. The board's top edge effect
+  is `.hard`: once the toolbar has its own backdrop (see the filter
+  pills), a soft edge leaves the cards legible under the band, the labels
+  floating over them, where a hard one covers the band either way.
 - Over a board the board's menu stands in for the filter (MainWindowView),
   and the inbox's mark-read and Open items are dropped rather than hidden:
   a hidden toolbar item still draws its empty glass capsule. Switching
@@ -172,7 +184,8 @@ reintroduces the bug:
 - Toolbar items redraw with a fade whenever the view that builds them
   updates, so each toolbar control is a small view given only what
   decides how it looks (`RefreshButton` watches `syncing`, the board's
-  menu the board, `PreviewToggle` whether a card is selected), and
+  menu the board, `PreviewToggle` whether a card is selected, each filter
+  pill its facet's pick), and
   `AppModel.apply` assigns only the slices whose revision moved
   (`StateRevisions`) — selecting a card pushes several times (the
   selection, marking it seen), and every reader woken by each push
@@ -194,7 +207,8 @@ reintroduces the bug:
   layout down. The layer goes on top: beneath the views, it is what the
   toolbar finds at the top of the pane, and with the inspector open the
   toolbar draws a hard line under itself rather than fading the content
-  out beneath it. The
+  out beneath it. On top it holds only until the toolbar takes a backdrop
+  of its own as the inspector slides in (see the filter pills). The
   sidebar's and the inspector's slide, the content scrolling on beneath
   both, and the toolbar's sections are all the system's.
 - The sidebar toggle is our own (`SidebarToggle`, MainWindowView), behind
@@ -213,6 +227,3 @@ reintroduces the bug:
 - The inbox list draws `rowPage` threads and offers the rest behind a row
   (InboxListView): a List measures every row it is handed, and a long
   history took seconds to show on opening and on every inbox switch.
-- Each pill draws its own `glassEffect` over a `.plain`-styled menu
-  (FilterPillBar): a `Menu` given the `.glass` button style draws a flat
-  gray fill, and inside a bar keeps only its label's icon.

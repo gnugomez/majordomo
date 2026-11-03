@@ -96,7 +96,7 @@ final class AppModel {
   @ObservationIgnored let preferences: Preferences
   /// The conversations the preview has read.
   @ObservationIgnored let conversations = ConversationCache()
-  /// What the pills under the toolbar narrow the inbox to, one value per
+  /// What the toolbar's filter pills narrow the inbox to, one value per
   /// facet. Kept for the session only: a pick names one author or
   /// repository, which a later launch may no longer have.
   private(set) var facetPicks: [Facet: String] = [:]

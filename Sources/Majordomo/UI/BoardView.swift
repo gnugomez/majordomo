@@ -2,11 +2,10 @@
 // board's rules (BoardEngine), split into lanes by repository or owner
 // when the board asks for them. One scroll view carries the grid both ways,
 // filling the pane, so its scrollers sit on the pane's edges and the cards
-// pass under the sidebar, the toolbar, the pills, and the column headers —
-// glass labels
-// floating over the grid that follow it sideways and stay put as it
-// scrolls down; lane titles hold to the leading edge as it scrolls
-// sideways. Dragging the board's empty space pans it. Clicking a card
+// pass under the sidebar, the toolbar, and the column headers — glass
+// labels in a band under the toolbar that follow the grid sideways and
+// stay put as it scrolls down; lane titles hold to the leading edge as it
+// scrolls sideways. Dragging the board's empty space pans it. Clicking a card
 // opens its preview in the window's inspector and clicking it again puts
 // it away, double-clicking opens it in the browser, and dragging it
 // onto a column puts it there by hand — locally, like every label; nothing
@@ -20,12 +19,11 @@ private let columnWidth: CGFloat = 256
 /// layout the board pays for on each redraw.
 private let slotCardLimit = 40
 private let columnGap: CGFloat = 10
-/// The grid's leading margin: the filter pills' own, so the first column
-/// and its label line up under them and under the toolbar's glass.
+/// The grid's leading margin, which the first column's label keeps too.
 private let gridInset: CGFloat = 8
-/// The band the floating column headers take at the board's top; the
-/// grid rests below it. The labels sit at its foot, `headerGap` above the
-/// cards, leaving the rest as air under the pills.
+/// The band the column headers take at the board's top, under the
+/// toolbar; the grid rests below it. The labels sit at its foot,
+/// `headerGap` above its edge, leaving the rest as air under the toolbar.
 private let headerBand: CGFloat = 44
 private let headerGap: CGFloat = 8
 
@@ -33,9 +31,6 @@ struct BoardView: View {
   let model: AppModel
   let board: Board
   let placement: BoardPlacement
-  /// Room above the column headers for what floats over the board's top
-  /// edge (the filter pills).
-  var topInset: CGFloat = 0
 
   /// Lanes the user folded away this session.
   @State private var collapsedLanes: Set<String> = []
@@ -115,16 +110,20 @@ struct BoardView: View {
       )
     }
     // A board shorter or narrower than the pane sits at its top leading
-    // corner, where the headers and the pills are, rather than centered.
+    // corner, where the headers are, rather than centered.
     .defaultScrollAnchor(.topLeading)
-    .scrollEdgeEffectStyle(.soft, for: .top)
-    // The headers ride in a bar at the top that also leaves room for the
-    // pills: the grid rests below it and scrolls on beneath it, and the
-    // scroll edge effect stretches over the whole band, so cards soften as
-    // they pass under the labels instead of crowding them.
+    // Hard rather than soft: once the preview has slid in, the toolbar
+    // draws a backdrop of its own that ends at its foot, and a soft edge
+    // then leaves the cards legible under the header band, the labels
+    // floating over them; a hard one keeps the whole band covered either
+    // way.
+    .scrollEdgeEffectStyle(.hard, for: .top)
+    // The headers ride in a bar at the top: the grid rests below it and
+    // scrolls on beneath it, and the scroll edge effect stretches over the
+    // whole band, so cards pass out of sight under the labels instead of
+    // crowding them.
     .safeAreaBar(edge: .top, spacing: 0) {
       ColumnHeaderRow(columns: columns.map(header), leading: gridInset, scroll: scroll)
-        .padding(.top, topInset)
     }
     .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { _, geometry in
       scroll.track(geometry)
