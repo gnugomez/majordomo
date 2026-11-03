@@ -137,7 +137,7 @@ extension StoredItem {
   }
 }
 
-struct StoredAccount: Codable {
+struct StoredAccount: Codable, Sendable {
   var provider: ProviderId
   /// Base64 of the AES-GCM-sealed token, or the plaintext token.
   var token: String?
@@ -154,7 +154,8 @@ struct StoredAccount: Codable {
   var removedAt: Date?
 }
 
-struct StoreFile: Codable {
+/// Sendable so a snapshot of it can go to the writer (StoreWriter).
+struct StoreFile: Codable, Sendable {
   var accounts: [String: StoredAccount] = [:]
   var items: [String: StoredItem] = [:]
   var labels: [InboxLabel] = []
@@ -223,13 +224,16 @@ struct StoredAccountInfo {
 }
 
 /// Not Sendable by design: owned and accessed exclusively by the SyncEngine
-/// actor.
+/// actor. A change is only noted; `flush` hands everything noted since the
+/// last one to the writer as one snapshot, so a burst of changes costs one
+/// write, made off the actor.
 final class Store {
-  private let fileURL: URL
-  /// False for the in-memory fixture store (MAJORDOMO_DEMO) — nothing is
-  /// ever written.
-  private let persistent: Bool
+  /// Where flushed snapshots go; nil for the in-memory fixture store
+  /// (MAJORDOMO_DEMO) — nothing is ever written.
+  let writer: StoreWriter?
   private var data = StoreFile()
+  /// Whether something changed since the last flush.
+  private(set) var hasUnsavedChanges = false
   private let conversations: ConversationFiles
   /// Whether this run has cleared out the conversations of targets the
   /// store no longer holds — once, then as targets drop.
@@ -260,29 +264,19 @@ final class Store {
     return decoder
   }
 
-  private static func encoder() -> JSONEncoder {
-    let encoder = JSONEncoder()
-    encoder.dateEncodingStrategy = .custom { date, encoder in
-      var container = encoder.singleValueContainer()
-      try container.encode(ISODate.format(date))
-    }
-    return encoder
-  }
-
   /// An in-memory store seeded with fixtures; nothing persists.
   init(fixture: StoreFile, conversations seed: [String: TargetConversation] = [:]) {
-    fileURL = URL(fileURLWithPath: "/dev/null")
-    persistent = false
+    writer = nil
     data = fixture
     conversations = ConversationFiles(directory: nil, seed: seed)
   }
 
   init(directory: URL? = nil) {
-    persistent = true
     let base = directory ?? FileManager.default
       .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appending(path: "Majordomo")
-    fileURL = base.appending(path: "majordomo.json")
+    let fileURL = base.appending(path: "majordomo.json")
+    writer = StoreWriter(fileURL: fileURL)
     conversations = ConversationFiles(directory: base.appending(path: "Conversations"))
     if let raw = try? Data(contentsOf: fileURL) {
       if let parsed = try? Self.decoder().decode(StoreFile.self, from: raw) {
@@ -298,19 +292,21 @@ final class Store {
     // Missing file — start fresh.
   }
 
-  private func save() {
-    guard persistent else {
+  /// Notes a change for the next flush; nothing is written here.
+  private func noteChange() {
+    if writer != nil {
+      hasUnsavedChanges = true
+    }
+  }
+
+  /// Hands everything changed since the last flush to the writer: one
+  /// snapshot, one encode, and one write, however many changes it gathers.
+  func flush() {
+    guard hasUnsavedChanges, let writer else {
       return
     }
-    do {
-      try FileManager.default.createDirectory(
-        at: fileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try Self.encoder().encode(data).write(to: fileURL, options: .atomic)
-    } catch {
-      log.error("failed to save store: \(error)")
-    }
+    hasUnsavedChanges = false
+    writer.write(data)
   }
 
   private func decodeToken(_ stored: StoredAccount) -> String? {
@@ -412,7 +408,7 @@ final class Store {
     }
     tokenCache[id] = config.token
     data.accounts[id] = account
-    save()
+    noteChange()
   }
 
   /// Refreshes the owner's profile fields without touching the token.
@@ -424,7 +420,7 @@ final class Store {
     account.name = profile.name
     account.avatarUrl = profile.avatarUrl
     data.accounts[id] = account
-    save()
+    noteChange()
   }
 
   /// Parks a removed account: the token is forgotten on the spot and it
@@ -441,7 +437,7 @@ final class Store {
     account.tokenEncrypted = nil
     account.removedAt = Date()
     data.accounts[id] = account
-    save()
+    noteChange()
   }
 
   // MARK: Items
@@ -520,7 +516,7 @@ final class Store {
         verdicts: existing?.verdicts ?? [:]
       )
     }
-    save()
+    noteChange()
     return newIds
   }
 
@@ -548,8 +544,7 @@ final class Store {
 
   /// Files a sweep's summaries against the text each was made from; a
   /// later edit of that text no longer matches, and the next sweep
-  /// rewrites it. A batch, because every save rewrites the whole file —
-  /// saving per answer rewrote it once for each.
+  /// rewrites it. Items pruned or parked meanwhile are dropped.
   func setSummaries(_ updates: [(itemId: String, summary: String, text: String)]) {
     var changed = false
     for update in updates where data.items[update.itemId] != nil {
@@ -558,7 +553,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -596,8 +591,8 @@ final class Store {
   }
 
   /// Files a sweep's answers, items' and targets' alike, against the
-  /// question asked and the text each was asked about, in one write — see
-  /// setSummaries. Items pruned or parked meanwhile are dropped.
+  /// question asked and the text each was asked about. Items pruned or
+  /// parked meanwhile are dropped.
   func setVerdicts(
     items: [(id: String, question: String, matched: Bool, text: String)],
     targets: [(key: String, question: String, matched: Bool, text: String)]
@@ -617,7 +612,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -641,7 +636,7 @@ final class Store {
       }
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -655,7 +650,7 @@ final class Store {
       }
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -685,7 +680,7 @@ final class Store {
       scrubbed.labelIds = rule.labelIds.filter { kept.contains($0) }
       return scrubbed
     }
-    save()
+    noteChange()
   }
 
   /// The user's rules, in evaluation order.
@@ -697,7 +692,7 @@ final class Store {
   /// until nothing asks them (pruneVerdicts).
   func setRules(_ rules: [LabelRule]) {
     data.rules = rules
-    save()
+    noteChange()
   }
 
   // MARK: Starter setup
@@ -718,7 +713,7 @@ final class Store {
     }
     let known = Set(data.rules.map(\.id))
     data.rules.append(contentsOf: rules.filter { !known.contains($0.id) })
-    save()
+    noteChange()
   }
 
   // MARK: Sidebar
@@ -733,7 +728,7 @@ final class Store {
       return
     }
     data.sidebar = layout
-    save()
+    noteChange()
   }
 
   // MARK: Boards
@@ -747,7 +742,7 @@ final class Store {
       return
     }
     data.boards = boards
-    save()
+    noteChange()
   }
 
   /// Adds the starter boards, once — the same rule as the starter labels.
@@ -758,7 +753,7 @@ final class Store {
     data.boardsSeeded = true
     let known = Set(data.boards.map(\.id))
     data.boards.append(contentsOf: boards.filter { !known.contains($0.id) })
-    save()
+    noteChange()
   }
 
   /// Puts a card in a column by hand; nil hands it back to the rules.
@@ -767,7 +762,7 @@ final class Store {
       return
     }
     data.boards[index].pins[card] = pin
-    save()
+    noteChange()
   }
 
   // MARK: Targets
@@ -810,7 +805,7 @@ final class Store {
       target.unreadable = reason
       data.targets[key] = target
     }
-    save()
+    noteChange()
   }
 
   /// Notes that a target's conversation is no longer held; false when it
@@ -820,7 +815,7 @@ final class Store {
       return false
     }
     data.targets[key]?.conversationAt = nil
-    save()
+    noteChange()
     return true
   }
 
@@ -833,7 +828,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -843,13 +838,14 @@ final class Store {
     target.seenAt = date
     target.seenComments = target.snapshot?.commentCount
     data.targets[key] = target
-    save()
+    noteChange()
   }
 
   /// Drops the targets no live notification points at any more, with
   /// their conversations, the model's answers about them, and the pins of
-  /// the cards that went with them.
-  func pruneTargets(keeping keys: Set<String>) {
+  /// the cards that went with them. True when anything went.
+  @discardableResult
+  func pruneTargets(keeping keys: Set<String>) -> Bool {
     var changed = false
     for key in data.targets.keys where !keys.contains(key) {
       data.targets.removeValue(forKey: key)
@@ -871,8 +867,9 @@ final class Store {
       }
     }
     if changed {
-      save()
+      noteChange()
     }
+    return changed
   }
 
   // MARK: Suggestions
@@ -895,7 +892,7 @@ final class Store {
       return
     }
     data.suggestions.append(contentsOf: fresh)
-    save()
+    noteChange()
   }
 
   /// Marks one dismissed; it stays in the file so the pattern behind it
@@ -905,7 +902,7 @@ final class Store {
       return
     }
     data.suggestions[index].dismissed = true
-    save()
+    noteChange()
   }
 
   /// Drops one outright — what accepting it does, since it becomes a real
@@ -914,7 +911,7 @@ final class Store {
     let before = data.suggestions.count
     data.suggestions.removeAll { $0.id == id }
     if data.suggestions.count != before {
-      save()
+      noteChange()
     }
   }
 
@@ -930,11 +927,12 @@ final class Store {
       item.labelOverrides.removeValue(forKey: labelId)
     }
     data.items[itemId] = item
-    save()
+    noteChange()
   }
 
-  /// A sweep's worth of rule assignments in a single save — the store
-  /// writes the whole file each time. Unchanged sets cost nothing.
+  /// A sweep's worth of rule assignments. Unchanged sets cost nothing:
+  /// they note no change, so a sweep that moved nothing leaves nothing to
+  /// write.
   func applyAutoLabels(_ updates: [(id: String, labels: Set<LabelId>, hiddenFrom: Set<LabelId>)]) {
     var changed = false
     for update in updates {
@@ -947,7 +945,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -958,7 +956,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 
@@ -981,7 +979,7 @@ final class Store {
       changed = true
     }
     if changed {
-      save()
+      noteChange()
     }
   }
 }

@@ -1,15 +1,22 @@
 // App shell: the status item and its tray menu, the main menu (⌘, and the
-// edit shortcuts), and the wiring between the sync engine and the chrome
-// (tray dot, dock badge). The inbox opens as a real NSMenu, not a
-// hand-positioned popover: instant, and it dismisses like every other menu.
+// edit shortcuts), and the wiring between the sync engine and the rest:
+// the engine's state stream into the model, its events into the banners
+// and the log, and the model into the chrome (tray dot, dock badge). The
+// inbox opens as a real NSMenu, not a hand-positioned popover: instant, and
+// it dismisses like every other menu.
 
 import AppKit
+import os
 import SwiftUI
 import UserNotifications
+
+private let log = Logger(subsystem: "dev.majordomo.app", category: "app")
 
 /// Rows shown in the tray menu before "Open Majordomo" takes over.
 private let menuMentionCap = 8
 private let menuRecentCap = 12
+/// How long quitting waits for the store to reach the disk.
+private let quitFlushTimeout: DispatchTimeInterval = .seconds(5)
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -22,54 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let model = model
-    engine = SyncEngine(
-      emit: { state in
-        Task { @MainActor in
-          model.apply(state)
-        }
-      },
-      notify: { item in
-        Task { @MainActor in
-          guard let delegate = AppDelegateBox.shared else {
-            return
-          }
-          // The engine reports every new unread item. Its labels speak
-          // first: an urgent or always label pings whatever the scope, a
-          // never label silences it; unlabeled items (and follow-policy
-          // labels) leave it to the notification scope setting.
-          let model = delegate.model
-          let policy = LabelNotifyPolicy.effective(item.labels.compactMap { model.label($0)?.notify })
-          let wanted: Bool
-          var level: UNNotificationInterruptionLevel = .active
-          switch policy {
-          case .never:
-            wanted = false
-          case .always:
-            wanted = true
-          case .urgent:
-            wanted = true
-            level = .timeSensitive
-          case .follow:
-            wanted = switch model.notifyScope {
-            case .mentions: item.isMention
-            case .all: true
-            case .none: false
-            }
-          }
-          if wanted {
-            delegate.notifier.post(item, sound: model.notificationSound, interruptionLevel: level)
-          }
-        }
-      }
-    )
-    AppDelegateBox.shared = self
-    notifier = Notifier(openItem: { [engine] id in
-      await engine?.openItem(id: id)
+    let engine = SyncEngine()
+    self.engine = engine
+    notifier = Notifier(openItem: { id in
+      await engine.openItem(id: id)
     })
     model.engine = engine
-    model.onStateApplied = { [weak self] model in
-      self?.applyChrome(model)
-    }
     model.openMainWindow = { [weak self] in
       self?.openMainWindow()
     }
@@ -81,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     setupMainMenu()
     setupStatusItem()
+    followEngine(engine)
+    followChrome()
 
     // Dev harness: open the main window straight away so a visual check
     // (or a screenshot script) doesn't need a trip through the tray menu.
@@ -94,7 +61,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       settingsWindow?.select(tab: tab)
     }
 
-    let engine = engine!
     Task {
       // The on-device model touches no network, so a demo run uses it
       // too — the composer is the point of the Rules page and has to be
@@ -113,6 +79,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
   }
 
+  /// Quitting writes out what the store holds unsaved — it saves a moment
+  /// after each change — waiting a bounded while for it to reach the disk.
+  /// The engine works off the main thread, so waiting here can't hold it
+  /// up.
+  func applicationWillTerminate(_ notification: Notification) {
+    guard let engine else {
+      return
+    }
+    let written = DispatchSemaphore(value: 0)
+    Task.detached {
+      await engine.stop()
+      written.signal()
+    }
+    if written.wait(timeout: .now() + quitFlushTimeout) == .timedOut {
+      log.error("quit before the store finished writing")
+    }
+  }
+
   // macOS keeps the process alive with no windows; Dock-icon clicks (only
   // possible while the main window exists) refocus it.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -120,13 +104,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     return false
   }
 
+  // MARK: Engine
+
+  /// The engine's two streams: every state push into the model, every
+  /// event to whatever it concerns. Both loops run on the main actor, as
+  /// long as the engine does.
+  private func followEngine(_ engine: SyncEngine) {
+    let model = model
+    Task {
+      for await state in await engine.states() {
+        model.apply(state)
+      }
+    }
+    Task { [weak self] in
+      for await event in await engine.events() {
+        self?.handle(event)
+      }
+    }
+  }
+
+  private func handle(_ event: DomainEvent) {
+    switch event {
+    case .threadsArrived(let items):
+      for item in items {
+        postBanner(for: item)
+      }
+    case .syncFailed(let account, let reason):
+      log.notice("sync failed for \(account, privacy: .public): \(reason, privacy: .public)")
+    case .tokenRejected(let account, let reason):
+      log.notice("token rejected for \(account, privacy: .public): \(reason, privacy: .public)")
+    case .accountRecovered(let account):
+      log.notice("account \(account, privacy: .public) works again")
+    }
+  }
+
+  /// A banner for a fresh thread, as the item's labels and the settings
+  /// say. Its labels speak first: an urgent or always label pings whatever
+  /// the scope, a never label silences it; unlabeled items (and
+  /// follow-policy labels) leave it to the notification scope setting.
+  private func postBanner(for item: InboxItem) {
+    let policy = LabelNotifyPolicy.effective(item.labels.compactMap { model.label($0)?.notify })
+    let wanted: Bool
+    var level: UNNotificationInterruptionLevel = .active
+    switch policy {
+    case .never:
+      wanted = false
+    case .always:
+      wanted = true
+    case .urgent:
+      wanted = true
+      level = .timeSensitive
+    case .follow:
+      wanted = switch model.notifyScope {
+      case .mentions: item.isMention
+      case .all: true
+      case .none: false
+      }
+    }
+    if wanted {
+      notifier.post(item, sound: model.notificationSound, interruptionLevel: level)
+    }
+  }
+
   // MARK: Chrome
 
   /// Tray dot iff there are unread mentions; Dock badge counts all unread
-  /// (visible only while the main window keeps the Dock icon alive).
-  private func applyChrome(_ model: AppModel) {
-    statusItem?.button?.image = model.unreadMentionDot ? TrayIcon.dot : TrayIcon.normal
-    NSApp.dockTile.badgeLabel = model.unreadCount > 0 ? String(model.unreadCount) : nil
+  /// (visible only while the main window keeps the Dock icon alive). Kept
+  /// in step with the model rather than with each push: it changes only
+  /// when the figures do.
+  private func followChrome() {
+    let model = model
+    let chrome = Observations {
+      (dot: model.unreadMentionDot, unread: model.unreadCount)
+    }
+    Task { [weak self] in
+      for await figures in chrome {
+        self?.statusItem?.button?.image = figures.dot ? TrayIcon.dot : TrayIcon.normal
+        NSApp.dockTile.badgeLabel = figures.unread > 0 ? String(figures.unread) : nil
+      }
+    }
   }
 
   // MARK: Main menu
@@ -454,11 +510,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     settingsWindow?.open()
   }
-}
-
-/// Weak global hook so the engine's @Sendable notify closure can reach the
-/// delegate without capturing main-actor state at init time.
-@MainActor
-enum AppDelegateBox {
-  weak static var shared: AppDelegate?
 }

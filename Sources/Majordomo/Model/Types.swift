@@ -89,8 +89,69 @@ struct AccountState: Identifiable, Sendable, Hashable {
   var error: String?
 }
 
+/// One part of the published state. Each is versioned on its own, so a
+/// reader tells what a push changed by comparing integers rather than the
+/// values.
+enum StateSlice: CaseIterable, Hashable, Sendable {
+  case items
+  /// The accounts, with their errors.
+  case accounts
+  /// Whether a sync is running, and when the last one finished.
+  case status
+  case labels
+  case rules
+  case sidebar
+  case suggestions
+  case boards
+  case targets
+  case placements
+}
+
+/// Each slice's revision. The engine moves a slice's revision whenever it
+/// publishes a new value of it, so an unmoved revision means an unchanged
+/// value; a moved one usually means a new value, and at worst an equal one
+/// sent again.
+struct StateRevisions: Equatable, Sendable {
+  private var counts: [StateSlice: Int] = [:]
+
+  subscript(slice: StateSlice) -> Int {
+    counts[slice, default: 0]
+  }
+
+  mutating func bump(_ slice: StateSlice) {
+    counts[slice, default: 0] += 1
+  }
+
+  /// The slices whose revision differs from `earlier`'s.
+  func moved(since earlier: StateRevisions) -> Set<StateSlice> {
+    Set(StateSlice.allCases.filter { self[$0] != earlier[$0] })
+  }
+}
+
+/// What happened, as the engine tells whoever listens: the banners, the
+/// log, and any feature that reacts to the inbox rather than mirroring its
+/// state. Every subscriber gets every event, in order.
+enum DomainEvent: Equatable, Sendable {
+  /// Fresh unread threads a sync brought in, one item standing for each —
+  /// a mention when the thread holds one. Never an account's first sync
+  /// (its backlog is standing state, not news) and never old activity a
+  /// deep fetch surfaced.
+  case threadsArrived([InboxItem])
+  /// An account's sync failed where it had been working, or failed
+  /// differently; the reason is fit to show verbatim.
+  case syncFailed(AccountId, reason: String)
+  /// The provider refused an account's token — expired or revoked — where
+  /// it had been accepted.
+  case tokenRejected(AccountId, reason: String)
+  /// An account that was failing works again: it synced, or took a new
+  /// token.
+  case accountRecovered(AccountId)
+}
+
 /// The full app state the sync engine publishes to the UI.
 struct AppState: Sendable {
+  /// Which slices this state carries new values of.
+  var revisions = StateRevisions()
   var items: [InboxItem] = []
   var accounts: [AccountState] = []
   var lastSyncAt: Date?
