@@ -1,8 +1,9 @@
-// The app's own colors, in one place. The shades conversations and boards
-// are drawn in: a quiet gray pane with white cards in light mode, a
-// near-black pane with lifted gray cards in dark mode. Neither is a plain
-// system color — windowBackgroundColor sits LIGHTER than
-// textBackgroundColor in dark mode, which would invert the scheme. Then
+// The app's own colors, in one place. The shades boards and conversations
+// are drawn in: a board's white cards (lifted gray in dark mode) on its
+// column strips — not a plain system color, since windowBackgroundColor
+// sits LIGHTER than textBackgroundColor in dark mode, which would invert
+// the scheme — and the preview's cards, a wash over the inspector's own
+// material, which shows through rather than being painted over. Then
 // the label tint tokens, resolved to system colors so folders and capsules
 // follow the appearance and accessibility settings like every other tinted
 // control; the steady tints behind people's initials; and the on-device
@@ -12,11 +13,15 @@ import AppKit
 import SwiftUI
 
 enum Palette {
-  /// Behind a conversation's cards.
-  static let pane = appearanceColor(light: NSColor(white: 0.95, alpha: 1), dark: NSColor(white: 0.12, alpha: 1))
-
-  /// A card: a comment, a message, a board's card.
+  /// A card on the window's own background: a board's card, the ring
+  /// that sets a face or a mark off from one.
   static let card = appearanceColor(light: .white, dark: NSColor(white: 0.2, alpha: 1))
+
+  /// A card in the preview — a comment, a message — over the inspector's
+  /// material, which shows through it: a wash, not a fill.
+  static let paneCard = appearanceColor(
+    light: NSColor(white: 1, alpha: 0.6), dark: NSColor(white: 1, alpha: 0.06)
+  )
 
   /// Behind inline code and code blocks, on a card or the pane.
   static let code = appearanceColor(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.08))

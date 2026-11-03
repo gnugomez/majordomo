@@ -216,7 +216,8 @@ private struct TimelineEventRow: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      EventGlyph(badge: badge, size: 22, ring: Palette.pane)
+      // On the thread line, which the solid disc covers by itself.
+      EventGlyph(badge: badge, size: 22, ring: .clear)
       PersonAvatar(login: comment.author, avatarUrl: comment.avatarUrl, provider: provider, size: 18)
       Byline(
         name: comment.author ?? "Someone", action: badge.label, isTargetAuthor: isTargetAuthor, reason: reason,
@@ -243,7 +244,6 @@ private struct EarlierEntriesRow: View {
         .background(Palette.card, in: Circle())
         .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
         .padding(2)
-        .background(Palette.pane, in: Circle())
       Text(count == 1 ? "1 earlier comment" : "\(count) earlier comments")
         .foregroundStyle(.secondary)
       if let url {

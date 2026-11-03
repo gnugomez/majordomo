@@ -6,9 +6,8 @@
 import SwiftUI
 
 extension View {
-  /// The card a conversation entry or a thread's message sits on: white on
-  /// the gray pane (lifted gray in dark mode), a hairline edge, a soft
-  /// shadow. An accent `outline` marks one a notification points at or
+  /// The card a conversation entry or a thread's message sits on: a light
+  /// wash over the inspector's material, a hairline edge, a soft shadow. An accent `outline` marks one a notification points at or
   /// the user picked; `tint` washes it in that color too.
   func conversationCard(
     outline: AnyShapeStyle? = nil, lineWidth: CGFloat = 1.5, tint: Color? = nil
@@ -17,7 +16,7 @@ extension View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
         RoundedRectangle(cornerRadius: 10)
-          .fill(Palette.card)
+          .fill(Palette.paneCard)
           .overlay {
             if let tint {
               RoundedRectangle(cornerRadius: 10).fill(tint)
