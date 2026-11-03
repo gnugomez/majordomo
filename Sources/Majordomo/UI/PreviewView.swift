@@ -78,12 +78,21 @@ struct PreviewView: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .coordinateSpace(.named(CommentOffsets.space))
+        // Another thread's content replaces this one rather than growing
+        // out of it: kept, its pieces would morph from one thread's layout
+        // into the next's.
+        .id(thread.id)
       }
       .scrollPosition($scrollPosition)
       // Another thread reads from its title down.
       .onChange(of: thread.id) {
         commentOffsets.forget()
         scrollPosition.scrollTo(edge: .top)
+      }
+      // A switch arriving inside an animation — the card click that also
+      // slides the inspector in — shows the new thread at once.
+      .transaction(value: thread.id) { transaction in
+        transaction.animation = nil
       }
       // The stored conversation, read at once; one not in yet is asked for
       // once the selection settles, so arrowing down the list doesn't send

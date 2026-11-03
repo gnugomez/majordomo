@@ -342,13 +342,18 @@ struct BoardView: View {
         return
       }
       // Clicking the card already open puts its preview away. The
-      // inspector slides, as it does from its toolbar toggle.
-      withAnimation {
-        if model.selectedCardId == card.id, model.cardPreviewShown {
+      // inspector slides, as it does from its toolbar toggle; picking
+      // another card while it is out only swaps what it shows.
+      if model.selectedCardId == card.id, model.cardPreviewShown {
+        withAnimation {
           model.cardPreviewShown = false
-        } else {
-          model.selectedCardId = card.id
-          model.cardPreviewShown = true
+        }
+      } else {
+        model.selectedCardId = card.id
+        if !model.cardPreviewShown {
+          withAnimation {
+            model.cardPreviewShown = true
+          }
         }
       }
     }
