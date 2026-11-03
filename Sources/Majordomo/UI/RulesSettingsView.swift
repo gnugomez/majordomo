@@ -70,10 +70,8 @@ struct RulesSettingsView: View {
           .padding(.vertical, 2)
         }
         ForEach(model.rules) { rule in
-          RuleListRow(rule: rule, summary: summary(rule)) { updated in
-            replace(updated)
-          }
-          .tag(rule.id)
+          RuleListRow(rule: committing(rule), summary: summary(rule))
+            .tag(rule.id)
         }
         if model.rules.isEmpty {
           Text("No rules yet")
@@ -108,7 +106,7 @@ struct RulesSettingsView: View {
       .fixedSize()
 
       if let rule = selected {
-        RuleEditor(model: model, rule: Binding(get: { rule }, set: { replace($0) }))
+        RuleEditor(model: model, rule: committing(rule))
       } else if let rule = selectedBuiltin {
         // Read-only: the conditions as they are, nothing to change.
         RuleEditor(model: model, rule: .constant(rule), definedBy: providerName(defining: rule))
@@ -165,6 +163,11 @@ struct RulesSettingsView: View {
     model.setRules(model.rules.map { $0.id == updated.id ? updated : $0 })
   }
 
+  /// A user rule as a binding whose every change commits the whole rule.
+  private func committing(_ rule: LabelRule) -> Binding<LabelRule> {
+    Binding(get: { rule }, set: { replace($0) })
+  }
+
   /// A new rule opening on one condition to fill in — a blank question for
   /// an Apple Intelligence rule, since the whole of it is the user's
   /// wording.
@@ -213,25 +216,15 @@ private struct BuiltinRuleRow: View {
 
 /// One user rule in the list: its switch, name, and a one-line summary.
 private struct RuleListRow: View {
-  let rule: LabelRule
+  /// Every change hands the whole rule back, which commits it.
+  @Binding var rule: LabelRule
   let summary: String
-  let onChange: (LabelRule) -> Void
 
   var body: some View {
     HStack(spacing: 8) {
-      Toggle(
-        "Enabled",
-        isOn: Binding(
-          get: { rule.enabled },
-          set: { enabled in
-            var updated = rule
-            updated.enabled = enabled
-            onChange(updated)
-          }
-        )
-      )
-      .labelsHidden()
-      .toggleStyle(.checkbox)
+      Toggle("Enabled", isOn: $rule.enabled)
+        .labelsHidden()
+        .toggleStyle(.checkbox)
       Text(rule.name.isEmpty ? "Untitled" : rule.name)
         .font(.system(size: 13))
         .foregroundStyle(rule.enabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
