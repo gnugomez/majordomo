@@ -569,7 +569,7 @@ struct GitLabClient: ProviderClient {
   private func getTarget<T: Decodable>(_ url: URL, token: String, ctx: RequestContext) async throws -> Fetched<T> {
     let (data, http) = try await send(request(url, token: token), ctx: ctx)
     if http.statusCode == 401 || http.statusCode == 403 || http.statusCode == 429 {
-      throw ProviderError(message: statusMessage(http.statusCode, ctx))
+      throw statusError(http.statusCode, ctx)
     }
     if http.statusCode == 404 {
       return .missing

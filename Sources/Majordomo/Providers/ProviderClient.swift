@@ -144,6 +144,9 @@ func truncatedBody(_ text: String?, limit: Int = 1200) -> String? {
 /// A provider failure whose message is fit for the UI, verbatim.
 struct ProviderError: LocalizedError, Sendable {
   let message: String
+  /// The provider refused the token itself (HTTP 401): expired, revoked,
+  /// or never valid — what a new token fixes.
+  var rejectsToken = false
   var errorDescription: String? { message }
 }
 

@@ -527,7 +527,7 @@ actor GitHubClient: ProviderClient {
         break
       }
       guard (200 ..< 300).contains(http.statusCode) else {
-        throw ProviderError(message: statusMessage(http.statusCode, githubContext))
+        throw statusError(http.statusCode, githubContext)
       }
       guard let body = try? JSONDecoder().decode([Failable<GHNotification>].self, from: data) else {
         break
@@ -601,7 +601,7 @@ actor GitHubClient: ProviderClient {
     request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query])
     let (data, http) = try await send(request, ctx: githubContext)
     guard (200 ..< 300).contains(http.statusCode) else {
-      throw ProviderError(message: statusMessage(http.statusCode, githubContext))
+      throw statusError(http.statusCode, githubContext)
     }
     let response = try? JSONDecoder().decode(GQLTargetsResponse.self, from: data)
     guard let response, let answers = response.data else {
