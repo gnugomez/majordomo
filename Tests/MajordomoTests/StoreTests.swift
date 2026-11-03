@@ -23,7 +23,7 @@ struct StoreTests {
     let store = Store(directory: directory)
     store.setLabels([userLabel("work")])
     store.setRules([LabelRule(id: "r", name: "r", filter: RuleFilter(), labelIds: ["work"])])
-    store.seedBoards([Board(id: "b", name: "Work", symbol: "eye", columns: [])])
+    store.seedBoards([Board(id: "b", name: "Work", symbol: "eye", columns: [])], firstSet: [])
     #expect(store.hasUnsavedChanges)
     #expect(!FileManager.default.fileExists(atPath: storeFile(in: directory).path))
 

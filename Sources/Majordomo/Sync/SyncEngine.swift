@@ -110,7 +110,7 @@ actor SyncEngine {
     // The starter label and rule, once per store (see StarterSetup): the
     // feature arrives configured, and stays deleted if the user deletes it.
     store.seed(labels: StarterSetup.labels, rules: StarterSetup.rules)
-    store.seedBoards([GitForgeBoards.myWork])
+    store.seedBoards(GitForgeBoards.starters, firstSet: GitForgeBoards.firstSet)
     for account in store.accounts() where account.config == nil {
       errors[account.id] = "The stored token can't be read — remove and re-add the account."
     }

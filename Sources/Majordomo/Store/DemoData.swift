@@ -296,31 +296,6 @@ enum DemoData {
       ),
     ]
 
-    // A second board beside the starter one: every pull and merge request
-    // (two groups, either one), sorted by what a review needs — the first
-    // column asks Apple Intelligence about the change.
-    let reviews = Board(
-      id: "demo-board-reviews",
-      name: "Reviews",
-      symbol: "eye",
-      scope: RuleFilter(match: .any, groups: [
-        RuleGroup(conditions: [RuleCondition(field: .kind, op: .is, value: "pull")]),
-        RuleGroup(conditions: [RuleCondition(field: .kind, op: .is, value: "merge")]),
-      ]),
-      columns: [
-        BoardColumn(id: "demo-reviews-careful", name: "Careful Look", filter: RuleFilter(conditions: [
-          RuleCondition(field: .reviewer, op: .is, value: "@me"),
-          .question("Could this change break production — storage, billing, or how things are deployed?"),
-        ])),
-        BoardColumn(id: "demo-reviews-mine", name: "Mine to Review", filter: RuleFilter(conditions: [
-          RuleCondition(field: .reviewer, op: .is, value: "@me"),
-        ])),
-        BoardColumn(id: "demo-reviews-ready", name: "Ready", filter: RuleFilter(conditions: [
-          RuleCondition(field: .review, op: .is, value: "approved"),
-        ])),
-      ]
-    )
-
     // Two patterns the model would have noticed, waiting on an answer:
     // neither signature is covered by the rules above, so they behave
     // exactly like freshly mined ones.
@@ -441,8 +416,8 @@ enum DemoData {
       rules: rules,
       suggestions: suggestions,
       targets: tracked,
-      boards: [GitForgeBoards.myWork, reviews],
-      boardsSeeded: true
+      boards: GitForgeBoards.starters,
+      seededBoards: Set(GitForgeBoards.starters.map(\.id))
     )
   }
 

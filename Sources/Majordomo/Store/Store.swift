@@ -177,8 +177,13 @@ struct StoreFile: Codable, Sendable {
   var targetVerdicts: [String: [String: RuleVerdict]] = [:]
   /// The user's boards, in sidebar order.
   var boards: [Board] = []
-  /// Whether the starter board was ever added — the same once-only rule.
+  /// Set on a store that seeded its starter boards all at once: it has had
+  /// the first set (GitForgeBoards.firstSet). Seeding folds it into
+  /// `seededBoards` and clears it.
   var boardsSeeded: Bool = false
+  /// The starter boards ever added, by id — each one once; a board the
+  /// user deleted stays deleted.
+  var seededBoards: Set<BoardId> = []
 }
 
 extension StoreFile {
@@ -199,6 +204,7 @@ extension StoreFile {
     ) ?? [:]
     boards = try container.decodeIfPresent([Board].self, forKey: .boards) ?? []
     boardsSeeded = try container.decodeIfPresent(Bool.self, forKey: .boardsSeeded) ?? false
+    seededBoards = try container.decodeIfPresent(Set<BoardId>.self, forKey: .seededBoards) ?? []
   }
 }
 
@@ -745,14 +751,23 @@ final class Store {
     noteChange()
   }
 
-  /// Adds the starter boards, once — the same rule as the starter labels.
-  func seedBoards(_ boards: [Board]) {
-    guard !data.boardsSeeded else {
+  /// Adds each starter board once — the same rule as the starter labels,
+  /// kept per board, so a starter that ships later still reaches a store
+  /// that has the earlier ones, and one the user deleted stays deleted.
+  /// `firstSet` is what a store marked `boardsSeeded` already received.
+  func seedBoards(_ boards: [Board], firstSet: Set<BoardId>) {
+    var seeded = data.seededBoards
+    if data.boardsSeeded {
+      seeded.formUnion(firstSet)
+    }
+    let fresh = boards.filter { !seeded.contains($0.id) }
+    guard !fresh.isEmpty || data.boardsSeeded else {
       return
     }
-    data.boardsSeeded = true
     let known = Set(data.boards.map(\.id))
-    data.boards.append(contentsOf: boards.filter { !known.contains($0.id) })
+    data.boards.append(contentsOf: fresh.filter { !known.contains($0.id) })
+    data.seededBoards = seeded.union(fresh.map(\.id))
+    data.boardsSeeded = false
     noteChange()
   }
 

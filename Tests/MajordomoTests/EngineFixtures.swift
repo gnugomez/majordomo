@@ -48,7 +48,7 @@ func fixtureStore(
   file.rules = rules
   file.boards = boards
   file.seeded = true
-  file.boardsSeeded = true
+  file.seededBoards = Set(GitForgeBoards.starters.map(\.id))
   return Store(fixture: file)
 }
 
