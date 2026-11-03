@@ -1,12 +1,15 @@
 # Development shortcuts — the real logic lives in SwiftPM and scripts/.
 
-.PHONY: help build bundle install run demo clean
+.PHONY: help build test bundle install run demo clean
 
 help: ## List the available targets
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
 
 build: ## Compile (debug)
 	swift build
+
+test: ## Run the tests (Swift Testing)
+	swift test
 
 bundle: ## Release build → dist/Majordomo.app
 	./scripts/bundle.sh
