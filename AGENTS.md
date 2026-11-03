@@ -96,11 +96,6 @@ and RELEASING.md.
 Each of these fixes a real SwiftUI/AppKit-bridge failure; removing them
 reintroduces the bug:
 
-- The inbox's mark-read and open items are always present, merely
-  disabled when nothing is selected (MainWindowView): a toolbar whose item
-  count changes shifts the filter a few points relative to the search
-  field, because a real item carries a glass background and a hidden
-  placeholder does not.
 - `NSHostingController.sizingOptions = [.minSize]` on the main window
   (MainWindowController), never `.preferredContentSize`: that snaps the
   window back to its preferred size after the autosaved frame restores —
@@ -201,11 +196,12 @@ reintroduces the bug:
   floating over them, where a hard one covers the band either way. The
   room above the grid's first row is padding inside the scroll view, not
   room in the bar, so it scrolls away under the band with the cards.
-- Over a board the board's menu takes the place of the inbox's mark-read
-  and Open items (MainWindowView), which are dropped rather than hidden:
-  a hidden toolbar item still draws its empty glass capsule. Both come
-  before the filter, so the filter and the preview toggle keep their
-  places from one to the other. Switching
+- The board's menu is in the toolbar over a board only (MainWindowView),
+  and over the inbox it is dropped rather than hidden: a hidden toolbar
+  item still draws its empty glass capsule. It comes before the filter,
+  so the filter and the preview toggle keep their places from one to the
+  other. Opening and marking read are the preview's (SelectionActions),
+  not toolbar items. Switching
   between the two runs with animations disabled — SwiftUI rebuilds the
   toolbar's items either way, and animated they fade and morph. The
   board's menu is a view that reads its own state

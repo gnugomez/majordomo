@@ -117,7 +117,7 @@ final class AppModel {
   /// The board in the editor sheet — an existing one, or a new one not
   /// saved until the sheet is.
   var editingBoard: Board?
-  /// A message picked inside the previewed thread: the toolbar actions
+  /// A message picked inside the previewed thread: the preview's actions
   /// narrow to it while set. Ignored whenever it doesn't belong to the
   /// previewed thread.
   var selectedMemberId: String?

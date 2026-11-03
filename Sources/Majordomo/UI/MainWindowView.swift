@@ -122,11 +122,6 @@ struct MainWindowView: View {
     // unfolded member row — resolveSelection tells them apart.
     let selectedThreads = resolveSelection(in: scope.threads, ids: model.selectedThreadIds)
     let selected = selectedThreads.count == 1 ? selectedThreads.first : nil
-    // A message card picked inside the preview narrows the toolbar actions
-    // to just that message; a stale pick (another thread's member) counts
-    // for nothing.
-    let pickedMember = selected?.items.first { $0.id == model.selectedMemberId }
-    let actionTargets = pickedMember.map { [InboxThread(id: $0.id, items: [$0])] } ?? selectedThreads
 
     let columnVisibility = Binding<NavigationSplitViewVisibility>(
       get: { model.sidebarShown ? .all : .detailOnly },
@@ -152,7 +147,7 @@ struct MainWindowView: View {
         Color.clear.allowsHitTesting(false)
       }
       .toolbar {
-        contentToolbar(actionTargets: actionTargets)
+        contentToolbar
       }
       // The preview of what the list or the board selects: details about
       // the selection, at the trailing edge, as an inspector. In the
@@ -276,8 +271,11 @@ struct MainWindowView: View {
       PaneEmptyState(
         symbol: "square.stack",
         title: "\(selectedThreads.count) items selected",
-        caption: "Open them all with a double-click, or mark them read from the toolbar."
-      )
+        caption: "Opening them marks them read too."
+      ) {
+        SelectionActions(model: model, threads: selectedThreads)
+          .padding(.top, 8)
+      }
     } else {
       PreviewView(model: model, thread: selected)
     }
@@ -285,36 +283,27 @@ struct MainWindowView: View {
 
   // MARK: Toolbar
 
-  /// In groups, as fixed spacers part them: Refresh; the selection's
-  /// actions; the filter; the preview toggle. Mark-read and Open are
-  /// always present over the inbox, disabled while nothing is selected, so
-  /// the toolbar keeps one shape. Over a board they go — opening and
-  /// marking read live on the cards there (a double-click, the context
-  /// menu), and a board is for looking across — and the board's menu takes
-  /// their place. The filter and the preview toggle stand over both, after
-  /// the items that come and go: everything past them keeps its width from
-  /// the inbox to a board, so switching leaves them where they are. In a
+  /// In groups, as fixed spacers part them: Refresh; over a board, the
+  /// board's menu; the filter; the preview toggle. Opening and marking
+  /// read live beside what they act on — in the preview, and on the rows
+  /// and cards (a double-click, Return, the context menu) — not up here.
+  /// The filter and the preview toggle stand over both, after the item
+  /// that comes and goes: everything past them keeps its width from the
+  /// inbox to a board, so switching leaves them where they are. In a
   /// narrow window the system folds the search into a button first, then
   /// the filter and the preview toggle into the overflow menu.
   @ToolbarContentBuilder
-  private func contentToolbar(actionTargets: [InboxThread]) -> some ToolbarContent {
+  private var contentToolbar: some ToolbarContent {
     ToolbarItem {
       RefreshButton(model: model)
     }
     ToolbarSpacer(.fixed)
-    if model.selectedBoard == nil {
-      ToolbarItem {
-        markReadButton(for: actionTargets)
-      }
-      ToolbarItem {
-        openButton(for: actionTargets)
-      }
-    } else {
+    if model.selectedBoard != nil {
       ToolbarItem {
         BoardToolbarControls(model: model)
       }
+      ToolbarSpacer(.fixed)
     }
-    ToolbarSpacer(.fixed)
     ToolbarItem {
       FilterToolbarControl(
         model: model,
@@ -330,60 +319,10 @@ struct MainWindowView: View {
     }
   }
 
-  private func markReadButton(for selectedThreads: [InboxThread]) -> some View {
-    Button {
-      model.markRead(Set(selectedThreads.flatMap(\.itemIds)))
-    } label: {
-      CountedGlyph(symbol: "envelope.open", count: selectedThreads.count)
-    }
-    .keyboardShortcut("u", modifiers: [.shift, .command])
-    .disabled(!selectedThreads.contains { !$0.read })
-    .help(selectedThreads.count > 1 ? "Mark \(selectedThreads.count) as read" : "Mark as read")
-  }
-
-  // MARK: Toolbar buttons
-
-  private func openButton(for selectedThreads: [InboxThread]) -> some View {
-    Button {
-      for thread in selectedThreads {
-        model.openThread(thread.itemIds)
-      }
-    } label: {
-      CountedGlyph(symbol: "arrow.up.forward", count: selectedThreads.count)
-    }
-    .keyboardShortcut("o")
-    .disabled(selectedThreads.isEmpty)
-    .help("\(openLabel(selectedThreads)) — opens in your browser and marks read")
-  }
-
-  private func openLabel(_ threads: [InboxThread]) -> String {
-    switch threads.count {
-    case 0: "Open"
-    case 1: "Open in \(threads[0].lead.provider.displayName)"
-    default: "Open \(threads.count) in Browser"
-    }
-  }
 }
 
 private func itemCount(_ count: Int) -> String {
   count == 1 ? "1 item" : "\(count) items"
-}
-
-/// A selection action's glyph, the count riding along once the action
-/// spans more than one thread.
-private struct CountedGlyph: View {
-  let symbol: String
-  let count: Int
-
-  var body: some View {
-    HStack(spacing: 3) {
-      Image(systemName: symbol)
-      if count > 1 {
-        Text("+\(count)")
-          .font(.app(.caption, weight: .semibold))
-      }
-    }
-  }
 }
 
 /// Refresh, in a view of its own so it redraws when a sync starts or ends

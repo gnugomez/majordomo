@@ -1,6 +1,7 @@
 // Right pane of the main window: everything AppModel knows about the
 // selected thread — where its target stands now, who it is assigned to and
-// who is still asked to review it — then its target in full: who opened it
+// who is still asked to review it, and the buttons that open it or mark it
+// read — then its target in full: who opened it
 // and what it says, the latest comments and reviews, as the background
 // refresh stored it, read from disk, as a timeline of cards on a gray
 // pane. A target the refresh hasn't reached yet is asked for ahead of it.
@@ -37,6 +38,7 @@ struct PreviewView: View {
             snapshot: snapshot(of: item),
             conversation: conversation
           )
+          SelectionActions(model: model, threads: [actionTarget(in: thread)])
 
           if thread.items.count > 1 {
             ForEach(thread.items) { member in
@@ -115,6 +117,12 @@ struct PreviewView: View {
         caption: "Select an item from the list to see its details."
       )
     }
+  }
+
+  /// What the preview's buttons act on: the message picked in the thread,
+  /// or the whole thread.
+  private func actionTarget(in thread: InboxThread) -> InboxThread {
+    thread.items.first { $0.id == model.selectedMemberId }.map { InboxThread(id: $0.id, items: [$0]) } ?? thread
   }
 
   /// What the latest refresh said about the item's target; nil when it
@@ -348,7 +356,7 @@ private struct PeopleLine: View {
 /// One thread member as a message card, drawn like the timeline's: who,
 /// why it arrived, when — then the comment it points at, named with a way
 /// down to it, or the notification's own body. Clicking selects the message
-/// (accent outline) and the toolbar's mark-read/open narrow to it.
+/// (accent outline), and the preview's Open and Mark as Read narrow to it.
 private struct MessageCard: View {
   let member: InboxItem
   /// The comment it points at, while the stored conversation holds it.
@@ -405,6 +413,6 @@ private struct MessageCard: View {
     // selectable text are consumed by text selection and would never reach a
     // plain tap gesture on the container.
     .simultaneousGesture(TapGesture().onEnded(onSelect))
-    .help("Select this notification — the toolbar actions apply to just it")
+    .help("Select this notification — Open and Mark as Read apply to just it")
   }
 }
