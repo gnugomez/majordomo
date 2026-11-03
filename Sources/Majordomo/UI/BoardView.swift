@@ -21,6 +21,11 @@ private let slotCardLimit = 40
 private let columnGap: CGFloat = 10
 /// The grid's leading margin, which the first column's label keeps too.
 private let gridInset: CGFloat = 8
+/// The room the grid leaves above its first row and below its last: at
+/// rest, the first lane title or column starts a lane's gap under the
+/// header band's foot rather than against it.
+private let gridTopInset: CGFloat = 10
+private let gridBottomInset: CGFloat = 16
 /// The band the column headers take at the board's top, under the
 /// toolbar; the grid rests below it. The labels sit at its foot,
 /// `headerGap` above its edge, leaving the rest as air under the toolbar.
@@ -83,7 +88,10 @@ struct BoardView: View {
         }
       }
       .padding(.horizontal, gridInset)
-      .padding(.bottom, 16)
+      // Part of the grid, not of the header bar: it scrolls away under the
+      // bar with the cards.
+      .padding(.top, gridTopInset)
+      .padding(.bottom, gridBottomInset)
       // A click on the board around the cards puts the selection down.
       .background {
         Color.clear
@@ -264,7 +272,7 @@ struct BoardView: View {
     // Without lanes the one row of slots runs at least the pane's height,
     // so a column reads as a column and a drop lands anywhere in it; with
     // lanes every slot of a row takes the row's height, empty ones too.
-    let stretch = board.lanes == .none ? max(0, laneViewport - 16) : 0
+    let stretch = board.lanes == .none ? max(0, laneViewport - gridTopInset - gridBottomInset) : 0
     let expanded = expandedSlots.contains(key)
     let shown = expanded ? cards : Array(cards.prefix(slotCardLimit))
     return VStack(spacing: 8) {

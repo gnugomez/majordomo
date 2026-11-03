@@ -171,7 +171,9 @@ reintroduces the bug:
   hides its scroller past the grid's far end. The board's top edge effect
   is `.hard`: once the toolbar has its own backdrop (see the filter
   pills), a soft edge leaves the cards legible under the band, the labels
-  floating over them, where a hard one covers the band either way.
+  floating over them, where a hard one covers the band either way. The
+  room above the grid's first row is padding inside the scroll view, not
+  room in the bar, so it scrolls away under the band with the cards.
 - Over a board the board's menu stands in for the filter (MainWindowView),
   and the inbox's mark-read and Open items are dropped rather than hidden:
   a hidden toolbar item still draws its empty glass capsule. Switching
