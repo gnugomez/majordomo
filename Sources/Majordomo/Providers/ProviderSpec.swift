@@ -76,11 +76,9 @@ protocol ProviderSpec: Sendable {
   /// it on the item's body text.
   func bodyView(for item: InboxItem) -> AnyView?
   /// The buckets this provider's items sort into, as built-in labels:
-  /// listed and hidable like the user's, folders in the sidebar, read-only
-  /// in settings. Buckets sharing an id merge in "All Inboxes" (the first
-  /// registration's wording wins there); an account's own section shows the
-  /// provider's wording — GitLab may call "Merge requests" what GitHub calls
-  /// "Pull requests".
+  /// listed and hidable like the user's, inboxes in the sidebar, read-only
+  /// in settings. Buckets sharing an id merge into one inbox holding every
+  /// provider's items, named in the first registration's wording.
   var builtinLabels: [InboxLabel] { get }
   /// The rules that fill them, run by the same engine as the user's rules.
   /// Every provider's rules see every item; they test the provider's own
@@ -142,7 +140,7 @@ func spec(for id: ProviderId) -> any ProviderSpec {
 }
 
 /// Every provider's built-in labels merged by id — the first registration's
-/// wording wins, as "All Inboxes" lists them.
+/// wording wins, as the sidebar lists them.
 let aggregatedBuiltinLabels: [InboxLabel] = {
   var seen: Set<LabelId> = []
   var merged: [InboxLabel] = []
@@ -170,19 +168,6 @@ extension LabelCatalog {
       user: user,
       userRules: userRules
     )
-  }
-
-  /// The labels one sidebar section lists. "All Inboxes" (nil) merges every
-  /// provider's built-ins by id, the first registration's wording winning;
-  /// an account's own section shows that provider's wording instead —
-  /// GitLab calls "Merge requests" what GitHub calls "Pull requests". The
-  /// user's own follow either way, since labels belong to the user and not
-  /// to an account.
-  func sectionLabels(for provider: ProviderId?) -> [InboxLabel] {
-    guard let provider else {
-      return labels
-    }
-    return spec(for: provider).builtinLabels + user
   }
 }
 

@@ -1,13 +1,11 @@
-// Left column of the main window: the aggregated "All Inboxes" section on
-// top (open by default), one collapsible section per connected account —
-// headed by the provider's mark, its name, and the account's username.
-// Nothing sits at the foot but sync activity while it runs: a permanent
-// account row says nothing the sections above don't, and settings have
-// ⌘, the tray menu and the rows' own menus. Buckets and their wording come from
-// each provider's spec; the user's label folders sit nested under one
-// collapsible "Labels" node after them in every section, in their own
-// tints. The user's boards follow All Inboxes in a section of their own:
-// a board spans every account, so it belongs to none of theirs.
+// Left column of the main window: the inboxes on top (open by default),
+// then the user's boards. Every inbox holds every account's notifications;
+// the toolbar's filter narrows to one provider's, so the sidebar keeps no
+// section per account. Buckets come from the providers' specs, merged by
+// id; the user's label folders sit nested under one collapsible "Labels"
+// node after them, in their own tints. The foot carries what needs saying
+// and nothing else: an account in trouble, while it is, and sync activity
+// while it runs. Settings have ⌘, the tray menu and the rows' own menus.
 
 import SwiftUI
 
@@ -15,52 +13,30 @@ struct SidebarView: View {
   let model: AppModel
   @Binding var selection: SidebarSelection
 
-  @AppStorage("sidebarAllExpanded") private var allExpanded = true
+  @AppStorage("sidebarAllExpanded") private var inboxesExpanded = true
   @AppStorage("sidebarBoardsExpanded") private var boardsExpanded = true
-  /// Account sections the user expanded (collapsed by default), as a CSV of
-  /// account ids.
-  @AppStorage("expandedAccountSections") private var expandedCSV = ""
 
   var body: some View {
     List(selection: Binding<SidebarSelection?>(
       get: { selection },
-      set: { selection = $0 ?? SidebarSelection(account: nil, category: recentCategory.id) }
+      set: { selection = $0 ?? SidebarSelection(category: recentCategory.id) }
     )) {
-      Section(isExpanded: $allExpanded) {
-        categoryRows(account: nil)
+      Section(isExpanded: $inboxesExpanded) {
+        ForEach(model.sidebarRows) { row in
+          SidebarRowView(row: row, model: model)
+        }
       } header: {
-        Text("All Inboxes")
+        Text("Inboxes")
       }
       Section(isExpanded: $boardsExpanded) {
         boardRows
       } header: {
         Text("Boards")
       }
-      ForEach(model.accounts) { account in
-        Section(isExpanded: expansion(for: account.id)) {
-          categoryRows(account: account)
-        } header: {
-          accountHeader(account)
-        }
-      }
     }
     .listStyle(.sidebar)
-    // The sidebar's foot carries sync activity and nothing else: it shows
-    // while a sync runs and leaves no furniture behind when it doesn't.
-    // Settings open from ⌘, the tray menu, and the rows' own menus.
     .safeAreaInset(edge: .bottom) {
-      if model.syncing {
-        VStack(spacing: 5) {
-          ProgressView()
-            .progressViewStyle(.linear)
-            .controlSize(.small)
-          Text("Syncing…")
-            .font(.app(.caption))
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 10)
-      }
+      SidebarFoot(model: model)
     }
   }
 
@@ -83,7 +59,7 @@ struct SidebarView: View {
     ForEach(model.boards) { board in
       Label(board.name, systemImage: board.symbol)
         .badge(model.placement(of: board).unread)
-        .tag(SidebarSelection(account: nil, category: recentCategory.id, board: board.id))
+        .tag(SidebarSelection(category: recentCategory.id, board: board.id))
         .contextMenu {
           Button("Edit Board…") {
             model.editingBoard = board
@@ -94,39 +70,84 @@ struct SidebarView: View {
         }
     }
   }
+}
 
-  /// `[mark] GitHub · @username`
-  private func accountHeader(_ account: AccountState) -> some View {
-    HStack(spacing: 5) {
-      ProviderMark(provider: account.provider)
-        .frame(width: 11, height: 11)
-      Text("\(account.provider.displayName) · @\(account.username ?? "…")")
-        .lineLimit(1)
-    }
-  }
+/// The sidebar's foot: a row per account whose last sync or token check
+/// failed, for as long as it stands, and sync activity while it runs. With
+/// neither it is empty and leaves no furniture behind.
+private struct SidebarFoot: View {
+  let model: AppModel
 
-  /// One section's rows, drawn from the sidebar layout: inboxes and
-  /// folders in the user's order, hidden ones skipped.
-  @ViewBuilder
-  private func categoryRows(account: AccountState?) -> some View {
-    ForEach(model.sidebarRows(for: account)) { row in
-      SidebarRowView(row: row, sectionKey: account?.id ?? "all", account: account, model: model)
-    }
-  }
-
-  private func expansion(for id: AccountId) -> Binding<Bool> {
-    Binding(
-      get: { expandedCSV.split(separator: ",").map(String.init).contains(id) },
-      set: { expanded in
-        var ids = Set(expandedCSV.split(separator: ",").map(String.init))
-        if expanded {
-          ids.insert(id)
-        } else {
-          ids.remove(id)
+  var body: some View {
+    let troubled = model.accounts.filter { $0.error != nil }
+    if !troubled.isEmpty || model.syncing {
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(troubled) { account in
+          AccountTroubleRow(account: account, error: account.error ?? "") {
+            model.openSettings?("Accounts")
+          }
         }
-        expandedCSV = ids.sorted().joined(separator: ",")
+        if model.syncing {
+          VStack(spacing: 5) {
+            ProgressView()
+              .progressViewStyle(.linear)
+              .controlSize(.small)
+            Text("Syncing…")
+              .font(.app(.caption))
+              .foregroundStyle(.secondary)
+          }
+          .frame(maxWidth: .infinity)
+        }
       }
-    )
+      .padding(.horizontal, 14)
+      .padding(.bottom, 10)
+    }
+  }
+}
+
+/// An account that can't sync, said quietly: a small orange triangle — the
+/// one spot of color — then who the account is and the provider's own
+/// words for what went wrong, in the foot's secondary text. A click opens
+/// Settings on Accounts, where the error shows in full and the token is
+/// replaced; the tooltip names the instance too. It stays until the account
+/// works again: until then its notifications simply stop arriving.
+private struct AccountTroubleRow: View {
+  let account: AccountState
+  let error: String
+  let open: () -> Void
+
+  var body: some View {
+    Button(action: open) {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .font(.app(.caption))
+          .foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 1) {
+          Text(name)
+            .font(.app(.caption, weight: .medium))
+            .lineLimit(1)
+          Text(error)
+            .font(.app(.caption))
+            .lineLimit(2)
+        }
+        .foregroundStyle(.secondary)
+        Spacer(minLength: 0)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help("\(accountDescriptor(account))\n\(error)\nClick to open Settings → Accounts.")
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(accountDescriptor(account)) can't sync")
+    .accessibilityValue(error)
+    .accessibilityHint("Opens Settings on Accounts")
+    .accessibilityAddTraits(.isButton)
+  }
+
+  /// `GitLab · @username`; the instance is left to the tooltip, which has
+  /// the room.
+  private var name: String {
+    account.username.map { "\(account.provider.displayName) · @\($0)" } ?? account.provider.displayName
   }
 }
 
@@ -134,8 +155,6 @@ struct SidebarView: View {
 /// inside a disclosure group — a struct, so the recursion has a type.
 private struct SidebarRowView: View {
   let row: SidebarRow
-  let sectionKey: String
-  let account: AccountState?
   let model: AppModel
 
   /// An inactive window greys its source list out. A tint has to step
@@ -151,12 +170,11 @@ private struct SidebarRowView: View {
     case .folder(let folder, let rows):
       SidebarFolderGroup(
         folder: folder,
-        sectionKey: sectionKey,
-        unreadCount: model.unreadThreads(in: folder.id, account: account),
-        openSettings: { model.openSettings?() }
+        unreadCount: model.unreadThreads(in: folder.id),
+        openSettings: { model.openSettings?("Inboxes") }
       ) {
         ForEach(rows) { child in
-          SidebarRowView(row: child, sectionKey: sectionKey, account: account, model: model)
+          SidebarRowView(row: child, model: model)
         }
       }
     }
@@ -179,12 +197,12 @@ private struct SidebarRowView: View {
     }
     // Unread threads, not items — the badge matches the rows the list
     // will actually show.
-    .badge(model.unreadThreads(in: category.id, account: account))
-    .tag(SidebarSelection(account: account?.id, category: category.id))
+    .badge(model.unreadThreads(in: category.id))
+    .tag(SidebarSelection(category: category.id))
     .contextMenu {
       if category.spec.labelId != nil {
         Button("Edit Labels…") {
-          model.openSettings?()
+          model.openSettings?("Labels")
         }
       }
     }
@@ -194,8 +212,8 @@ private struct SidebarRowView: View {
 /// A folder of the layout: a disclosure group headed by the folder's own
 /// glyph and name. Not an inbox — selection skips the header — but it
 /// carries the unread count across what it holds. Expansion persists per
-/// section and folder ("folderExpanded-<sectionKey>-<folderId>"), open by
-/// default.
+/// folder ("folderExpanded-all-<folderId>", "all" naming the inboxes'
+/// section), open by default.
 private struct SidebarFolderGroup<Rows: View>: View {
   let folder: SidebarFolder
   let unreadCount: Int
@@ -205,14 +223,14 @@ private struct SidebarFolderGroup<Rows: View>: View {
   @AppStorage private var expanded: Bool
 
   init(
-    folder: SidebarFolder, sectionKey: String, unreadCount: Int, openSettings: @escaping () -> Void,
+    folder: SidebarFolder, unreadCount: Int, openSettings: @escaping () -> Void,
     @ViewBuilder rows: () -> Rows
   ) {
     self.folder = folder
     self.unreadCount = unreadCount
     self.openSettings = openSettings
     self.rows = rows()
-    _expanded = AppStorage(wrappedValue: true, "folderExpanded-\(sectionKey)-\(folder.id)")
+    _expanded = AppStorage(wrappedValue: true, "folderExpanded-all-\(folder.id)")
   }
 
   var body: some View {

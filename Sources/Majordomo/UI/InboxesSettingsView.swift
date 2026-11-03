@@ -55,7 +55,7 @@ struct InboxesSettingsView: View {
         .padding(10)
         .settingsCard()
 
-      SettingsHint(text: "Drag to arrange the sidebar: reorder, move into or out of folders, nest folders. Switched-off inboxes keep their place and come back where they were. Recent is the catch-all and always stays first. The same layout serves All Inboxes and every account section.")
+      SettingsHint(text: "Drag to arrange the sidebar: reorder, move into or out of folders, nest folders. Switched-off inboxes keep their place and come back where they were. Recent is the catch-all and always stays first. Each inbox holds every account's notifications; the toolbar's filter narrows to one provider.")
     }
     .padding(16)
     .sheet(item: $folderIconEditing) { folder in

@@ -7,7 +7,7 @@ the SDK.
 <table>
   <tr>
     <td align="center">
-      <img src=".github/screenshot-window.png" width="760" alt="The Majordomo window: sidebar with per-account sections, inbox list, and item preview" />
+      <img src=".github/screenshot-window.png" width="760" alt="The Majordomo window: sidebar, inbox list, and item preview" />
     </td>
     <td align="center">
       <img src=".github/screenshot-tray.png" width="340" alt="The Majordomo menu bar inbox" />
@@ -16,8 +16,9 @@ the SDK.
 </table>
 
 - 🔔 Get notified when someone mentions you or asks for a review
-- 🗂 One list for everything, with per-account sections and configurable
-  inboxes — connect as many GitHub or GitLab accounts as you like
+- 🗂 One list for everything, in configurable inboxes that span every
+  account — connect as many GitHub or GitLab accounts as you like, and
+  narrow to one provider, author, or repository from the toolbar's filter
 - 🎛 Arrange the rows to taste — repo, author, time, labels, where review,
   checks, and merging stand, an excerpt of the text: show what you want, in
   the order you want it

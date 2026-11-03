@@ -1,9 +1,9 @@
 // The sidebar's layout: an ordered tree of inboxes and folders, edited on
-// the Inboxes settings page. One layout serves All Inboxes and every
-// account section — labels are the user's and built-in buckets only differ
-// in wording per provider. Position and visibility are separate: every
-// inbox keeps its place in the tree, and hiding one just skips it when the
-// sidebar is drawn, so nothing is lost when it is shown again.
+// the Inboxes settings page. Each inbox in it holds every account's items;
+// the toolbar's filter narrows to one provider's. Position and visibility
+// are separate: every inbox keeps its place in the tree, and hiding one
+// just skips it when the sidebar is drawn, so nothing is lost when it is
+// shown again.
 
 import Foundation
 

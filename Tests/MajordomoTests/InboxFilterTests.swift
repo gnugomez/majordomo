@@ -156,4 +156,14 @@ struct InboxFilterTests {
       FacetValue(value: "mona", count: 1),
     ])
   }
+
+  // MARK: The facets on offer
+
+  @Test func providerIsOfferedOnlyAcrossProvidersOrWhilePicked() {
+    #expect(offeredFacets(providers: [.github, .gitlab], picks: [:]) == [.author, .provider, .repository])
+    // Two accounts on one provider: Provider would narrow nothing.
+    #expect(offeredFacets(providers: [.gitlab], picks: [:]) == [.author, .repository])
+    // A pick left behind by a removed account stays clearable.
+    #expect(offeredFacets(providers: [.gitlab], picks: [.provider: "github"]) == [.author, .provider, .repository])
+  }
 }

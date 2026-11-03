@@ -295,7 +295,7 @@ private struct PreviewHeader: View {
           }
         }
         Button("Edit Labels…") {
-          model.openSettings?()
+          model.openSettings?("Labels")
         }
       } label: {
         Image(systemName: "plus")

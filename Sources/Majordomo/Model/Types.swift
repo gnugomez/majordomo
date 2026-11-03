@@ -15,7 +15,7 @@ enum ProviderId: String, Codable, CaseIterable, Sendable {
 
 /// One connected account. Multiple accounts may share a ProviderId (two
 /// GitLab instances, two GitHub users); the id is stable across launches and
-/// keys the account's items, sidebar section, and stored credentials.
+/// keys the account's items and stored credentials.
 typealias AccountId = String
 
 /// One row in the unified inbox.

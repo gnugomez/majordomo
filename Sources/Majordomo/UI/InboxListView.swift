@@ -264,7 +264,7 @@ struct InboxListView: View {
       LabelToggles(model: model, items: items)
       Divider()
       Button("Edit Labels…") {
-        model.openSettings?()
+        model.openSettings?("Labels")
       }
     }
   }

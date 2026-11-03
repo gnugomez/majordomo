@@ -12,7 +12,7 @@ enum GitForgeBuckets {
   static let claimedReasons: [String] = ["assigned", "mentioned", "review_requested"]
 
   /// The five buckets as built-in labels, in sidebar order. Ids are shared
-  /// across forges so "All Inboxes" merges them; `pullsName` is the one
+  /// across forges so the sidebar merges them; `pullsName` is the one
   /// wording that differs ("Pull requests" / "Merge requests").
   static func labels(pullsName: String) -> [InboxLabel] {
     [

@@ -60,7 +60,7 @@ struct FilterToolbarControl: View, Equatable {
   }
 }
 
-/// The filter's menu. Its own view, so what it reads — the set, the scope,
+/// The filter's menu. Its own view, so what it reads — the set, the accounts,
 /// the values in view — is read only where the menu is built, and the
 /// control's label never reads it.
 private struct FilterMenuItems: View {
@@ -81,34 +81,15 @@ private struct FilterMenuItems: View {
     // The windows read for themselves; a header would only crowd them.
     .labelsHidden()
     Divider()
-    ForEach(offeredFacets, id: \.facet) { offered in
-      FacetSubmenu(model: model, facet: offered.facet, enabled: offered.enabled, values: values)
+    let facets = offeredFacets(providers: Set(model.accounts.map(\.provider)), picks: model.facetPicks)
+    ForEach(facets) { facet in
+      FacetSubmenu(model: model, facet: facet, values: values)
     }
     Divider()
     Button("Clear Filters") {
       model.clearFilters()
     }
     .disabled(model.filter.isEmpty)
-  }
-
-  /// The facets the menu offers, and whether each can narrow anything
-  /// here. Provider narrows only across accounts on more than one
-  /// provider: it is offered while the accounts span them — or while it
-  /// holds a pick, which must stay clearable — and in one account's inbox
-  /// it stays, disabled, so the menu keeps one shape from inbox to inbox.
-  private var offeredFacets: [(facet: Facet, enabled: Bool)] {
-    let picks = model.facetPicks
-    let spansProviders = Set(model.accounts.map(\.provider)).count > 1
-    let oneAccount = model.selectedBoard == nil && model.sidebarSelection.account != nil
-    return Facet.allCases.compactMap { facet in
-      guard facet == .provider else {
-        return (facet, true)
-      }
-      guard spansProviders || picks[facet] != nil else {
-        return nil
-      }
-      return (facet, (spansProviders && !oneAccount) || picks[facet] != nil)
-    }
   }
 }
 
@@ -117,7 +98,6 @@ private struct FilterMenuItems: View {
 private struct FacetSubmenu: View {
   let model: AppModel
   let facet: Facet
-  let enabled: Bool
   let values: FacetValues
 
   var body: some View {
@@ -136,6 +116,5 @@ private struct FacetSubmenu: View {
       // The submenu's own title already names the facet.
       .labelsHidden()
     }
-    .disabled(!enabled)
   }
 }

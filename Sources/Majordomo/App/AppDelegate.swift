@@ -38,8 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     model.openMainWindow = { [weak self] in
       self?.openMainWindow()
     }
-    model.openSettings = { [weak self] in
-      self?.openSettings()
+    model.openSettings = { [weak self] tab in
+      self?.openSettings(tab: tab)
     }
     model.startTicker()
     model.refreshLaunchAtLogin()
@@ -57,8 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Likewise MAJORDOMO_OPEN_SETTINGS=<tab label> opens settings on that
     // tab, for a screenshot of one page.
     if let tab = ProcessInfo.processInfo.environment["MAJORDOMO_OPEN_SETTINGS"] {
-      openSettings()
-      settingsWindow?.select(tab: tab)
+      openSettings(tab: tab)
     }
 
     Task {
@@ -321,12 +320,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     addActions(to: menu)
   }
 
-  /// Account problems lead — one row per broken account, opening settings.
+  /// Account problems lead — one row per broken account, opening Settings
+  /// on Accounts, where its error shows and its token is replaced.
   private func addAccountAlerts(to menu: NSMenu) {
     let broken = model.accounts.filter { $0.error != nil }
     for account in broken {
       let name = account.username.map { "@\($0)" } ?? account.provider.displayName
-      let item = NSMenuItem(title: "\(name) needs attention…", action: #selector(openSettingsAction), keyEquivalent: "")
+      let item = NSMenuItem(title: "\(name) needs attention…", action: #selector(openAccountSettings), keyEquivalent: "")
       item.target = self
       item.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
       menu.addItem(item)
@@ -521,9 +521,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     openSettings()
   }
 
-  private func openSettings() {
+  @objc private func openAccountSettings() {
+    openSettings(tab: "Accounts")
+  }
+
+  /// Opens settings on `tab`, a tab's label, when one is named, and on the
+  /// page it was left at otherwise.
+  private func openSettings(tab: String? = nil) {
     if settingsWindow == nil {
       settingsWindow = SettingsWindowController(model: model)
+    }
+    if let tab {
+      settingsWindow?.select(tab: tab)
     }
     settingsWindow?.open()
   }

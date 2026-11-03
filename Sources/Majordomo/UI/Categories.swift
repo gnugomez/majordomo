@@ -1,7 +1,7 @@
 // How the inbox splits into named buckets: the catch-all, then one folder
 // per label — the providers' built-in ones and the user's own. The core
-// defines only the catch-all, how labels list per section, and what the
-// sidebar selects.
+// defines only the catch-all, how the buckets lay out as sidebar rows, and
+// what the sidebar selects.
 
 import Foundation
 
@@ -49,7 +49,7 @@ func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] 
   }
 }
 
-/// One drawn row of a sidebar section: an inbox with its items, or a
+/// One drawn row of the sidebar's inboxes: an inbox with its items, or a
 /// folder with the rows inside it.
 enum SidebarRow: Identifiable, Sendable {
   case inbox(Category)
@@ -71,7 +71,7 @@ enum SidebarRow: Identifiable, Sendable {
   }
 }
 
-/// A section's rows in layout order: each inbox node resolved to its
+/// The sidebar's rows in layout order: each inbox node resolved to its
 /// bucket, hidden and unknown inboxes dropped (the catch-all never is), and
 /// folders with nothing visible inside dropped with them. The sidebar draws
 /// this; the scope resolution selects from its flattening.
@@ -94,7 +94,7 @@ func sidebarRows(layout: SidebarLayout, categories: [Category]) -> [SidebarRow] 
   return rows(for: layout.nodes)
 }
 
-/// The inboxes a section lets the user select, in layout order.
+/// The inboxes the sidebar lets the user select, in layout order.
 func visibleCategories(layout: SidebarLayout, categories: [Category]) -> [Category] {
   sidebarRows(layout: layout, categories: categories).flatMap(\.inboxes)
 }
@@ -218,11 +218,10 @@ func matchingUnread(_ cards: [BoardCard], kept: Set<String>) -> [BoardCard] {
   }
 }
 
-/// What the sidebar selects: a category id, optionally scoped to one
-/// account — nil is the aggregated "All Inboxes" section — or a board,
-/// which spans every account and stands in for the category while set.
+/// What the sidebar selects: an inbox, by category id, across every
+/// account — the toolbar's Provider filter narrows it to one provider's —
+/// or a board, which stands in for the category while set.
 struct SidebarSelection: Hashable, Sendable {
-  var account: AccountId?
   var category: String
   var board: BoardId?
 }

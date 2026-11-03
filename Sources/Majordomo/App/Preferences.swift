@@ -102,7 +102,6 @@ private enum Keys {
   static var suggestionsEnabled: PreferenceKey<Bool> { .plain("suggestionsEnabled", default: true) }
   static var summariesEnabled: PreferenceKey<Bool> { .plain("summariesEnabled", default: true) }
   static var sidebarCategory: PreferenceKey<String> { .plain("sidebarCategory", default: recentCategory.id) }
-  static var sidebarAccount: PreferenceKey<AccountId?> { PreferenceKey<AccountId?>.optional("sidebarAccount") }
   static var sidebarBoard: PreferenceKey<BoardId?> { PreferenceKey<BoardId?>.optional("sidebarBoard") }
   static var activityWindow: PreferenceKey<ActivityWindow?> {
     PreferenceKey<ActivityWindow?>.optionalRaw("activityWindow")
@@ -130,11 +129,12 @@ final class Preferences {
   var summariesEnabled: Bool {
     didSet { defaults[Keys.summariesEnabled] = summariesEnabled }
   }
-  /// Which inbox or board the main window shows.
+  /// Which inbox or board the main window shows. An inbox spans every
+  /// account, so a `sidebarAccount` key left in the defaults is never
+  /// read: the category it scoped opens across them all.
   var sidebarSelection: SidebarSelection {
     didSet {
       defaults[Keys.sidebarCategory] = sidebarSelection.category
-      defaults[Keys.sidebarAccount] = sidebarSelection.account
       defaults[Keys.sidebarBoard] = sidebarSelection.board
     }
   }
@@ -168,7 +168,6 @@ final class Preferences {
     suggestionsEnabled = defaults[Keys.suggestionsEnabled]
     summariesEnabled = defaults[Keys.summariesEnabled]
     sidebarSelection = SidebarSelection(
-      account: defaults[Keys.sidebarAccount],
       category: defaults[Keys.sidebarCategory],
       board: defaults[Keys.sidebarBoard]
     )

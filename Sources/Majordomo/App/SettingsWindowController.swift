@@ -1,7 +1,8 @@
 // The settings window: toolbar tabs (NSTabViewController's
 // .toolbar style — the canonical preferences window, which also animates the
 // resize between tabs), one tab per category. Opened from ⌘, (main menu),
-// the tray menu, and the sidebar's account row; a singleton that refocuses.
+// the tray menu, the sidebar's warning for an account in trouble, and the
+// Edit… items of the rows' menus; a singleton that refocuses.
 // Every page is fixed-size (adding an account happens in a sheet), so tab
 // switches are the only resizes.
 

@@ -18,34 +18,27 @@ struct MainWindowView: View {
 
   /// Everything the sidebar selection resolves to for one render pass.
   private struct Scope {
-    /// nil when the aggregated "All Inboxes" section is selected — or when
-    /// the selected account was removed (the view falls back to aggregate).
-    var account: AccountState?
+    /// The selected inbox, holding every account's items.
     var category: Category
     /// The category's items grouped into threads: one row per target.
     var threads: [InboxThread]
   }
 
   private func resolveScope() -> Scope {
-    let sidebar = model.sidebarSelection
-    let account = sidebar.account.flatMap { id in model.accounts.first { $0.id == id } }
-    let items = account.map { scoped in model.items.filter { $0.accountId == scoped.id } }
-      ?? model.items
-    let labels = model.catalog.sectionLabels(for: account?.provider)
-    let specs = categories(for: labels)
+    let specs = categories(for: model.catalog.labels)
     // The sidebar layout decides what is selectable: an inbox hidden there
     // or gone from the tree falls back to Recent (always first in specs,
     // never hidden). The search and the filter apply to every category
-    // alike; the sidebar's badges stay unfiltered (SidebarView counts on
-    // its own).
+    // alike — the filter's Provider pick is what narrows to one
+    // provider's items; the sidebar's badges stay unfiltered (SidebarView
+    // counts on its own).
     let filter = model.filter
-    let narrowed = matchingWindow(matchingSearch(items, model.searchText), filter.window, now: model.now)
+    let narrowed = matchingWindow(matchingSearch(model.items, model.searchText), filter.window, now: model.now)
     let categories = categorize(inboxOrder(narrowed), into: specs)
     let selectable = visibleCategories(layout: model.sidebarLayout, categories: categories)
-    let category = selectable.first { $0.id == sidebar.category } ?? categories[0]
+    let category = selectable.first { $0.id == model.sidebarSelection.category } ?? categories[0]
     // The filter's picks narrow the category last.
     return Scope(
-      account: account,
       category: category,
       threads: listedThreads(matchingFacets(category.items, filter.picks), filter)
     )
@@ -174,7 +167,7 @@ struct MainWindowView: View {
       }
     }
     .toolbar(removing: .sidebarToggle)
-    .navigationTitle(model.selectedBoard?.name ?? windowTitle(for: scope))
+    .navigationTitle(model.selectedBoard?.name ?? scope.category.label)
     .navigationSubtitle(subtitle(for: scope))
   }
 
@@ -251,13 +244,6 @@ struct MainWindowView: View {
     } else {
       BoardView(model: model, board: board, placement: placement)
     }
-  }
-
-  private func windowTitle(for scope: Scope) -> String {
-    guard let account = scope.account else {
-      return scope.category.label
-    }
-    return "\(scope.category.label) – @\(account.username ?? account.provider.displayName)"
   }
 
   // MARK: Preview

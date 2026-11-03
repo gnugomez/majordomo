@@ -19,6 +19,12 @@ and RELEASING.md.
   set is assembled (built-ins first, then the user's) — read it from
   `AppModel.catalog` or the engine's `catalog()` rather than composing
   unions at a call site. Never interpret provider tokens in core/UI code.
+- **One sidebar for every account**: buckets sharing an id merge into one
+  inbox, and every inbox holds every account's items — the selection
+  (`SidebarSelection`) names an inbox or a board, never an account. One
+  provider's items are the toolbar filter's Provider pick; an account in
+  trouble (`AccountState.error`) shows at the sidebar's foot, opening
+  Settings on Accounts, for as long as it is.
 - **One filter model, one sweep**: label rules, board scopes, and board
   columns all hold a `RuleFilter` (groups of conditions, all/any at both
   levels; an Apple Intelligence check is a `.question` condition), edited

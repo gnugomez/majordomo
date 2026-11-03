@@ -90,6 +90,17 @@ struct FacetValue: Equatable, Identifiable, Sendable {
   var id: String { value }
 }
 
+/// The facets the filter's menu offers, given the providers the accounts
+/// are on. Provider narrows only across more than one: it is offered while
+/// the accounts span several, or while it holds a pick, which must stay
+/// clearable. It is the one way to narrow an inbox to one provider's items
+/// — every inbox holds every account's.
+func offeredFacets(providers: Set<ProviderId>, picks: [Facet: String]) -> [Facet] {
+  Facet.allCases.filter { facet in
+    facet != .provider || providers.count > 1 || picks[facet] != nil
+  }
+}
+
 /// Subjects matching every pick except `except`'s — the facet whose own
 /// menu is being filled, so it lists what the other picks leave.
 func matchingFacets<Subject: FacetSubject>(

@@ -67,12 +67,36 @@ struct AppModelTests {
     state.revisions.bump(.items)
     state.revisions.bump(.sidebar)
     model.apply(state)
-    #expect(model.sidebarRows(for: nil).map(\.id) == [catchAllInboxId])
-    #expect(model.unreadThreads(in: catchAllInboxId, account: nil) == 2)
+    #expect(model.sidebarRows.map(\.id) == [catchAllInboxId])
+    #expect(model.unreadThreads(in: catchAllInboxId) == 2)
     state.items[0].read = true
     state.revisions.bump(.items)
     model.apply(state)
-    #expect(model.unreadThreads(in: catchAllInboxId, account: nil) == 1)
+    #expect(model.unreadThreads(in: catchAllInboxId) == 1)
+  }
+
+  @Test func sidebarInboxesHoldEveryAccount() {
+    let model = AppModel(preferences: Preferences(defaults: defaults))
+    let builtins = model.catalog.builtinLabels.map(\.id)
+    var fromGitHub = item("acct:1", reason: "mentioned", mention: true)
+    fromGitHub.labels = ["mentions"]
+    var fromGitLab = InboxItem(
+      id: "lab:1", accountId: "lab", provider: .gitlab, kind: "merge", title: "Ship it", repo: "acme/api",
+      url: "https://gitlab.example.com/acme/api/-/merge_requests/1", reason: "mentioned", isMention: true,
+      updatedAt: referenceDate, read: false
+    )
+    fromGitLab.labels = ["mentions"]
+    var state = AppState()
+    state.items = [fromGitHub, fromGitLab]
+    state.sidebar = .standard(catchAll: catchAllInboxId, builtins: builtins, labels: [])
+    state.revisions.bump(.items)
+    state.revisions.bump(.sidebar)
+    model.apply(state)
+    // One set of inboxes, the built-ins merged by id — no section per
+    // account, and each inbox counts every account's threads.
+    #expect(model.sidebarRows.map(\.id) == [catchAllInboxId] + builtins)
+    #expect(model.unreadThreads(in: "mentions") == 2)
+    #expect(model.unreadThreads(in: catchAllInboxId) == 2)
   }
 
   @Test func preferencesRoundTrip() {
@@ -82,17 +106,36 @@ struct AppModelTests {
     preferences.sidebarShown = false
     preferences.notifyScope = .all
     preferences.activityWindow = .week
-    preferences.sidebarSelection = SidebarSelection(account: "acct", category: "work", board: nil)
+    preferences.sidebarSelection = SidebarSelection(category: "work", board: "board-1")
     // Under the keys they have always had.
     #expect(defaults.values["sidebarHidden"] as? Bool == true)
     #expect(defaults.values["notifyScope"] as? String == "all")
+    #expect(defaults.values["sidebarCategory"] as? String == "work")
+    #expect(defaults.values["sidebarBoard"] as? String == "board-1")
     let reread = Preferences(defaults: defaults)
     #expect(!reread.sidebarShown)
     #expect(reread.notifyScope == .all)
     #expect(reread.activityWindow == .week)
-    #expect(reread.sidebarSelection == SidebarSelection(account: "acct", category: "work", board: nil))
+    #expect(reread.sidebarSelection == SidebarSelection(category: "work", board: "board-1"))
     reread.activityWindow = nil
     #expect(defaults.values["activityWindow"] == nil)
+  }
+
+  @Test func storedAccountSelectionOpensTheInboxAcrossAccounts() {
+    // An inbox selected with an account stored beside it opens that same
+    // inbox, holding every account's items.
+    defaults.set("acct", forKey: "sidebarAccount")
+    defaults.set("mentions", forKey: "sidebarCategory")
+    let preferences = Preferences(defaults: defaults)
+    #expect(preferences.sidebarSelection == SidebarSelection(category: "mentions"))
+    let model = AppModel(preferences: preferences)
+    var state = AppState()
+    state.items = [item("acct:1")]
+    state.accounts = [AccountState(id: "other", provider: .github)]
+    state.revisions.bump(.items)
+    state.revisions.bump(.accounts)
+    model.apply(state)
+    #expect(model.sidebarSelection == SidebarSelection(category: "mentions"))
   }
 }
 

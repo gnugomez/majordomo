@@ -25,7 +25,7 @@ final class AppModel {
   // Engine-pushed state.
   private(set) var items: [InboxItem] = [] {
     didSet {
-      sidebarSections = [:]
+      heldSidebarInboxes = nil
     }
   }
   private(set) var accounts: [AccountState] = []
@@ -35,19 +35,19 @@ final class AppModel {
   /// push to the engine, whose next state echoes the same values.
   private(set) var labels: [InboxLabel] = [] {
     didSet {
-      sidebarSections = [:]
+      heldSidebarInboxes = nil
     }
   }
   private(set) var rules: [LabelRule] = [] {
     didSet {
-      sidebarSections = [:]
+      heldSidebarInboxes = nil
     }
   }
   /// The sidebar's tree of inboxes and folders; edited through
   /// `updateSidebar`, which applies here at once and pushes to the engine.
   private(set) var sidebarLayout = SidebarLayout() {
     didSet {
-      sidebarSections = [:]
+      heldSidebarInboxes = nil
     }
   }
   /// The user's boards, in sidebar order; edited through `setBoards`,
@@ -131,7 +131,9 @@ final class AppModel {
 
   @ObservationIgnored var engine: SyncEngine?
   @ObservationIgnored var openMainWindow: (@MainActor () -> Void)?
-  @ObservationIgnored var openSettings: (@MainActor () -> Void)?
+  /// Opens the settings window on a tab, by its label ("Accounts",
+  /// "Labels", …).
+  @ObservationIgnored var openSettings: (@MainActor (_ tab: String) -> Void)?
 
   init(preferences: Preferences = Preferences()) {
     self.preferences = preferences
@@ -247,12 +249,8 @@ final class AppModel {
     if moved.contains(.placements) {
       placements = state.placements
     }
-    // A sidebar scope pointing at a removed account would deselect every
-    // row and persist the dangling id — snap back to All Inboxes.
-    if let account = sidebarSelection.account, !accounts.contains(where: { $0.id == account }) {
-      sidebarSelection = SidebarSelection(account: nil, category: sidebarSelection.category)
-    }
-    // Likewise a deleted board: back to the inbox it was opened over.
+    // A deleted board would deselect every row and persist the dangling
+    // id — back to the inbox it was opened over.
     if let board = sidebarSelection.board, !boards.contains(where: { $0.id == board }) {
       sidebarSelection.board = nil
     }
@@ -378,8 +376,8 @@ final class AppModel {
     .current(user: labels, userRules: rules)
   }
 
-  /// Every label the sidebar can show: the providers' built-ins as "All
-  /// Inboxes" merges them, then the user's.
+  /// Every label the sidebar can show: the providers' built-ins, merged
+  /// by id, then the user's.
   var allLabels: [InboxLabel] {
     catalog.labels
   }
@@ -516,46 +514,43 @@ final class AppModel {
 
   // MARK: Sidebar
 
-  /// One sidebar section as it draws: its rows, and the unread threads of
-  /// each inbox and folder in it, by row id.
-  private struct SidebarSection {
+  /// The sidebar's inboxes as they draw: the rows, and the unread threads
+  /// of each inbox and folder among them, by row id.
+  private struct SidebarInboxes {
     let rows: [SidebarRow]
     let unread: [String: Int]
   }
 
-  /// Sections worked out since what they read last changed, by account
-  /// id ("" for All Inboxes). The sidebar redraws on a selection, a sync
-  /// starting, a board's badge; the sections only change with the items,
-  /// the labels, and the layout.
-  @ObservationIgnored private var sidebarSections: [String: SidebarSection] = [:]
+  /// The inboxes as worked out since what they read last changed. The
+  /// sidebar redraws on a selection, a sync starting, a board's badge;
+  /// its inboxes only change with the items, the labels, and the layout.
+  @ObservationIgnored private var heldSidebarInboxes: SidebarInboxes?
 
-  /// A section's rows — All Inboxes (nil) or one account's — drawn from
-  /// the layout: inboxes and folders in the user's order, hidden ones
-  /// skipped.
-  func sidebarRows(for account: AccountState?) -> [SidebarRow] {
-    sidebarSection(for: account).rows
+  /// The sidebar's inbox rows, drawn from the layout: inboxes and folders
+  /// in the user's order, hidden ones skipped, each holding every
+  /// account's items.
+  var sidebarRows: [SidebarRow] {
+    sidebarInboxes().rows
   }
 
-  /// Unread threads, not items, in an inbox or folder of a section — the
-  /// badge matches the rows the list will show, and an item in two of a
-  /// folder's inboxes counts once.
-  func unreadThreads(in rowId: String, account: AccountState?) -> Int {
-    sidebarSection(for: account).unread[rowId] ?? 0
+  /// Unread threads, not items, in an inbox or folder — the badge matches
+  /// the rows the list will show, and an item in two of a folder's inboxes
+  /// counts once.
+  func unreadThreads(in rowId: String) -> Int {
+    sidebarInboxes().unread[rowId] ?? 0
   }
 
-  private func sidebarSection(for account: AccountState?) -> SidebarSection {
-    // Read on every call, a held section too: the views asking observe
-    // what they read, and one that stopped reading would never hear of a
+  private func sidebarInboxes() -> SidebarInboxes {
+    // Read on every call, held inboxes too: the views asking observe what
+    // they read, and one that stopped reading would never hear of a
     // change.
     let items = items
-    let labels = catalog.sectionLabels(for: account?.provider)
+    let labels = catalog.labels
     let layout = sidebarLayout
-    let key = account?.id ?? ""
-    if let held = sidebarSections[key] {
+    if let held = heldSidebarInboxes {
       return held
     }
-    let scoped = account.map { scope in items.filter { $0.accountId == scope.id } } ?? items
-    let rows = Majordomo.sidebarRows(layout: layout, categories: categorize(scoped, into: categories(for: labels)))
+    let rows = Majordomo.sidebarRows(layout: layout, categories: categorize(items, into: categories(for: labels)))
     var unread: [String: Int] = [:]
     func count(_ rows: [SidebarRow]) {
       for row in rows {
@@ -569,9 +564,9 @@ final class AppModel {
       }
     }
     count(rows)
-    let section = SidebarSection(rows: rows, unread: unread)
-    sidebarSections[key] = section
-    return section
+    let inboxes = SidebarInboxes(rows: rows, unread: unread)
+    heldSidebarInboxes = inboxes
+    return inboxes
   }
 
   /// Edits the sidebar layout in place (move, hide, add or dissolve a
@@ -702,7 +697,7 @@ final class AppModel {
       updated[index] = board
     } else {
       updated.append(board)
-      sidebarSelection = SidebarSelection(account: nil, category: recentCategory.id, board: board.id)
+      sidebarSelection = SidebarSelection(category: recentCategory.id, board: board.id)
     }
     setBoards(updated)
   }

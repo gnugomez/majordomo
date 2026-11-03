@@ -124,8 +124,10 @@ sidebar buckets and their wording — comes from the provider's `ProviderSpec`
 implementation (in code, not from the API). The buckets are built-in labels
 (`builtinLabels`) and the rules that fill them (`builtinRules`), evaluated
 by the same `RuleEngine` as the user's own labels and rules: they show as
-folders, list read-only in the Labels and Rules settings, and can be hidden
-from the Inboxes page.
+inboxes in the sidebar, list read-only in the Labels and Rules settings,
+and can be hidden from the Inboxes page. Buckets sharing an id merge into
+one inbox holding every provider's items, named in the first
+registration's wording.
 
 The providers' set and the user's are joined in exactly one place,
 `LabelCatalog.current` (`Providers/ProviderSpec.swift`), which hands back a
@@ -193,7 +195,10 @@ something — the only ones the model is asked, a budgeted few per pass. The
 views only narrow a placement by the search and the toolbar's filter.
 
 Any number of accounts per provider can be connected; accounts are keyed by
-`AccountId`, never by provider.
+`AccountId`, never by provider. The sidebar keeps no section per account:
+every inbox holds every account's items, the toolbar's Provider filter
+narrows to one provider's, and an account whose sync fails shows at the
+sidebar's foot, opening Settings on Accounts, until it works again.
 
 ## Style
 

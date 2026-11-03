@@ -1,8 +1,8 @@
 // Everything GitLab-specific that isn't API traffic: naming, the tanuki
 // mark, glyphs and colors for its tokens, and its sidebar buckets as
-// built-in labels and rules — worded GitLab's way ("Merge requests"), which
-// shows in per-account sections while the aggregated view merges labels by
-// id.
+// built-in labels and rules — worded GitLab's way ("Merge requests"), as
+// its rules read on the Rules page; the sidebar merges each bucket with
+// GitHub's by id, under the first registration's name.
 
 import SwiftUI
 
