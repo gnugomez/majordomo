@@ -1,254 +1,192 @@
 // A rendering helper provider specs can opt into for Markdown body text —
-// the bodyView contract itself is arbitrary SwiftUI. Foundation's parser
-// reports block structure as PresentationIntent runs; laying those out is
-// this view's job (code blocks in a monospaced card, quotes behind a bar,
-// headings, list items and task checkboxes, a table row to a line) with
-// inline styles riding along on the runs. The parser hands raw HTML
-// through as text, so its tags and comments are dropped here. Real forge
-// content is full of fenced code, quotes, and template HTML, so
-// inline-only parsing reads as broken — and a rendering dependency stays
-// off the table.
+// the bodyView contract itself is arbitrary SwiftUI. MarkdownDocument
+// parses a body once into blocks; this lays them out in readable 13-point
+// primary text: code in a monospaced card, quotes behind a bar, headings,
+// list items and task checkboxes at their depth, tables as a grid, images
+// as pictures that fit the column (MarkdownImageView), and `<details>`
+// folds closed until clicked. Inline styles, links among them, ride along
+// on the text; a link a body writes relative to its target opens resolved
+// against it. Search terms are highlighted in every block's text.
 
 import SwiftUI
 
 struct MarkdownBody: View {
   let text: String
 
+  @Environment(\.bodyImages) private var bodyImages
+
+  var body: some View {
+    MarkdownBlockList(blocks: MarkdownDocument.parsed(text).blocks)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .textSelection(.enabled)
+      .environment(\.openURL, OpenURLAction { url in
+        guard url.scheme == nil, let resolved = bodyImages?.resolve(url.relativeString) else {
+          return .systemAction
+        }
+        return .systemAction(resolved)
+      })
+  }
+}
+
+/// Blocks one under another — a body's, or a fold's.
+private struct MarkdownBlockList: View {
+  let blocks: [MarkdownBlock]
+
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
+    VStack(alignment: .leading, spacing: 8) {
       ForEach(blocks) { block in
         blockView(block)
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .textSelection(.enabled)
   }
-
-  // MARK: Block model
-
-  private struct Block: Identifiable {
-    enum Kind {
-      case paragraph
-      case heading(level: Int)
-      case code
-      case quote
-      case listItem(marker: String)
-      case task(done: Bool)
-      case tableRow(header: Bool)
-      case divider
-    }
-
-    let id: Int
-    var kind: Kind
-    var content: AttributedString
-  }
-
-  /// What groups runs into one block: their intent — except that a table
-  /// row's cells, each with an intent of its own, share their row's.
-  private enum BlockKey: Equatable {
-    case intent(PresentationIntent?)
-    case row(Int)
-  }
-
-  private var blocks: [Block] {
-    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    // HTML comments are template boilerplate ("Describe your change…"),
-    // written for whoever fills the template in, never for its readers.
-    let source = text.replacing(/<!--[\s\S]*?-->/, with: "")
-    guard let parsed = try? AttributedString(markdown: source, options: options) else {
-      return [Block(id: 0, kind: .paragraph, content: AttributedString(source))]
-    }
-
-    var result: [Block] = []
-    var lastKey: BlockKey?
-    var lastCell: Int?
-    for run in parsed.runs {
-      let intent = run.presentationIntent
-      let code = isCode(kind(of: intent)) || run.inlinePresentationIntent?.contains(.code) == true
-      guard var piece = readable(AttributedString(parsed[run.range]), htmlBlock: intent == nil, code: code) else {
-        continue
-      }
-      piece.presentationIntent = nil
-      let key = tableRowIdentity(intent).map(BlockKey.row) ?? .intent(intent)
-      let cell = tableCellIdentity(intent)
-      // Runs of one block share one key; a change starts the next block.
-      if key == lastKey, !result.isEmpty {
-        if let cell, cell != lastCell {
-          result[result.count - 1].content += AttributedString("  ·  ")
-        }
-        result[result.count - 1].content += piece
-      } else {
-        lastKey = key
-        result.append(Block(id: result.count, kind: kind(of: intent), content: piece))
-      }
-      lastCell = cell
-    }
-    for index in result.indices {
-      // Code blocks keep their inner newlines; the trailing one just pads.
-      if isCode(result[index].kind) {
-        while result[index].content.characters.last == "\n" {
-          result[index].content.characters.removeLast()
-        }
-      }
-      markTask(&result[index])
-    }
-    return result
-  }
-
-  /// A run as it should read. Raw HTML — a tag on its own, or a block of
-  /// it — gives up its tags and keeps its text, a line break staying one;
-  /// code keeps every character. nil when nothing is left to show.
-  private func readable(_ piece: AttributedString, htmlBlock: Bool, code: Bool) -> AttributedString? {
-    guard !piece.characters.isEmpty else {
-      return nil
-    }
-    let raw = String(piece.characters)
-    guard !code, raw.contains("<"), htmlBlock || raw.wholeMatch(of: /\s*(<[^<>]+>\s*)+/) != nil else {
-      return piece
-    }
-    let text = raw
-      .replacing(/<br\s*\/?>/.ignoresCase(), with: "\n")
-      .replacing(/<[^<>]+>/, with: "")
-    let kept = htmlBlock ? text.trimmingCharacters(in: .whitespacesAndNewlines) : text
-    return kept.isEmpty ? nil : AttributedString(kept)
-  }
-
-  /// A list item written as a task ("[ ] ", "[x] ") reads as a checkbox.
-  private func markTask(_ block: inout Block) {
-    guard case .listItem = block.kind else {
-      return
-    }
-    let text = String(block.content.characters)
-    let done: Bool
-    if text.hasPrefix("[ ] ") {
-      done = false
-    } else if text.hasPrefix("[x] ") || text.hasPrefix("[X] ") {
-      done = true
-    } else {
-      return
-    }
-    block.kind = .task(done: done)
-    block.content.characters.removeFirst(4)
-  }
-
-  private func tableRowIdentity(_ intent: PresentationIntent?) -> Int? {
-    intent?.components.first { component in
-      switch component.kind {
-      case .tableHeaderRow, .tableRow: true
-      default: false
-      }
-    }?.identity
-  }
-
-  private func tableCellIdentity(_ intent: PresentationIntent?) -> Int? {
-    intent?.components.first { component in
-      if case .tableCell = component.kind {
-        return true
-      }
-      return false
-    }?.identity
-  }
-
-  private func isCode(_ kind: Block.Kind) -> Bool {
-    if case .code = kind {
-      return true
-    }
-    return false
-  }
-
-  /// Innermost meaningful component wins: code and headings over list
-  /// nesting, list markers over the quote that may contain them.
-  private func kind(of intent: PresentationIntent?) -> Block.Kind {
-    guard let components = intent?.components else {
-      return .paragraph
-    }
-    var ordered = false
-    var ordinal: Int?
-    var quoted = false
-    for component in components {
-      switch component.kind {
-      case .codeBlock:
-        return .code
-      case .header(let level):
-        return .heading(level: level)
-      case .tableHeaderRow:
-        return .tableRow(header: true)
-      case .tableRow:
-        return .tableRow(header: false)
-      case .listItem(let n):
-        ordinal = n
-      case .orderedList:
-        ordered = true
-      case .blockQuote:
-        quoted = true
-      case .thematicBreak:
-        return .divider
-      default:
-        break
-      }
-    }
-    if let ordinal {
-      return .listItem(marker: ordered ? "\(ordinal)." : "•")
-    }
-    return quoted ? .quote : .paragraph
-  }
-
-  // MARK: Rendering
 
   @ViewBuilder
-  private func blockView(_ block: Block) -> some View {
+  private func blockView(_ block: MarkdownBlock) -> some View {
     let content = highlighted(block.content, terms: highlightTerms)
     switch block.kind {
     case .paragraph:
       Text(content)
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
+        .font(.system(size: 13))
+        .fixedSize(horizontal: false, vertical: true)
     case .heading(let level):
       Text(content)
-        .font(.system(size: level <= 2 ? 13 : 12, weight: .semibold))
-        .foregroundStyle(.secondary)
+        .font(.system(size: headingSize(level), weight: .semibold))
+        .padding(.top, level <= 2 ? 4 : 0)
     case .code:
       Text(content)
-        .font(.system(size: 11, design: .monospaced))
-        .foregroundStyle(.secondary)
-        .padding(8)
+        .font(.system(size: 12, design: .monospaced))
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+        .background(ConversationShades.code, in: RoundedRectangle(cornerRadius: 6))
     case .quote:
-      HStack(alignment: .top, spacing: 8) {
-        RoundedRectangle(cornerRadius: 1)
+      HStack(alignment: .top, spacing: 10) {
+        RoundedRectangle(cornerRadius: 1.5)
           .fill(.quaternary)
           .frame(width: 3)
         Text(content)
-          .font(.system(size: 12))
+          .font(.system(size: 13))
           .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
-    case .listItem(let marker):
-      HStack(alignment: .firstTextBaseline, spacing: 5) {
+    case .listItem(let marker, let depth):
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
         Text(marker)
-          .font(.system(size: 12))
-          .foregroundStyle(.tertiary)
-        Text(content)
-          .font(.system(size: 12))
+          .font(.system(size: 13).monospacedDigit())
           .foregroundStyle(.secondary)
-      }
-    case .task(let done):
-      HStack(alignment: .firstTextBaseline, spacing: 5) {
-        Image(systemName: done ? "checkmark.square" : "square")
-          .font(.system(size: 11))
-          .foregroundStyle(.tertiary)
         Text(content)
-          .font(.system(size: 12))
-          .foregroundStyle(.secondary)
+          .font(.system(size: 13))
+          .fixedSize(horizontal: false, vertical: true)
       }
-    case .tableRow(let header):
-      Text(content)
-        .font(.system(size: 12, weight: header ? .semibold : .regular))
-        .foregroundStyle(.secondary)
+      .padding(.leading, CGFloat(depth - 1) * 16)
+    case .task(let done, let depth):
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Image(systemName: done ? "checkmark.square.fill" : "square")
+          .font(.system(size: 12))
+          .foregroundStyle(done ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+        Text(content)
+          .font(.system(size: 13))
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .padding(.leading, CGFloat(depth - 1) * 16)
+    case .table(let table):
+      MarkdownTableView(table: table)
     case .divider:
       Divider()
+    case .images(let images):
+      MarkdownImageGroup(images: images)
+    case .details(let summary, let blocks):
+      MarkdownFold(summary: highlighted(summary, terms: highlightTerms), blocks: blocks)
+    }
+  }
+
+  private func headingSize(_ level: Int) -> CGFloat {
+    switch level {
+    case 1: 17
+    case 2: 15
+    default: 13
+    }
+  }
+}
+
+/// A table as a grid: the header set apart, rows ruled, the whole framed.
+private struct MarkdownTableView: View {
+  let table: MarkdownTable
+
+  @Environment(\.searchHighlightTerms) private var highlightTerms
+
+  var body: some View {
+    let columns = table.columnCount
+    Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+      if !table.header.isEmpty {
+        GridRow {
+          ForEach(0 ..< columns, id: \.self) { column in
+            cell(table.header, column, header: true)
+          }
+        }
+        .background(ConversationShades.code)
+      }
+      ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
+        if index > 0 || !table.header.isEmpty {
+          Divider()
+        }
+        GridRow {
+          ForEach(0 ..< columns, id: \.self) { column in
+            cell(row, column, header: false)
+          }
+        }
+      }
+    }
+    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func cell(_ cells: [AttributedString], _ column: Int, header: Bool) -> some View {
+    let text = column < cells.count ? cells[column] : AttributedString()
+    let alignment = column < table.alignments.count ? table.alignments[column] : .leading
+    return Text(highlighted(text, terms: highlightTerms))
+      .font(.system(size: 12, weight: header ? .semibold : .regular))
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))
+      .gridColumnAlignment(alignment)
+  }
+}
+
+/// A `<details>` fold: its summary as a disclosure row, closed until
+/// clicked.
+private struct MarkdownFold: View {
+  let summary: AttributedString
+  let blocks: [MarkdownBlock]
+
+  @State private var open = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Button {
+        withAnimation(.snappy(duration: 0.2)) {
+          open.toggle()
+        }
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(open ? 90 : 0))
+          Text(summary)
+            .font(.system(size: 13, weight: .medium))
+            .multilineTextAlignment(.leading)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      if open {
+        MarkdownBlockList(blocks: blocks)
+          .padding(.leading, 16)
+      }
     }
   }
 }

@@ -101,18 +101,27 @@ private let targetFragments = """
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }
   """
 
-/// What a query asks of each target whose conversation it wants as well.
-/// GraphQL refuses a fragment the query never spreads, so these go only
-/// into the queries that do.
+/// What a query asks of each target whose conversation it wants as well:
+/// who opened it and when, its description, the latest comments, and on a
+/// pull request the latest reviews. GraphQL refuses a fragment the query
+/// never spreads, so these go only into the queries that do.
 private let conversationFragments = """
-  fragment IssueTalk on Issue { body talk: comments(last: \(detailCommentLimit)) { totalCount \
-  nodes { databaseId author { login } createdAt body } } }
-  fragment PullTalk on PullRequest { body talk: comments(last: \(detailCommentLimit)) { totalCount \
-  nodes { databaseId author { login } createdAt body } } }
+  fragment IssueTalk on Issue { body createdAt opener: author { ...Person } \
+  talk: comments(last: \(detailCommentLimit)) { totalCount nodes { databaseId author { ...Person } createdAt body } } }
+  fragment PullTalk on PullRequest { body createdAt opener: author { ...Person } \
+  talk: comments(last: \(detailCommentLimit)) { totalCount nodes { databaseId author { ...Person } createdAt body } } \
+  verdicts: reviews(last: \(detailCommentLimit)) { nodes { databaseId author { ...Person } state submittedAt body } } }
+  fragment Person on Actor { login avatarUrl(size: 80) }
   """
 
 private struct GQLLogin: Decodable {
   let login: String?
+}
+
+/// Someone in a conversation, with their picture.
+private struct GQLPerson: Decodable {
+  let login: String?
+  let avatarUrl: String?
 }
 
 private struct GQLNodes<Node: Decodable>: Decodable {
@@ -148,8 +157,17 @@ private struct GQLTarget: Decodable {
   struct TalkComment: Decodable {
     /// The REST id, which the comment's links and anchors use.
     let databaseId: Int?
-    let author: GQLLogin?
+    let author: GQLPerson?
     let createdAt: String?
+    let body: String?
+  }
+
+  struct TalkReview: Decodable {
+    let databaseId: Int?
+    let author: GQLPerson?
+    /// "APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING".
+    let state: String?
+    let submittedAt: String?
     let body: String?
   }
 
@@ -179,9 +197,13 @@ private struct GQLTarget: Decodable {
   let reviewDecision: String?
   let reviewRequests: GQLNodes<ReviewRequest>?
   let commits: GQLNodes<CommitNode>?
-  /// The description and latest comments, when the query asked for them.
+  /// The opening post, latest comments, and latest reviews, when the
+  /// query asked for them.
   let body: String?
+  let createdAt: String?
+  let opener: GQLPerson?
   let talk: GQLNodes<TalkComment>?
+  let verdicts: GQLNodes<TalkReview>?
 }
 
 private struct GQLRepository: Decodable {
@@ -274,14 +296,50 @@ private func toConversation(_ target: GQLTarget) -> TargetConversation? {
     return DetailComment(
       id: String(id),
       author: comment.author?.login,
+      avatarUrl: comment.author?.avatarUrl,
       createdAt: createdAt,
       body: truncatedBody(comment.body, limit: detailTextLimit) ?? ""
     )
   }
+  var reviews = (target.verdicts?.values ?? []).compactMap(toReviewEntry)
+  // When older comments stayed at GitHub, so do the reviews from that
+  // stretch: the timeline starts where the comments it holds start.
+  if let oldest = comments.first?.createdAt, (talk.totalCount ?? 0) > comments.count {
+    reviews.removeAll { $0.createdAt < oldest }
+  }
   return TargetConversation(
     description: truncatedBody(target.body, limit: detailTextLimit),
-    comments: comments,
+    author: target.opener?.login,
+    authorAvatarUrl: target.opener?.avatarUrl,
+    createdAt: ISODate.parse(target.createdAt),
+    comments: (comments + reviews).sorted { $0.createdAt < $1.createdAt },
     commentCount: talk.totalCount
+  )
+}
+
+/// A submitted review as a conversation entry: its verdict as the event
+/// token, its summary as the body. A review that only comments and says
+/// nothing in its summary left its words on the diff, where the preview
+/// doesn't reach — it has nothing to show.
+private func toReviewEntry(_ review: GQLTarget.TalkReview) -> DetailComment? {
+  guard let id = review.databaseId, let submittedAt = ISODate.parse(review.submittedAt) else { return nil }
+  let body = truncatedBody(review.body, limit: detailTextLimit) ?? ""
+  let event: String
+  switch review.state {
+  case "APPROVED": event = "approved"
+  case "CHANGES_REQUESTED": event = "changes_requested"
+  case "DISMISSED": event = "dismissed"
+  case "COMMENTED" where !body.isEmpty: event = "reviewed"
+  default: return nil
+  }
+  return DetailComment(
+    // Reviews number apart from comments; the prefix keeps the two apart.
+    id: "review-\(id)",
+    author: review.author?.login,
+    avatarUrl: review.author?.avatarUrl,
+    createdAt: submittedAt,
+    body: body,
+    event: event
   )
 }
 
@@ -625,4 +683,137 @@ actor GitHubClient: ProviderClient {
     stateCache = nextCache
     return items
   }
+
+  // MARK: Images
+
+  /// The signed addresses of the private images a target's bodies show, by
+  /// target key, as GitHub rendered them for this token — one lookup per
+  /// target however many images it shows, kept while the signatures hold.
+  private var signedImages: [String: (at: Date, lookup: Task<[String: URL], any Error>)] = [:]
+
+  /// A public image loads anonymously. One uploaded to a private
+  /// repository answers only a signed-in browser — but GitHub's own
+  /// rendering of the target, asked for through the API, points at a copy
+  /// signed for a few minutes, which loads anonymously in turn. The token
+  /// only ever goes to the API.
+  func fetchImage(_ config: AccountConfig, url: URL, page: String) async throws -> Data {
+    let anonymous: Error
+    do {
+      return try await fetchPublicImage(url)
+    } catch {
+      anonymous = error
+    }
+    guard let asset = attachmentAsset(url), let key = GitForgeVisuals.targetUrl(page)?.key else {
+      throw anonymous
+    }
+    let signed = try await signedImageAddresses(for: key, token: config.token)
+    guard let address = signed[asset] else {
+      throw ProviderError(message: "GitHub didn't share this image.")
+    }
+    return try await fetchPublicImage(address)
+  }
+
+  private func signedImageAddresses(for key: String, token: String) async throws -> [String: URL] {
+    let now = Date()
+    signedImages = signedImages.filter { now.timeIntervalSince($0.value.at) < signedImageLifetime }
+    if let held = signedImages[key] {
+      return try await held.lookup.value
+    }
+    let lookup = Task {
+      try await renderedImageAddresses(of: key, token: token)
+    }
+    signedImages[key] = (now, lookup)
+    return try await lookup.value
+  }
+}
+
+/// How long a signed image address is used for. GitHub signs them for five
+/// minutes; a lookup older than this is asked again.
+private let signedImageLifetime: TimeInterval = 4 * 60
+
+/// The uploaded asset an image address names, by the id GitHub keeps in
+/// every form of it: "github.com/user-attachments/assets/<id>",
+/// "github.com/<owner>/<repo>/assets/<n>/<id>", or an already-signed
+/// "private-user-images.githubusercontent.com/…-<id>.png". nil for any
+/// other address.
+private func attachmentAsset(_ url: URL) -> String? {
+  let path = url.path()
+  switch url.host()?.lowercased() {
+  case "github.com":
+    if let match = path.wholeMatch(of: #/(?i)/user-attachments/assets/([0-9a-f-]{36})/?/#) {
+      return match.1.lowercased()
+    }
+    if let match = path.wholeMatch(of: #/(?i)/[^/]+/[^/]+/assets/\d+/([0-9a-f-]{36})/?/#) {
+      return match.1.lowercased()
+    }
+    return nil
+  case "private-user-images.githubusercontent.com":
+    return assetId(in: path)
+  default:
+    return nil
+  }
+}
+
+private func assetId(in text: String) -> String? {
+  text.firstMatch(of: #/(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/#)
+    .map { String($0.output).lowercased() }
+}
+
+/// What GitHub's rendering of a target is read for: the HTML of its
+/// description, latest comments, and latest reviews — the bodies a preview
+/// shows.
+private struct GQLRenderedResponse: Decodable {
+  struct Rendered: Decodable {
+    let bodyHTML: String?
+  }
+
+  struct Target: Decodable {
+    let bodyHTML: String?
+    let comments: GQLNodes<Rendered>?
+    let reviews: GQLNodes<Rendered>?
+  }
+
+  struct Repository: Decodable {
+    let issueOrPullRequest: Target?
+  }
+
+  struct Payload: Decodable {
+    let repository: Repository?
+  }
+
+  let data: Payload?
+}
+
+/// Asks GitHub to render the target's bodies and collects the signed
+/// address of every private image in them, by asset id.
+private func renderedImageAddresses(of key: String, token: String) async throws -> [String: URL] {
+  guard let target = queryTarget(key) else {
+    return [:]
+  }
+  let html = "bodyHTML comments(last: \(detailCommentLimit)) { nodes { bodyHTML } }"
+  let query = "query { repository(owner: \"\(target.owner)\", name: \"\(target.name)\") { "
+    + "issueOrPullRequest(number: \(target.number)) { ... on Issue { \(html) } "
+    + "... on PullRequest { \(html) reviews(last: \(detailCommentLimit)) { nodes { bodyHTML } } } } } }"
+  var request = URLRequest(url: URL(string: "https://api.github.com/graphql")!)
+  request.httpMethod = "POST"
+  request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+  request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+  request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query])
+  let data = try await sendExpectingSuccess(request, ctx: githubContext)
+  guard let rendered = try? JSONDecoder().decode(GQLRenderedResponse.self, from: data).data?.repository?
+    .issueOrPullRequest else {
+    return [:]
+  }
+  let bodies = [rendered.bodyHTML] + (rendered.comments?.values ?? []).map(\.bodyHTML)
+    + (rendered.reviews?.values ?? []).map(\.bodyHTML)
+  var addresses: [String: URL] = [:]
+  for body in bodies.compactMap(\.self) {
+    for match in body.matches(of: #/https://private-user-images\.githubusercontent\.com/[^"'\s<>]+/#) {
+      let address = String(match.output).replacingOccurrences(of: "&amp;", with: "&")
+      if let url = URL(string: address), let asset = assetId(in: url.path()), addresses[asset] == nil {
+        addresses[asset] = url
+      }
+    }
+  }
+  return addresses
 }

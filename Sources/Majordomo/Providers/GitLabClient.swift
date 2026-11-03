@@ -37,6 +37,7 @@ private struct GLTodo: Decodable {
 
   struct GLAuthor: Decodable {
     let username: String?
+    let avatar_url: String?
   }
 
   let id: Int
@@ -83,6 +84,8 @@ private struct GLTargetState: Decodable {
   let draft: Bool?
   let work_in_progress: Bool?
   let updated_at: String?
+  /// When it was opened — its description's date in a preview.
+  let created_at: String?
   let author: GLTodo.GLAuthor?
   let assignees: [GLTodo.GLAuthor]?
   let reviewers: [GLTodo.GLAuthor]?
@@ -173,8 +176,51 @@ private func toDetailComment(_ note: GLNote) -> DetailComment? {
   return DetailComment(
     id: String(note.id),
     author: note.author?.username,
+    avatarUrl: note.author?.avatar_url,
     createdAt: createdAt,
     body: truncatedBody(note.body, limit: detailTextLimit) ?? ""
+  )
+}
+
+/// A system note worth a place in the conversation, as an event: a merge
+/// request's approval given, taken back, or changes asked for. GitLab
+/// words these the same on every instance; its other system notes
+/// (commits pushed, labels changed…) stay out.
+private func toReviewEvent(_ note: GLNote) -> DetailComment? {
+  let body = note.body ?? ""
+  let event: String
+  if body.hasPrefix("approved this merge request") {
+    event = "approved"
+  } else if body.hasPrefix("unapproved this merge request") {
+    event = "unapproved"
+  } else if body.hasPrefix("requested changes") {
+    event = "changes_requested"
+  } else {
+    return nil
+  }
+  guard var entry = toDetailComment(note) else { return nil }
+  entry.body = ""
+  entry.event = event
+  return entry
+}
+
+/// The conversation as a refresh found it: the latest comments by people,
+/// and the review events among the notes since the oldest of them, oldest
+/// first. `notes` come newest first.
+private func toConversation(_ target: GLTargetState, notes: [GLNote]) -> TargetConversation {
+  let people = notes.filter { $0.system != true }.prefix(detailCommentLimit)
+  let comments = people.compactMap(toDetailComment)
+  let oldest = comments.last?.createdAt ?? .distantPast
+  let truncated = (target.user_notes_count ?? 0) > comments.count
+  let events = notes.filter { $0.system == true }.compactMap(toReviewEvent)
+    .filter { !truncated || $0.createdAt >= oldest }
+  return TargetConversation(
+    description: truncatedBody(target.description, limit: detailTextLimit),
+    author: target.author?.username,
+    authorAvatarUrl: target.author?.avatar_url,
+    createdAt: ISODate.parse(target.created_at),
+    comments: (comments + events).sorted { $0.createdAt < $1.createdAt },
+    commentCount: target.user_notes_count
   )
 }
 
@@ -450,12 +496,15 @@ struct GitLabClient: ProviderClient {
     } else {
       nil
     }
-    // The latest notes by people, newest first; none to read when the
-    // count says there are none, and nil when the read failed.
-    var people: [GLNote]? = []
-    if (target.user_notes_count ?? 0) > 0 {
-      people = await latestNotes(of: url, token: token, ctx: ctx)
+    // The latest notes, newest first; none to read when the count says
+    // there are none — unless a merge request's conversation is wanted,
+    // since its approvals are notes of GitLab's own — and nil when the
+    // read failed.
+    var notes: [GLNote]? = []
+    if (target.user_notes_count ?? 0) > 0 || (conversation && mergeRequest) {
+      notes = await latestNotes(of: url, token: token, ctx: ctx)
     }
+    let people = notes?.filter { $0.system != true }
     let snapshot = TargetSnapshot(
       title: target.title ?? "",
       state: stateToken(
@@ -474,18 +523,12 @@ struct GitLabClient: ProviderClient {
       updatedAt: updatedAt
     )
     // A conversation whose notes didn't come is left for the next round.
-    let talk = conversation ? people.map { notes in
-      TargetConversation(
-        description: truncatedBody(target.description, limit: detailTextLimit),
-        comments: notes.prefix(detailCommentLimit).reversed().compactMap(toDetailComment),
-        commentCount: target.user_notes_count
-      )
-    } : nil
+    let talk = conversation ? notes.map { toConversation(target, notes: $0) } : nil
     return .refreshed(TargetRefresh(snapshot: snapshot, conversation: talk))
   }
 
-  /// A target's latest notes by people, newest first; nil when they
-  /// couldn't be read.
+  /// A target's latest notes, GitLab's own among them, newest first; nil
+  /// when they couldn't be read.
   private func latestNotes(of url: URL, token: String, ctx: RequestContext) async -> [GLNote]? {
     var components = URLComponents(url: url.appending(path: "notes"), resolvingAgainstBaseURL: false)
     components?.queryItems = [
@@ -497,7 +540,7 @@ struct GitLabClient: ProviderClient {
           case .found(let notes)? = try? await getTarget(notesUrl, token: token, ctx: ctx) as Fetched<[Failable<GLNote>]> else {
       return nil
     }
-    return notes.compactMap(\.value).filter { $0.system != true }
+    return notes.compactMap(\.value)
   }
 
   /// One GET for a refresh, decoded. `read_api` reads everything a
@@ -517,4 +560,54 @@ struct GitLabClient: ProviderClient {
     }
     return .found(decoded)
   }
+
+  // MARK: Images
+
+  /// A file uploaded to a project on this instance comes through the API
+  /// with the token — the only way into a project that keeps its uploads
+  /// private (GitLab 17.4 and later) — and only over https. Anything else,
+  /// and an instance whose API doesn't have the file, loads anonymously.
+  func fetchImage(_ config: AccountConfig, url: URL, page: String) async throws -> Data {
+    let baseUrl = try resolveBaseUrl(config)
+    if baseUrl.hasPrefix("https://"), let upload = projectUpload(url, origin: baseUrl),
+       let apiUrl = URL(string: upload.apiUrl(origin: baseUrl)),
+       let data = try? await imageData(for: request(apiUrl, token: config.token), ctx: context(baseUrl)) {
+      return data
+    }
+    return try await fetchPublicImage(url)
+  }
+}
+
+/// A file uploaded to a project, as its web address names it:
+/// `{origin}/{project}/uploads/{secret}/{file}`, or GitLab's own
+/// `{origin}/-/project/{id}/uploads/{secret}/{file}`.
+private struct GLProjectUpload {
+  /// The project's path or numeric id.
+  let project: String
+  let secret: String
+  /// The file name, percent-encoded as in the address.
+  let file: String
+
+  func apiUrl(origin: String) -> String {
+    let project = project.replacingOccurrences(of: "/", with: "%2F")
+    return "\(origin)/api/v4/projects/\(project)/uploads/\(secret)/\(file)"
+  }
+}
+
+/// The upload an address names, when it is one on this instance — the
+/// only addresses the token is ever sent for.
+private func projectUpload(_ url: URL, origin: String) -> GLProjectUpload? {
+  let address = url.absoluteString
+  guard url.query() == nil, url.fragment() == nil, address.hasPrefix(origin + "/") else {
+    return nil
+  }
+  let path = address.dropFirst(origin.count + 1)
+  if let match = path.wholeMatch(of: #/-/project/(\d+)/uploads/([0-9a-f]{32})/([^/]+)/#) {
+    return GLProjectUpload(project: String(match.1), secret: String(match.2), file: String(match.3))
+  }
+  guard let match = path.wholeMatch(of: #/([A-Za-z0-9_.\-/]+?)/uploads/([0-9a-f]{32})/([^/]+)/#),
+        !match.1.split(separator: "/").contains(where: { $0 == "." || $0 == ".." || $0 == "-" }) else {
+    return nil
+  }
+  return GLProjectUpload(project: String(match.1), secret: String(match.2), file: String(match.3))
 }
