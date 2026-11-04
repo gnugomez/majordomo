@@ -69,10 +69,12 @@ and RELEASING.md.
   open at launch (`MAJORDOMO_DEMO=1` + `MAJORDOMO_OPEN_MAIN=1`); screenshot
   via `screencapture -l<CGWindowID>`.
 - **Commits**: conventional, single-line, no bodies or attribution.
-  `feat:`/`fix:` strictly for user-visible changes (they drive the changelog
-  and version); `ci:`/`build:` for pipeline work — never `feat:`; `chore:`/
-  `docs:`/`refactor:` for the rest. Releases only via release-please — never
-  bump version.txt or edit CHANGELOG.md by hand.
+  `feat:`/`fix:` strictly for user-visible changes against the last release
+  (they drive the changelog and version) — a fix or follow-up to a feature
+  not yet released is `chore:`, so the changelog shows the feature once;
+  `ci:`/`build:` for pipeline work — never `feat:`; `refactor:` lists in the
+  changelog, `chore:`/`docs:` don't. Releases only via release-please —
+  never bump version.txt or edit CHANGELOG.md by hand.
 - **Principles**: read-only against providers, local-only (no backend, no
   telemetry), tokens AES-GCM encrypted in the JSON store with a single
   Keychain-held key (never per-item keychain entries — see CONTRIBUTING.md).
