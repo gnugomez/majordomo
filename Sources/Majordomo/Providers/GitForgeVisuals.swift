@@ -121,6 +121,12 @@ enum GitForgeVisuals {
   /// share (anchors stripped) and the reference it reads as: "#" for
   /// issues and pull requests, "!" for merge requests.
   ///
+  /// GitLab addresses a project's issues as work items too
+  /// (`/-/work_items/42`), under the same number as `/-/issues/42`, which
+  /// is the key both take — one card, whichever the notification names,
+  /// and the address GitLab's API reads it at. A group's work items (its
+  /// epics) are no project's issues, and make no key.
+  ///
   /// Plain string work rather than a regex: boards key every notification
   /// the app has ever kept, and this runs once for each.
   static func targetUrl(_ url: String) -> (key: String, reference: String)? {
@@ -139,10 +145,22 @@ enum GitForgeVisuals {
       marker = "#"
     } else if head.hasSuffix("/merge_requests") {
       marker = "!"
+    } else if head.hasSuffix("/-/work_items"), !isGroupPage(page) {
+      return (key: head.dropLast("work_items".count) + "issues/" + number, reference: "#" + number)
     } else {
       return nil
     }
     return (key: String(page), reference: marker + number)
+  }
+
+  /// Whether a url's path starts at `/groups/`: GitLab's address for what
+  /// belongs to a group rather than to one of its projects.
+  private static func isGroupPage(_ page: Substring) -> Bool {
+    guard let scheme = page.range(of: "://"),
+          let path = page[scheme.upperBound...].firstIndex(of: "/") else {
+      return false
+    }
+    return page[path...].hasPrefix("/groups/")
   }
 
   /// The comment a url's anchor points at, by its number: GitHub's
