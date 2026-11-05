@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.3.0](https://github.com/gnugomez/majordomo/compare/v1.2.0...v1.3.0) (2026-11-05)
+
+
+### Features
+
+* a conversation timeline with avatars, reviews, and images in the preview ([6567d60](https://github.com/gnugomez/majordomo/commit/6567d60455f8e25bc611a91ca3bbc5a5faf29d8c))
+* a Reviews board for every store, each starter board seeded once ([fdf1af1](https://github.com/gnugomez/majordomo/commit/fdf1af158120499d774b411cb299772a0fe59542))
+* and/or groups and Apple Intelligence checks in label rules and board columns ([87fc913](https://github.com/gnugomez/majordomo/commit/87fc913d2f715cc012673f9d259470bc62a750b0))
+* arrow keys move between cards on a board ([a59fe0d](https://github.com/gnugomez/majordomo/commit/a59fe0d9f5ad79c595e764fa9244714fb0e449ab))
+* board columns can test merge status, and a review awaiting you isn't marked twice ([2f9ffaf](https://github.com/gnugomez/majordomo/commit/2f9ffafe7aa254118aefdbc6c994208f6827097c))
+* boards that sort issues and pull requests by whose move it is, and previews that open at once ([3f16c69](https://github.com/gnugomez/majordomo/commit/3f16c693683070d6bc15ffeeed4c5b6e0cff691a))
+* describe a rule with and/or groups and Apple Intelligence checks ([6ca56ad](https://github.com/gnugomez/majordomo/commit/6ca56ada36f3a731d10e832999ce6d9885e18328))
+* filter the inbox by author, provider, or repository ([5d04a58](https://github.com/gnugomez/majordomo/commit/5d04a588b392381fd8a79e9f047d500d0d7a566f))
+* merge status on board cards, from GitHub and GitLab ([58101ae](https://github.com/gnugomez/majordomo/commit/58101aed32538b656017f75163db884d336da3d4))
+* one Filter button with a menu, like Mail's ([8a51acb](https://github.com/gnugomez/majordomo/commit/8a51acb2032d7187129e965cebe90f9dd598d8a6))
+* one sidebar for every account, narrowed by the Provider filter ([31012e2](https://github.com/gnugomez/majordomo/commit/31012e2ef37b2961b954d5a95550e174c700d2da))
+* preview a notification's issue or pull request in full ([23d846e](https://github.com/gnugomez/majordomo/commit/23d846e091c809964d150ed4733dda090cdb2238))
+* review, checks and merge status on inbox rows ([a0c5fe8](https://github.com/gnugomez/majordomo/commit/a0c5fe8f05051acbc3eaca8a33190adde6eddfb4))
+* search matches highlighted on board cards ([181a581](https://github.com/gnugomez/majordomo/commit/181a581e4e976e22b8ccb6842b7c9b9eb9b922f5))
+* the date and unread filters narrow boards too ([68ee6f9](https://github.com/gnugomez/majordomo/commit/68ee6f9331df0af721d5b8c53e11a42167fe37f9))
+* the preview shows where its target stands, who it is assigned to, and who is asked to review ([e851a66](https://github.com/gnugomez/majordomo/commit/e851a66774086345547614419230efa187d905b7))
+
+
+### Bug Fixes
+
+* a provider's token never follows a redirect to another host ([0db8a95](https://github.com/gnugomez/majordomo/commit/0db8a950e7c1993b8c3fba543e7e9f296d86d9b0))
+
+
+### Refactoring
+
+* a named type scale for the views' text ([a88fa05](https://github.com/gnugomez/majordomo/commit/a88fa05cf3cb94d8aee67952e2ff6b4ca6cf89ec))
+* drop an unused row-field property and a stray comment ([068a6ad](https://github.com/gnugomez/majordomo/commit/068a6ada972aa7f8863e1c696237f3415477f7df))
+* event-driven engine with one reaction table, state and event streams, and batched saves ([9280505](https://github.com/gnugomez/majordomo/commit/92805052905def75d2f687b26d38985d5b96153d))
+* one helper floats the filter pills over the inbox and a board ([711c73e](https://github.com/gnugomez/majordomo/commit/711c73e21702b3c144492d79aa3a4e9700ff0c56))
+* one palette, one flow layout, and one avatar for previews and boards ([696c6f5](https://github.com/gnugomez/majordomo/commit/696c6f55236c5d7ca390ed3d65f91152b5d4100f))
+* provider errors say when the token itself was rejected ([0468360](https://github.com/gnugomez/majordomo/commit/0468360ec5178027293dba975e9a4e738b24394c))
+* shared row, capsule, byline, and settings pieces; rows compare only what they draw ([3bd5bd6](https://github.com/gnugomez/majordomo/commit/3bd5bd6c511e2c2aa4d9c0183726faa15e697a88))
+* the inbox list draws one row per element, threads and unfolded members alike ([5e3ed24](https://github.com/gnugomez/majordomo/commit/5e3ed24cc5f7014532a3cad67cfe586770c14e01))
+* the rules list rows bind the rule they commit ([004b426](https://github.com/gnugomez/majordomo/commit/004b42618a4dfda058d33edd1458457559b106a3))
+* the sidebar reads its rows and badges from the model, worked out once per change ([d624f9c](https://github.com/gnugomez/majordomo/commit/d624f9cc4507bdf503c9d9a89692f205f2e562de))
+
 ## [1.2.0](https://github.com/gnugomez/majordomo/compare/v1.1.0...v1.2.0) (2026-10-14)
 
 
