@@ -1,19 +1,20 @@
 // The board pane: a board's columns side by side, its cards placed by the
 // board's rules (BoardEngine), split into lanes by repository or owner
-// when the board asks for them. One scroll view carries the grid both ways,
-// filling the pane, so its scrollers sit on the pane's edges and the cards
-// pass under the sidebar, the toolbar, and the column headers — glass
-// labels in a band under the toolbar that follow the grid sideways and
-// stay put as it scrolls down; lane titles hold to the leading edge as it
-// scrolls sideways. Dragging the board's empty space pans it. Clicking a card
-// opens its preview, in the window's inspector or the pane under the board,
-// and clicking it again puts it away, double-clicking opens it in the
-// browser, and dragging it onto a column puts it there by hand — locally,
-// like every label; nothing is written upstream. The board takes the
-// keyboard too (BoardKeyboard): the arrows walk the cards (BoardGrid),
-// bringing each into view, Space shows or puts away its preview, Return or
-// ⌘↓ opens it in the browser, and Escape puts the preview away, then the
-// selection.
+// when the board asks for them, and the unread gathered in a lane of their
+// own above the rest when it asks for that. One scroll view carries the
+// grid both ways, filling the pane, so its scrollers sit on the pane's
+// edges and the cards pass under the sidebar, the toolbar, and the column
+// headers — glass labels in a band under the toolbar that follow the grid
+// sideways and stay put as it scrolls down; lane titles hold to the
+// leading edge as it scrolls sideways. Dragging the board's empty space
+// pans it. Clicking a card opens its preview, in the window's inspector or
+// the pane under the board, and clicking it again puts it away,
+// double-clicking opens it in the browser, and dragging it onto a column
+// puts it there by hand — locally, like every label; nothing is written
+// upstream. The board takes the keyboard too (BoardKeyboard): the arrows
+// walk the cards (BoardGrid), bringing each into view, Space shows or puts
+// away its preview, Return or ⌘↓ opens it in the browser, and Escape puts
+// the preview away, then the selection.
 
 import SwiftUI
 
@@ -228,13 +229,15 @@ struct BoardView: View {
     return columns
   }
 
-  /// The lanes, busiest-lately first: a lane sorts by its newest card.
-  /// One pass over the cards, so each slot is a lookup when drawn.
+  /// The lanes: the unread first, while the board gathers them and any
+  /// are in, then the rest busiest-lately first — a lane sorts by its
+  /// newest card. One pass over the cards, so each slot is a lookup when
+  /// drawn.
   private func lanes(of columns: [DrawnColumn]) -> [Lane] {
     var lanes: [String: Lane] = [:]
     for column in columns {
       for card in column.cards {
-        let key = laneKey(card)
+        let key = board.lane(for: card)
         var lane = lanes[key] ?? Lane(id: key)
         lane.slots[column.id, default: []].append(card)
         lane.count += 1
@@ -242,23 +245,27 @@ struct BoardView: View {
         lanes[key] = lane
       }
     }
+    let unread = lanes.removeValue(forKey: Board.unreadLaneId).map { [$0] } ?? []
     if board.lanes == .none {
-      return [lanes[""] ?? Lane(id: "")]
+      return unread + [lanes[""] ?? Lane(id: "")]
     }
-    return lanes.values.sorted { $0.latest > $1.latest }
+    return unread + lanes.values.sorted { $0.latest > $1.latest }
   }
 
-  private func laneKey(_ card: BoardCard) -> String {
-    let repo = card.lead.repo
-    switch board.lanes {
-    case .none:
-      return ""
-    case .repository:
-      return repo
-    case .owner:
-      // GitLab nests groups: the owner is everything above the project.
-      let parts = repo.split(separator: "/")
-      return parts.count > 1 ? parts.dropLast().joined(separator: "/") : repo
+  /// Whether the lanes carry titles: whenever there can be more than one.
+  private var showsLaneTitles: Bool {
+    board.lanes != .none || board.unreadLane
+  }
+
+  private func laneTitle(_ lane: String) -> String {
+    switch lane {
+    case Board.unreadLaneId:
+      "Unread"
+    case "":
+      // Under the unread lane, a board without lanes keeps the rest in one.
+      board.lanes == .none ? "Read" : "No repository"
+    default:
+      lane
     }
   }
 
@@ -349,7 +356,7 @@ struct BoardView: View {
     // In a lane the lazy grid hasn't built, the card isn't there to scroll
     // to yet: the lane comes into view first, and the card once it is
     // built (the lane's onAppear).
-    if let lane = placement.byId[card].map(laneKey), !keyboard.isShown(lane) {
+    if let lane = placement.byId[card].map(board.lane(for:)), !keyboard.isShown(lane) {
       keyboard.revealOnArrival(card, in: lane)
       proxy.scrollTo(lane, anchor: nil)
       return
@@ -393,7 +400,7 @@ struct BoardView: View {
   private func laneView(_ lane: Lane, columns: [DrawnColumn]) -> some View {
     let collapsed = collapsedLanes.contains(lane.id)
     VStack(alignment: .leading, spacing: 6) {
-      if board.lanes != .none {
+      if showsLaneTitles {
         Button {
           withAnimation(.snappy(duration: 0.2)) {
             if collapsed {
@@ -408,7 +415,7 @@ struct BoardView: View {
               .font(.system(size: 9, weight: .semibold))
               .rotationEffect(.degrees(collapsed ? 0 : 90))
               .foregroundStyle(.secondary)
-            Text(lane.id.isEmpty ? "No repository" : lane.id)
+            Text(laneTitle(lane.id))
               .font(.app(.callout, weight: .medium))
             Text("\(lane.count)")
               .font(.app(.caption))
@@ -441,12 +448,12 @@ struct BoardView: View {
     // Without lanes the one row of slots runs at least the pane's height,
     // so a column reads as a column and a drop lands anywhere in it; with
     // lanes every slot of a row takes the row's height, empty ones too.
-    let stretch = board.lanes == .none ? max(0, laneViewport - gridTopInset - gridBottomInset) : 0
+    let stretch = showsLaneTitles ? 0 : max(0, laneViewport - gridTopInset - gridBottomInset)
     let expanded = expandedSlots.contains(key)
     let shown = shownCards(cards, slot: key)
     return VStack(spacing: 8) {
       ForEach(shown) { card in
-        cardView(card, leadsSlot: card.id == shown.first?.id)
+        cardView(card, leadsSlot: card.id == shown.first?.id, lane: lane)
       }
       if cards.count > slotCardLimit {
         Button(expanded ? "Show Fewer" : "Show All \(cards.count)") {
@@ -491,8 +498,8 @@ struct BoardView: View {
     }
   }
 
-  /// One card, `leadsSlot` when it is the first its slot draws.
-  private func cardView(_ card: BoardCard, leadsSlot: Bool) -> some View {
+  /// One card in `lane`, `leadsSlot` when it is the first its slot draws.
+  private func cardView(_ card: BoardCard, leadsSlot: Bool, lane: String) -> some View {
     // The faces come the way a preview's do, through the account the
     // card's lead notification came through.
     let faces = model.bodyImages(for: card.lead)
@@ -502,7 +509,9 @@ struct BoardView: View {
       now: model.now,
       selected: selected,
       pinned: placement.pinned.contains(card.id),
-      showsRepo: board.lanes != .repository
+      // Unless its lane names the repository: the unread lane holds every
+      // repository's.
+      showsRepo: board.lanes != .repository || lane == Board.unreadLaneId
     )
     .equatable()
     .environment(\.bodyImages, faces)

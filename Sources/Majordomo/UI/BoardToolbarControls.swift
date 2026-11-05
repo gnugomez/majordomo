@@ -12,16 +12,17 @@ struct BoardToolbarControls: View {
 
   var body: some View {
     if let board = model.selectedBoard {
-      BoardMenu(model: model, boardId: board.id, lanes: board.lanes)
+      BoardMenu(model: model, boardId: board.id, lanes: board.lanes, unreadLane: board.unreadLane)
     }
   }
 }
 
-/// The board's own menu: lanes, and editing the board.
+/// The board's own menu: lanes, the unread lane, and editing the board.
 private struct BoardMenu: View {
   let model: AppModel
   let boardId: BoardId
   let lanes: BoardLanes
+  let unreadLane: Bool
 
   var body: some View {
     Menu {
@@ -39,6 +40,15 @@ private struct BoardMenu: View {
         Text("Lanes by Owner").tag(BoardLanes.owner)
       }
       .pickerStyle(.inline)
+      Toggle(
+        "Unread Lane",
+        isOn: Binding(
+          get: { unreadLane },
+          set: { on in
+            model.updateBoard(boardId) { $0.unreadLane = on }
+          }
+        )
+      )
       Divider()
       Button("Edit Board…") {
         model.editingBoard = model.boards.first { $0.id == boardId }
@@ -51,5 +61,8 @@ private struct BoardMenu: View {
     }
     .menuIndicator(.hidden)
     .help("Lanes and board settings")
+    // The toolbar builds the menu once and keeps it, its ticks where they
+    // were; keyed by the lanes, a pick makes a fresh one.
+    .id("\(lanes.rawValue) \(unreadLane)")
   }
 }

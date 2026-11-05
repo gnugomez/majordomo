@@ -103,6 +103,8 @@ struct BoardEditorSheet: View {
           Text("By owner").tag(BoardLanes.owner)
         }
         .fixedSize()
+        Toggle("Unread lane", isOn: $draft.unreadLane)
+          .help("Gathers unread items in a lane of their own, above the rest")
         Stepper(value: $draft.doneDays, in: 1 ... 90) {
           Text("Done keeps finished items for \(draft.doneDays) \(draft.doneDays == 1 ? "day" : "days")")
         }

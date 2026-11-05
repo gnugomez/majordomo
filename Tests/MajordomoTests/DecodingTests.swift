@@ -90,6 +90,8 @@ struct DecodingTests {
     ]))
     #expect(board.columns.map(\.filter.groups.count) == [1])
     #expect(board.lanes == .repository && board.doneDays == 3)
+    // Stored before boards could gather the unread.
+    #expect(!board.unreadLane)
     let everything = try decode(Board.self, """
       {"id":"b","name":"All","symbol":"eye","lanes":"none","doneDays":7,"pins":{},
        "scope":{"match":"all","conditions":[]},"columns":[]}
@@ -100,6 +102,7 @@ struct DecodingTests {
   @Test func boardRoundTripsInItsNewShape() throws {
     var board = GitForgeBoards.myWork
     board.scope = filter(.any, group(.all, condition(.kind, .is, "pull")), group(.all, .question("Risky?")))
+    board.unreadLane = true
     let decoded = try JSONDecoder().decode(Board.self, from: JSONEncoder().encode(board))
     #expect(decoded == board)
   }
