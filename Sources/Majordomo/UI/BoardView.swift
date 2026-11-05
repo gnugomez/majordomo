@@ -6,13 +6,14 @@
 // labels in a band under the toolbar that follow the grid sideways and
 // stay put as it scrolls down; lane titles hold to the leading edge as it
 // scrolls sideways. Dragging the board's empty space pans it. Clicking a card
-// opens its preview in the window's inspector and clicking it again puts
-// it away, double-clicking opens it in the browser, and dragging it
-// onto a column puts it there by hand — locally, like every label; nothing
-// is written upstream. The board takes the keyboard too (BoardKeyboard):
-// the arrows walk the cards (BoardGrid), bringing each into view, Space
-// shows or puts away its preview, Return or ⌘↓ opens it in the browser,
-// and Escape puts the preview away, then the selection.
+// opens its preview, in the window's inspector or the pane under the board,
+// and clicking it again puts it away, double-clicking opens it in the
+// browser, and dragging it onto a column puts it there by hand — locally,
+// like every label; nothing is written upstream. The board takes the
+// keyboard too (BoardKeyboard): the arrows walk the cards (BoardGrid),
+// bringing each into view, Space shows or puts away its preview, Return or
+// ⌘↓ opens it in the browser, and Escape puts the preview away, then the
+// selection.
 
 import SwiftUI
 
@@ -39,6 +40,13 @@ private let headerGap: CGFloat = 8
 private let revealMargin: CGFloat = 16
 /// The room above the first card of a slot: enough for the lane's title.
 private let laneRevealMargin: CGFloat = 44
+
+/// How much of the pane the board has: its size, and the insets of what
+/// stands over its edges — the preview under the board among them.
+private struct PaneExtent: Equatable {
+  let size: CGSize
+  let insets: EdgeInsets
+}
 
 /// Names the frame the arrows scroll into view around a card, apart from
 /// the card's own identity in its slot.
@@ -97,11 +105,11 @@ struct BoardView: View {
     let lanes = lanes(of: columns)
     ScrollViewReader { proxy in
       grid(lanes, columns: columns, proxy: proxy)
-        // The preview Space opens narrows the pane as it slides in, and
-        // may cover the card it shows: once the pane holds still, the card
-        // comes back into view.
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-          geometry.containerSize.width
+        // The preview Space opens narrows the pane as it slides in, or
+        // rises over its foot, and may cover the card it shows: once the
+        // pane holds still, the card comes back into view.
+        .onScrollGeometryChange(for: PaneExtent.self) { geometry in
+          PaneExtent(size: geometry.containerSize, insets: geometry.contentInsets)
         } action: { _, _ in
           keyboard.paneResized { card in
             if model.selectedCardId == card {
@@ -524,7 +532,7 @@ struct BoardView: View {
         return
       }
       // Clicking the card already open puts its preview away. The
-      // inspector slides, as it does from its toolbar toggle; picking
+      // preview slides, as it does from its toolbar toggle; picking
       // another card while it is out only swaps what it shows.
       if model.selectedCardId == card.id, model.cardPreviewShown {
         withAnimation {

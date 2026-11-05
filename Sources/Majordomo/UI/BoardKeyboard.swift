@@ -118,7 +118,7 @@ final class BoardFocus {
     revealTask?.cancel()
   }
 
-  /// The pane changed width; a waiting card is revealed once it stops.
+  /// The pane changed size; a waiting card is revealed once it stops.
   func paneResized(reveal: @escaping @MainActor (String) -> Void) {
     guard let card = pendingReveal else {
       return

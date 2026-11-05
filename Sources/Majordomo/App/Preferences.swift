@@ -18,6 +18,15 @@ enum NotifyScope: String, CaseIterable, Sendable {
   case none
 }
 
+/// Where a board's preview stands.
+enum PreviewPlacement: String, CaseIterable, Sendable {
+  /// At the trailing edge, as the inbox's does (the default).
+  case trailing
+  /// Under the board, for its whole width: the facts beside what the
+  /// notifications say and the conversation.
+  case bottom
+}
+
 /// One value kept in UserDefaults.
 struct PreferenceKey<Value> {
   let name: String
@@ -112,6 +121,9 @@ private enum Keys {
   static var rowLayout: PreferenceKey<RowLayout> { .json("rowLayout", default: .default) }
   static var sidebarShown: PreferenceKey<Bool> { .inverted("sidebarHidden") }
   static var inboxPreviewShown: PreferenceKey<Bool> { .inverted("previewHidden") }
+  static var boardPreviewPlacement: PreferenceKey<PreviewPlacement> {
+    .raw("boardPreviewPlacement", default: .trailing)
+  }
 }
 
 @MainActor
@@ -161,6 +173,9 @@ final class Preferences {
   var inboxPreviewShown: Bool {
     didSet { defaults[Keys.inboxPreviewShown] = inboxPreviewShown }
   }
+  var boardPreviewPlacement: PreviewPlacement {
+    didSet { defaults[Keys.boardPreviewPlacement] = boardPreviewPlacement }
+  }
 
   init(defaults: any PreferenceStore = UserDefaults.standard) {
     self.defaults = defaults
@@ -178,5 +193,6 @@ final class Preferences {
     rowLayout = defaults[Keys.rowLayout]
     sidebarShown = defaults[Keys.sidebarShown]
     inboxPreviewShown = defaults[Keys.inboxPreviewShown]
+    boardPreviewPlacement = defaults[Keys.boardPreviewPlacement]
   }
 }

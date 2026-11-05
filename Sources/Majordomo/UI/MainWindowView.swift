@@ -1,10 +1,11 @@
 // Main-window shell: a NavigationSplitView of the source list and what it
 // selects — the inbox list or a board — with the selection's preview in
-// an inspector at the trailing edge. The column dividers, the sidebar's and
-// the inspector's glass and slide, the content scrolling on beneath them,
-// the lists' keyboard navigation, and the toolbar are all the system's; a
-// board reads its keys itself (BoardKeyboard). Settings open in their own
-// window.
+// an inspector at the trailing edge, or for a board, if the user puts it
+// there, in a pane under it (BottomPreviewSplit). The column dividers, the
+// sidebar's and the inspector's glass and slide, the content scrolling on
+// beneath them, the lists' keyboard navigation, and the toolbar are all
+// the system's; a board reads its keys itself (BoardKeyboard). Settings
+// open in their own window.
 
 import SwiftUI
 
@@ -196,16 +197,22 @@ struct MainWindowView: View {
     model.selectedCardId.flatMap { boardPlacement(board).byId[$0] }
   }
 
-  /// A board, marking the card it has selected seen.
+  /// A board, marking the card it has selected seen, over the card's
+  /// preview while the preview stands under the board.
   private func boardContent(_ board: Board) -> some View {
     let placement = boardPlacement(board)
     let selected = selectedCard(on: board)
-    return boardPane(board, placement: placement)
-      .onChange(of: selected?.id, initial: true) {
-        if let selected {
-          model.markSeen(selected)
-        }
+    let below = model.boardPreviewPlacement == .bottom && model.cardPreviewShown && selected != nil
+    return BottomPreviewSplit(shown: below) {
+      boardPane(board, placement: placement)
+    } preview: {
+      cardPreview(selected, placement: .bottom)
+    }
+    .onChange(of: selected?.id, initial: true) {
+      if let selected {
+        model.markSeen(selected)
       }
+    }
   }
 
   @ViewBuilder
@@ -244,18 +251,23 @@ struct MainWindowView: View {
   // MARK: Preview
 
   /// Whether the inspector shows: the inbox's preview as the user leaves
-  /// it, a board's while a card is picked and its preview not put away.
+  /// it, a board's while a card is picked, its preview not put away, and
+  /// the preview stands beside the board rather than under it.
   private var previewPresented: Binding<Bool> {
     Binding(
       get: {
         guard let board = model.selectedBoard else {
           return model.inboxPreviewShown
         }
-        return model.cardPreviewShown && selectedCard(on: board) != nil
+        return model.boardPreviewPlacement == .trailing && model.cardPreviewShown && selectedCard(on: board) != nil
       },
       set: { shown in
         if model.selectedBoard != nil {
-          model.cardPreviewShown = shown
+          // Only the inspector's own say: as the preview moves under the
+          // board, the inspector closing writes back too.
+          if model.boardPreviewPlacement == .trailing {
+            model.cardPreviewShown = shown
+          }
         } else {
           model.inboxPreviewShown = shown
         }
@@ -266,7 +278,7 @@ struct MainWindowView: View {
   @ViewBuilder
   private func previewPane(selectedThreads: [InboxThread], selected: InboxThread?) -> some View {
     if let board = model.selectedBoard {
-      PreviewView(model: model, thread: selectedCard(on: board).map { InboxThread(id: $0.id, items: $0.items) })
+      cardPreview(selectedCard(on: board), placement: .trailing)
     } else if selectedThreads.count > 1 {
       PaneEmptyState(
         symbol: "square.stack",
@@ -279,6 +291,10 @@ struct MainWindowView: View {
     } else {
       PreviewView(model: model, thread: selected)
     }
+  }
+
+  private func cardPreview(_ card: BoardCard?, placement: PreviewPlacement) -> some View {
+    PreviewView(model: model, thread: card.map { InboxThread(id: $0.id, items: $0.items) }, placement: placement)
   }
 
   // MARK: Toolbar
@@ -361,27 +377,66 @@ private struct SidebarToggle: View {
 }
 
 /// Shows or puts away the preview: the inbox's, or the selected card's on
-/// a board, for the whole board in view without losing the selection. A
-/// view of its own, like Refresh, reading only what decides how it looks.
+/// a board, for the whole board in view without losing the selection. Over
+/// a board it is split like the filter, the glyph and a chevron: a click
+/// on the glyph shows or puts away the preview, and the chevron's menu sets
+/// where it stands — beside the board or under it — which the glyph draws.
+/// A view of its own, like Refresh, reading only what decides how it looks.
 private struct PreviewToggle: View {
   let model: AppModel
 
   var body: some View {
-    let onBoard = model.selectedBoard != nil
-    Button {
-      withAnimation {
-        if onBoard {
-          model.cardPreviewShown.toggle()
-        } else {
+    if model.selectedBoard != nil {
+      let placement = model.boardPreviewPlacement
+      Menu {
+        // The glyph's click too, for the toolbar's overflow menu, which
+        // lists the menu but not the click.
+        Button("Toggle Preview", action: toggleCardPreview)
+        Divider()
+        Picker(
+          "Preview",
+          selection: Binding(
+            get: { placement },
+            set: { placement in
+              withAnimation {
+                model.boardPreviewPlacement = placement
+              }
+            }
+          )
+        ) {
+          Text("Preview on Right").tag(PreviewPlacement.trailing)
+          Text("Preview at Bottom").tag(PreviewPlacement.bottom)
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+      } label: {
+        Label("Preview", systemImage: placement == .bottom ? "rectangle.bottomthird.inset.filled" : "sidebar.trailing")
+      } primaryAction: {
+        toggleCardPreview()
+      }
+      .keyboardShortcut("i", modifiers: [.command, .option])
+      .disabled(model.selectedCardId == nil)
+      .help("Show or hide the preview; the arrow sets where it stands")
+      // The toolbar builds the menu once and keeps it, its tick where it
+      // was; keyed by the placement, a pick makes a fresh one.
+      .id(placement)
+    } else {
+      Button {
+        withAnimation {
           model.inboxPreviewShown.toggle()
         }
+      } label: {
+        Label("Preview", systemImage: "sidebar.trailing")
       }
-    } label: {
-      Label("Preview", systemImage: "sidebar.trailing")
+      .keyboardShortcut("i", modifiers: [.command, .option])
+      .help("Show or hide the preview")
     }
-    .keyboardShortcut("i", modifiers: [.command, .option])
-    .disabled(onBoard && model.selectedCardId == nil)
-    .help("Show or hide the preview")
+  }
+
+  private func toggleCardPreview() {
+    withAnimation {
+      model.cardPreviewShown.toggle()
+    }
   }
 }
 

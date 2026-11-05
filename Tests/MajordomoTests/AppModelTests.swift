@@ -103,20 +103,24 @@ struct AppModelTests {
     let preferences = Preferences(defaults: defaults)
     #expect(preferences.sidebarShown)
     #expect(preferences.notifyScope == .mentions)
+    #expect(preferences.boardPreviewPlacement == .trailing)
     preferences.sidebarShown = false
     preferences.notifyScope = .all
     preferences.activityWindow = .week
     preferences.sidebarSelection = SidebarSelection(category: "work", board: "board-1")
+    preferences.boardPreviewPlacement = .bottom
     // Under the keys they have always had.
     #expect(defaults.values["sidebarHidden"] as? Bool == true)
     #expect(defaults.values["notifyScope"] as? String == "all")
     #expect(defaults.values["sidebarCategory"] as? String == "work")
     #expect(defaults.values["sidebarBoard"] as? String == "board-1")
+    #expect(defaults.values["boardPreviewPlacement"] as? String == "bottom")
     let reread = Preferences(defaults: defaults)
     #expect(!reread.sidebarShown)
     #expect(reread.notifyScope == .all)
     #expect(reread.activityWindow == .week)
     #expect(reread.sidebarSelection == SidebarSelection(category: "work", board: "board-1"))
+    #expect(reread.boardPreviewPlacement == .bottom)
     reread.activityWindow = nil
     #expect(defaults.values["activityWindow"] == nil)
   }

@@ -1,120 +1,207 @@
-// Right pane of the main window: everything AppModel knows about the
-// selected thread — where its target stands now, who it is assigned to and
-// who is still asked to review it, and the buttons that open it or mark it
-// read — then its target in full: who opened it
+// The selection's preview in the main window: everything AppModel knows
+// about the selected thread — where its target stands now, who it is
+// assigned to and who is still asked to review it, and the buttons that
+// open it or mark it read — then its target in full: who opened it
 // and what it says, the latest comments and reviews, as the background
 // refresh stored it, read from disk, as a timeline of cards on a gray
 // pane. A target the refresh hasn't reached yet is asked for ahead of it.
 // A multi-member thread stacks its messages as cards of the same kind
 // under the shared header. The images the bodies show come through the
 // item's own account (AppModel.bodyImages), handed down in the environment.
+// Beside the list or a board it reads as one column, top to bottom; under
+// a board, as wide as the board and a third as tall, the facts and the
+// buttons stand beside what the notifications say and the conversation,
+// each side scrolling on its own.
 
 import SwiftUI
 
 struct PreviewView: View {
   let model: AppModel
   let thread: InboxThread?
+  /// Where the preview stands, which decides its columns.
+  var placement: PreviewPlacement = .trailing
 
   /// The comment just jumped to, lit up for a moment.
   @State private var flashedCommentId: String?
   /// Where the pane is scrolled: to a comment jumped to, or back to the
-  /// title for another thread.
+  /// title for another thread. Side by side, where the conversation is.
   @State private var scrollPosition = ScrollPosition()
+  /// Where the facts are scrolled, beside the conversation.
+  @State private var factsPosition = ScrollPosition()
   /// Where the comments the notifications point at sit in the pane.
   @State private var commentOffsets = CommentOffsets()
 
   var body: some View {
     if let thread {
       let item = thread.lead
-      let providerSpec = spec(for: item.provider)
-      let load = model.conversation(for: item)
-      let conversation = loadedConversation(load)
-      ScrollView {
-        VStack(alignment: .leading, spacing: 14) {
-          PreviewHeader(
-            model: model,
-            thread: thread,
-            status: model.targetStatus(for: thread),
-            snapshot: snapshot(of: item),
-            conversation: conversation
-          )
-          SelectionActions(model: model, threads: [actionTarget(in: thread)])
-
-          if thread.items.count > 1 {
-            ForEach(thread.items) { member in
-              let comment = triggerComment(of: member, in: conversation, providerSpec: providerSpec)
-              let author = comment?.author ?? member.author
-              MessageCard(
-                member: member,
-                comment: comment,
-                avatarUrl: comment?.avatarUrl ?? author.flatMap { conversation?.avatarUrl(of: $0) },
-                selected: model.selectedMemberId == member.id,
-                now: model.now,
-                onSelect: { model.selectedMemberId = member.id },
-                onJump: jump(to:)
-              )
-            }
-          } else if let trigger = triggerComment(of: item, in: conversation, providerSpec: providerSpec) {
-            TriggerJump(
-              comment: trigger, reason: providerSpec.reasonLabel(item.reason), provider: item.provider,
-              now: model.now
-            ) {
-              jump(to: trigger.id)
-            }
-          } else if conversation == nil, let bodyView = providerSpec.bodyView(for: item) {
-            // The notification's own excerpt stands in until the target
-            // is in, or when it can't be.
-            Divider()
-            bodyView
+      columns(thread)
+        // Another thread reads from its title down.
+        .onChange(of: thread.id) {
+          commentOffsets.forget()
+          scrollPosition.scrollTo(edge: .top)
+          factsPosition.scrollTo(edge: .top)
+        }
+        // A switch arriving inside an animation — the card click that also
+        // slides the inspector in — shows the new thread at once.
+        .transaction(value: thread.id) { transaction in
+          transaction.animation = nil
+        }
+        // The stored conversation, read at once; one not in yet is asked for
+        // once the selection settles, so arrowing down the list doesn't send
+        // a request per row it passes. A refresh bringing a newer one reads
+        // that in turn.
+        .task(id: model.conversationVersion(for: item)) {
+          if case .fetching = model.conversation(for: item) {
+            try? await Task.sleep(for: .milliseconds(250))
           }
-          ConversationStatusRow(load: load)
-          if let conversation {
-            Divider()
-            ConversationTimeline(
-              conversation: conversation, item: item, triggers: triggers(of: thread, providerSpec: providerSpec),
-              flashedId: flashedCommentId, now: model.now,
-              placed: commentOffsets.note
-            )
+          guard !Task.isCancelled else {
+            return
           }
+          await model.loadConversation(for: item)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .coordinateSpace(.named(CommentOffsets.space))
-        // Another thread's content replaces this one rather than growing
-        // out of it: kept, its pieces would morph from one thread's layout
-        // into the next's.
-        .id(thread.id)
-      }
-      .scrollPosition($scrollPosition)
-      // Another thread reads from its title down.
-      .onChange(of: thread.id) {
-        commentOffsets.forget()
-        scrollPosition.scrollTo(edge: .top)
-      }
-      // A switch arriving inside an animation — the card click that also
-      // slides the inspector in — shows the new thread at once.
-      .transaction(value: thread.id) { transaction in
-        transaction.animation = nil
-      }
-      // The stored conversation, read at once; one not in yet is asked for
-      // once the selection settles, so arrowing down the list doesn't send
-      // a request per row it passes. A refresh bringing a newer one reads
-      // that in turn.
-      .task(id: model.conversationVersion(for: item)) {
-        if case .fetching = model.conversation(for: item) {
-          try? await Task.sleep(for: .milliseconds(250))
-        }
-        guard !Task.isCancelled else {
-          return
-        }
-        await model.loadConversation(for: item)
-      }
-      .environment(\.bodyImages, model.bodyImages(for: item))
+        .environment(\.bodyImages, model.bodyImages(for: item))
     } else {
       PaneEmptyState(
         symbol: "tray",
         title: "Nothing selected",
         caption: "Select an item from the list to see its details."
+      )
+    }
+  }
+
+  /// The facts over the notifications and the conversation in one scroll
+  /// view, or the facts beside the other two, narrower, in a scroll view
+  /// each.
+  @ViewBuilder
+  private func columns(_ thread: InboxThread) -> some View {
+    let load = model.conversation(for: thread.lead)
+    let conversation = loadedConversation(load)
+    switch placement {
+    case .trailing:
+      ScrollView {
+        column(thread) {
+          facts(thread, conversation: conversation)
+          messages(thread, conversation: conversation, ruled: true)
+          conversationPart(thread, load: load, conversation: conversation, ruled: true)
+        }
+        .coordinateSpace(.named(CommentOffsets.space))
+      }
+      .scrollPosition($scrollPosition)
+    case .bottom:
+      HStack(spacing: 0) {
+        ScrollView {
+          column(thread) {
+            facts(thread, conversation: conversation)
+          }
+        }
+        .scrollPosition($factsPosition)
+        .frame(minWidth: 260, maxWidth: 380)
+        Divider()
+        ScrollView {
+          column(thread) {
+            messages(thread, conversation: conversation, ruled: false)
+            conversationPart(
+              thread, load: load, conversation: conversation,
+              ruled: showsMessages(thread, conversation: conversation)
+            )
+          }
+          .coordinateSpace(.named(CommentOffsets.space))
+        }
+        .scrollPosition($scrollPosition)
+      }
+    }
+  }
+
+  /// One column's content, laid out as the preview's.
+  private func column(_ thread: InboxThread, @ViewBuilder content: () -> some View) -> some View {
+    VStack(alignment: .leading, spacing: 14) {
+      content()
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    // Another thread's content replaces this one rather than growing
+    // out of it: kept, its pieces would morph from one thread's layout
+    // into the next's.
+    .id(thread.id)
+  }
+
+  /// The header and the buttons.
+  @ViewBuilder
+  private func facts(_ thread: InboxThread, conversation: TargetConversation?) -> some View {
+    PreviewHeader(
+      model: model,
+      thread: thread,
+      status: model.targetStatus(for: thread),
+      snapshot: snapshot(of: thread.lead),
+      conversation: conversation
+    )
+    SelectionActions(model: model, threads: [actionTarget(in: thread)])
+  }
+
+  /// What the notifications say: a thread's messages as cards, the comment
+  /// one notification points at, named with a way down to it, or until
+  /// the target is in, the notification's own excerpt — set off from the
+  /// facts above it when `ruled`.
+  @ViewBuilder
+  private func messages(_ thread: InboxThread, conversation: TargetConversation?, ruled: Bool) -> some View {
+    let item = thread.lead
+    let providerSpec = spec(for: item.provider)
+    if thread.items.count > 1 {
+      ForEach(thread.items) { member in
+        let comment = triggerComment(of: member, in: conversation, providerSpec: providerSpec)
+        let author = comment?.author ?? member.author
+        MessageCard(
+          member: member,
+          comment: comment,
+          avatarUrl: comment?.avatarUrl ?? author.flatMap { conversation?.avatarUrl(of: $0) },
+          selected: model.selectedMemberId == member.id,
+          now: model.now,
+          onSelect: { model.selectedMemberId = member.id },
+          onJump: jump(to:)
+        )
+      }
+    } else if let trigger = triggerComment(of: item, in: conversation, providerSpec: providerSpec) {
+      TriggerJump(
+        comment: trigger, reason: providerSpec.reasonLabel(item.reason), provider: item.provider,
+        now: model.now
+      ) {
+        jump(to: trigger.id)
+      }
+    } else if conversation == nil, let bodyView = providerSpec.bodyView(for: item) {
+      // The notification's own excerpt stands in until the target
+      // is in, or when it can't be.
+      if ruled {
+        Divider()
+      }
+      bodyView
+    }
+  }
+
+  /// Whether the notifications show as more than the excerpt, which gives
+  /// way to the conversation: a thread's messages, or the comment one
+  /// notification points at.
+  private func showsMessages(_ thread: InboxThread, conversation: TargetConversation?) -> Bool {
+    let item = thread.lead
+    return thread.items.count > 1
+      || triggerComment(of: item, in: conversation, providerSpec: spec(for: item.provider)) != nil
+  }
+
+  /// How the conversation's load stands, then the conversation — set off
+  /// from what is above it when `ruled`.
+  @ViewBuilder
+  private func conversationPart(
+    _ thread: InboxThread, load: AppModel.ConversationLoad?, conversation: TargetConversation?, ruled: Bool
+  ) -> some View {
+    ConversationStatusRow(load: load)
+    if let conversation {
+      if ruled {
+        Divider()
+      }
+      ConversationTimeline(
+        conversation: conversation, item: thread.lead,
+        triggers: triggers(of: thread, providerSpec: spec(for: thread.lead.provider)),
+        flashedId: flashedCommentId, now: model.now,
+        placed: commentOffsets.note
       )
     }
   }
@@ -201,6 +288,9 @@ private struct PreviewHeader: View {
       Text(highlighted(item.title, terms: highlightTerms))
         .font(.app(.title, weight: .semibold))
         .textSelection(.enabled)
+        // Every line it wraps to: under a board, the row is otherwise held
+        // to one line and the title cut short.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     VStack(alignment: .leading, spacing: 8) {

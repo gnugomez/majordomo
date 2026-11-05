@@ -110,7 +110,7 @@ final class AppModel {
   /// The card selected on the board, by card id; a board shows one at a
   /// time.
   var selectedCardId: String?
-  /// Whether the selected card's preview stands beside the board. Picking
+  /// Whether the selected card's preview stands by the board. Picking
   /// a card shows it; the user can put it away for the whole board and
   /// keep the card selected.
   var cardPreviewShown = false
@@ -169,6 +169,13 @@ final class AppModel {
   var inboxPreviewShown: Bool {
     get { preferences.inboxPreviewShown }
     set { preferences.inboxPreviewShown = newValue }
+  }
+
+  /// Where every board's preview stands, beside the board or under it;
+  /// remembered across launches.
+  var boardPreviewPlacement: PreviewPlacement {
+    get { preferences.boardPreviewPlacement }
+    set { preferences.boardPreviewPlacement = newValue }
   }
 
   /// The toolbar filter's date window, remembered across launches; nil is

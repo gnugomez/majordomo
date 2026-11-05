@@ -213,7 +213,8 @@ reintroduces the bug:
 - Toolbar items redraw with a fade whenever the view that builds them
   updates, so each toolbar control is a small view given only what
   decides how it looks (`RefreshButton` watches `syncing`, the board's
-  menu the board, `PreviewToggle` whether a card is selected,
+  menu the board, `PreviewToggle` whether a card is selected and where
+  the board's preview stands,
   `FilterToolbarControl` whether the filter narrows and by what), and
   `AppModel.apply` assigns only the slices whose revision moved
   (`StateRevisions`) — selecting a card pushes several times (the
@@ -240,6 +241,26 @@ reintroduces the bug:
   of its own as the inspector slides in (see the filter). The
   sidebar's and the inspector's slide, the content scrolling on beneath
   both, and the toolbar's sections are all the system's.
+- A board's preview can stand under the board instead
+  (`boardPreviewPlacement`, picked from the preview toggle's menu), in a
+  pane of our own (BottomPreviewSplit), since an inspector only stands at
+  the trailing edge. The pane is an overlay over the board's foot, not a
+  stack beside it: the window's minimum size follows the content's
+  (`.minSize`), and a pane laid out under the board as a
+  `.frame(height:)` moved that minimum on every step of a drag — dragging
+  it took the app down, AppKit throwing on its update-constraints passes
+  as the hosting view invalidated its size constraints mid-layout. An
+  overlay never reaches the board's size; the board runs on beneath it,
+  as under the sidebar, its scroll content and scrollers ending at the
+  pane's edge through `contentMargins`. The pane stands on the sidebar's
+  own glass (`SidebarGlass`): an `NSGlassEffectView` in the private
+  variant the split view gives its sidebar, set only where the glass view
+  answers to it. The inspector binding's setter only writes the card
+  preview's state while the preview stands beside the board: moving it
+  under the board closes the inspector, which writes `false` back and
+  would hide the pane it moved to. The toggle's menu is keyed by the
+  placement (`.id`), as the filter's is by its summary, so a reopened
+  menu ticks the current one.
 - The sidebar toggle is our own (`SidebarToggle`, MainWindowView), behind
   a flexible spacer in the sidebar's stretch of the toolbar, and SwiftUI's
   is removed (`.toolbar(removing: .sidebarToggle)`): SwiftUI's comes and
