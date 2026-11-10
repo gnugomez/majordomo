@@ -409,9 +409,35 @@ enum DemoData {
       }
     }
 
+    // MAJORDOMO_DEMO_SCALE=N lays the fixture out N times over, for seeing
+    // how the views hold up under a real inbox's worth of items: each copy
+    // is a target of its own, in a repository of its own two times in
+    // three, so a board grows both taller and longer.
+    var allItems = byId
+    if let scale = ProcessInfo.processInfo.environment["MAJORDOMO_DEMO_SCALE"].flatMap({ Int($0) }), scale > 1 {
+      for copy in 1..<scale {
+        for (index, item) in items.enumerated() {
+          var clone = item
+          clone.id = "\(item.id)-\(copy)"
+          clone.title = "\(item.title) (\(copy))"
+          clone.repo = copy % 3 == 0 ? item.repo : "\(item.repo)-\(copy)"
+          clone.url = targetUrl(provider: item.provider, repo: clone.repo, kind: item.kind, number: copy * 1000 + index)
+          clone.updatedAt = item.updatedAt.addingTimeInterval(-Double(copy) * 60)
+          allItems[clone.id] = clone
+          if let original = GitForgeVisuals.targetUrl(item.url)?.key, let held = tracked[original],
+             let key = GitForgeVisuals.targetUrl(clone.url)?.key {
+            tracked[key] = TrackedTarget(
+              key: key, provider: held.provider, snapshot: held.snapshot, fetchedAt: held.fetchedAt,
+              seenAt: held.seenAt, seenComments: held.seenComments, conversationAt: held.conversationAt
+            )
+          }
+        }
+      }
+    }
+
     return StoreFile(
       accounts: accounts,
-      items: byId,
+      items: allItems,
       labels: labels,
       rules: rules,
       suggestions: suggestions,
