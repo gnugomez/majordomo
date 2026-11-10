@@ -71,11 +71,28 @@ private struct GHSubject: Decodable {
   let labels: [Label]?
 }
 
-/// True when the token can read private repositories. GitHub reports a
-/// classic token's scopes on every response, failures included.
+/// A classic token's scopes, which GitHub reports on every response,
+/// failures included; nil without the header.
+private func grantedScopes(_ http: HTTPURLResponse) -> Set<String>? {
+  guard let scopes = http.value(forHTTPHeaderField: "X-OAuth-Scopes") else {
+    return nil
+  }
+  return Set(scopes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+}
+
+/// True when the token can read private repositories.
 private func grantsPrivateRepos(_ http: HTTPURLResponse) -> Bool {
-  let scopes = http.value(forHTTPHeaderField: "X-OAuth-Scopes") ?? ""
-  return scopes.split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "repo" }
+  grantedScopes(http)?.contains("repo") == true
+}
+
+/// What the token's scopes leave out of reach: projects, whose statuses
+/// and due dates take read:project. nil when they reach them, or nothing
+/// can be told.
+private func scopeNote(_ http: HTTPURLResponse) -> String? {
+  guard let granted = grantedScopes(http), granted.isDisjoint(with: ["read:project", "project"]) else {
+    return nil
+  }
+  return "Statuses and due dates from GitHub projects need the token's read:project scope: add it to the token on GitHub, then relaunch, or paste the token again."
 }
 
 /// Targets one GraphQL request asks about. GitHub prices a query by the
@@ -404,7 +421,7 @@ func projectStatusStage(_ name: String) -> String? {
   if says("done", "complete", "completed", "shipped", "released", "closed", "finished", "merged") {
     return "done"
   }
-  if says("triage", "untriaged", "new", "inbox") {
+  if says("triage", "untriaged", "new", "inbox", "discussion") {
     return "triage"
   }
   if says("to do", "todo", "backlog", "ready", "planned", "scheduled", "open", "next") {
@@ -597,11 +614,14 @@ actor GitHubClient: ProviderClient {
 
   func validate(_ config: AccountConfig) async throws -> ProviderProfile {
     let url = URL(string: "https://api.github.com/user")!
-    let data = try await sendExpectingSuccess(request(url, token: config.token), ctx: githubContext)
+    let (data, http) = try await send(request(url, token: config.token), ctx: githubContext)
+    guard (200 ..< 300).contains(http.statusCode) else {
+      throw statusError(http.statusCode, githubContext)
+    }
     guard let user = try? JSONDecoder().decode(GHUser.self, from: data), let login = user.login else {
       throw ProviderError(message: "GitHub accepted the token but returned no username — try again later.")
     }
-    return ProviderProfile(username: login, name: user.name, avatarUrl: user.avatar_url)
+    return ProviderProfile(username: login, name: user.name, avatarUrl: user.avatar_url, note: scopeNote(http))
   }
 
   func fetchItems(_ config: AccountConfig, depth: FetchDepth) async throws -> FetchResult {

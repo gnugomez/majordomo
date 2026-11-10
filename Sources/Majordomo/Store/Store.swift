@@ -146,6 +146,9 @@ struct StoredAccount: Codable, Sendable {
   var username: String?
   var name: String?
   var avatarUrl: String?
+  /// What the token leaves out of reach, as its provider last said
+  /// (`ProviderProfile.note`).
+  var note: String?
   /// Orders the accounts list.
   var createdAt: Date?
   /// Set when the user removed the account. The token is gone and nothing
@@ -227,6 +230,7 @@ struct StoredAccountInfo {
   var name: String?
   var avatarUrl: String?
   var baseUrl: String?
+  var note: String?
 }
 
 /// Not Sendable by design: owned and accessed exclusively by the SyncEngine
@@ -339,7 +343,8 @@ final class Store {
       username: stored.username,
       name: stored.name,
       avatarUrl: stored.avatarUrl,
-      baseUrl: stored.baseUrl
+      baseUrl: stored.baseUrl,
+      note: stored.note
     )
   }
 
@@ -403,6 +408,7 @@ final class Store {
       username: profile.username,
       name: profile.name,
       avatarUrl: profile.avatarUrl,
+      note: profile.note,
       createdAt: data.accounts[id]?.createdAt ?? Date()
     )
     if let key, let sealed = TokenCipher.encrypt(config.token, key: key) {
@@ -425,6 +431,7 @@ final class Store {
     account.username = profile.username
     account.name = profile.name
     account.avatarUrl = profile.avatarUrl
+    account.note = profile.note
     data.accounts[id] = account
     noteChange()
   }

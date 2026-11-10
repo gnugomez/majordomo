@@ -72,6 +72,10 @@ struct ProviderProfile: Sendable {
   var username: String
   var name: String?
   var avatarUrl: String?
+  /// What the token leaves out of reach that an extra needs — a scope —
+  /// in words fit to show; nil when it reaches everything, or the
+  /// provider can't tell.
+  var note: String? = nil
 }
 
 /// Comments a conversation keeps at most: the latest ones, enough to see

@@ -18,6 +18,7 @@ struct StatusStageTests {
     #expect(projectStatusStage("Won't fix") == "canceled")
     #expect(projectStatusStage("Not planned") == "canceled")
     #expect(projectStatusStage("Needs triage") == "triage")
+    #expect(projectStatusStage("In Discussion") == "triage")
     #expect(projectStatusStage("Shipped 🚀") == "done")
   }
 

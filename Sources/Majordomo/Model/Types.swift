@@ -87,6 +87,9 @@ struct AccountState: Identifiable, Sendable, Hashable {
   var baseUrl: String?
   /// Human-readable error from the last validation or sync attempt.
   var error: String?
+  /// What the token leaves out of reach that an extra needs, when the
+  /// provider could tell (`ProviderProfile.note`).
+  var note: String?
 }
 
 /// One part of the published state. Each is versioned on its own, so a

@@ -17,7 +17,8 @@ extension SyncEngine {
         name: stored.name,
         avatarUrl: stored.avatarUrl,
         baseUrl: stored.baseUrl,
-        error: errors[stored.id]
+        error: errors[stored.id],
+        note: stored.note
       )
     }
   }

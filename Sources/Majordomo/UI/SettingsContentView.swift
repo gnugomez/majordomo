@@ -22,10 +22,13 @@ struct AccountsSettingsView: View {
       List(selection: $selection) {
         ForEach(model.accounts) { account in
           HStack(spacing: 10) {
+            // An error takes the line; short of one, what the token
+            // leaves out of reach, since nothing else would say.
             AccountSummary(
               account: account,
-              detail: account.error ?? accountDescriptor(account),
-              detailStyle: account.error == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange)
+              detail: account.error ?? account.note ?? accountDescriptor(account),
+              detailStyle: account.error == nil && account.note == nil
+                ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange)
             )
             Spacer()
             Circle()

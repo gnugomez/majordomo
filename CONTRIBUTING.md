@@ -160,9 +160,11 @@ Adding a provider means:
    `RedirectGuard` strips it from any redirect off that origin;
 2. a `ProviderSpec` with the presentation for those tokens and its built-in
    labels and rules (`GitForgeBuckets` builds the git-forge set), plus a
-   `previewScopeNote` when previews need a scope beyond the token hint's,
-   and the board hooks: which target an item is about (`boardKey`), the
-   comment it points at (`triggerCommentId`), which states are finished,
+   `previewScopeNote` when previews need a scope beyond the token hint's
+   (a scope the token turns out to lack, `validate` notes on the profile,
+   and the account shows it), and the board hooks: which target an item
+   is about (`boardKey`), the comment it points at (`triggerCommentId`),
+   which states are finished,
    the review, checks, merge, and status badges (marked `needsAction`
    when they say something must be done — what a cramped inbox row
    keeps), and the token vocabulary the board editor offers. The badges

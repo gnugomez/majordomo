@@ -105,7 +105,8 @@ struct AddRemoveButtons: View {
 }
 
 /// An account as the settings name it: its face, its name, and a line
-/// under it — who and where, or what went wrong.
+/// under it — who and where, or what went wrong, whole in its tooltip
+/// where the line runs short.
 struct AccountSummary: View {
   let account: AccountState
   let detail: String
@@ -121,6 +122,7 @@ struct AccountSummary: View {
           .font(.app(.caption))
           .foregroundStyle(detailStyle)
           .lineLimit(1)
+          .help(detail)
       }
     }
   }
