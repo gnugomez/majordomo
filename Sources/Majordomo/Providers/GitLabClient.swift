@@ -667,10 +667,14 @@ struct GitLabClient: ProviderClient {
     guard !paths.isEmpty, let url = URL(string: "\(origin)/api/graphql") else {
       return [:]
     }
+    // Each alias asks for a page the size of its list: GitLab prices a
+    // query by the page it might return, a page of a hundred costs more
+    // than a request may, and five projects' worth refused the round.
     let aliases = paths.enumerated().map { index, path in
-      let iids = (projects[path] ?? []).map { "\"\($0.ref.iid)\"" }.joined(separator: ", ")
+      let refs = projects[path] ?? []
+      let iids = refs.map { "\"\($0.ref.iid)\"" }.joined(separator: ", ")
       return "p\(index): project(fullPath: \"\(path)\") "
-        + "{ workItems(iids: [\(iids)]) { nodes { iid \(statusWidget) } } }"
+        + "{ workItems(iids: [\(iids)], first: \(refs.count)) { nodes { iid \(statusWidget) } } }"
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
