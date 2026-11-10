@@ -133,20 +133,27 @@ private let conversationFragments = """
 
 /// What a query asks of each target about its projects: the status each
 /// gives it, a project's Status being a single-select field of its own
-/// that goes by that name, and the day it is due, a date field named Due
-/// date or Target date — GitHub's own name for the one it adds. A card
-/// archived in a project is left out: its status is history. Reading
-/// projects takes a scope of its own (read:project), and GitHub answers a
-/// query that asks without it with an error for the query, so these go
-/// only into the queries of a round that may.
+/// that goes by that name, and the day it is due, which has no name of
+/// its own — a project names its date fields as it likes, Due Date or
+/// Target date, in whatever case — so the item's set values come with
+/// their fields' names, and the due date is picked by name among them. A
+/// card archived in a project is left out: its status is history.
+/// Reading projects takes a scope of its own (read:project), and GitHub
+/// answers a query that asks without it with an error for the query, so
+/// these go only into the queries of a round that may.
 private let projectFragments = """
   fragment IssueProject on Issue { projectItems(first: 5, includeArchived: false) { nodes { ...ItemFacts } } }
   fragment PullProject on PullRequest { projectItems(first: 5, includeArchived: false) { nodes { ...ItemFacts } } }
   fragment ItemFacts on ProjectV2Item { status: fieldValueByName(name: "Status") \
   { ... on ProjectV2ItemFieldSingleSelectValue { name } } \
-  due: fieldValueByName(name: "Due date") { ... on ProjectV2ItemFieldDateValue { date } } \
-  target: fieldValueByName(name: "Target date") { ... on ProjectV2ItemFieldDateValue { date } } }
+  fieldValues(first: \(projectValuesPerItem)) { nodes { ... on ProjectV2ItemFieldDateValue { date \
+  field { ... on ProjectV2FieldCommon { name } } } } } }
   """
+
+/// Field values a project item is asked for: only the fields set on it
+/// come, and a dozen covers a project's fields with room, at a cost the
+/// query carries for every item asked.
+private let projectValuesPerItem = 12
 
 private struct GQLLogin: Decodable {
   let login: String?
@@ -224,14 +231,15 @@ private struct GQLTarget: Decodable {
       let name: String?
     }
 
-    struct Day: Decodable {
-      /// "2026-11-12".
+    /// One of the item's field values; a date field's carries its day
+    /// ("2026-11-12") and its field's name, any other nothing.
+    struct FieldValue: Decodable {
       let date: String?
+      let field: Name?
     }
 
     let status: Value?
-    let due: Day?
-    let target: Day?
+    let fieldValues: GQLNodes<FieldValue>?
   }
 
   let __typename: String
@@ -355,7 +363,7 @@ private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
     checks: checks,
     merge: state == "open" ? mergeToken(target) : nil,
     status: workStatus(target),
-    dueDate: target.projectItems?.values.compactMap { $0.due?.date ?? $0.target?.date }.first,
+    dueDate: projectDueDate(target),
     commentCount: target.comments?.totalCount,
     lastCommenter: lastCommenter,
     updatedAt: updatedAt,
@@ -398,6 +406,19 @@ private func workStatus(_ target: GQLTarget) -> WorkStatus? {
   case "DUPLICATE": WorkStatus(name: "Duplicate", stage: "canceled")
   default: nil
   }
+}
+
+/// The day the target's projects say it is due: the first date field
+/// among their items' values named for a due date or deadline, or
+/// failing one, a target date.
+private func projectDueDate(_ target: GQLTarget) -> String? {
+  let days = (target.projectItems?.values ?? []).flatMap { $0.fieldValues?.values ?? [] }
+    .compactMap { value -> (name: String, date: String)? in
+      guard let date = value.date, !date.isEmpty, let name = value.field?.name?.lowercased() else { return nil }
+      return (name, date)
+    }
+  return days.first { $0.name.contains("due") || $0.name.contains("deadline") }?.date
+    ?? days.first { $0.name.contains("target") }?.date
 }
 
 /// The stage a project's status stands for, read off its name: a

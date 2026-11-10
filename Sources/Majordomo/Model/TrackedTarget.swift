@@ -68,7 +68,7 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
 /// due day — so every target stored is asked once more, finished ones
 /// included, which otherwise wait for new activity, and shows the field
 /// without waiting for any.
-let snapshotShape = 2
+let snapshotShape = 3
 
 /// One target the app tracks, keyed by the url its notifications share
 /// (fragment stripped) — one record across every account that reaches it.
