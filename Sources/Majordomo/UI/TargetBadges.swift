@@ -1,6 +1,6 @@
 // Where a target stands, drawn the same way wherever it shows: the
-// provider's review, checks, and merge marks, led by one of the app's own
-// when the target waits on the user's review. An inbox row draws them
+// provider's review, checks, merge, and status marks, led by one of the
+// app's own when the target waits on the user's review. An inbox row draws them
 // compact — a glyph each with its words in a tooltip, no taller than a
 // line of the row's text, and only what needs doing once the row runs
 // short of room. A board card and the preview draw them regular: glyph
@@ -19,6 +19,7 @@ struct TargetStatus: Equatable, Sendable {
   var review: String?
   var checks: String?
   var merge: String?
+  var status: WorkStatus?
   /// Whether one of the reviewers it still waits on is the user; never
   /// for a target that is done with.
   var awaitsYou: Bool
@@ -31,6 +32,7 @@ struct TargetStatus: Equatable, Sendable {
     review = snapshot.review
     checks = snapshot.checks
     merge = snapshot.merge
+    status = snapshot.status
     let finished = snapshot.state.map(spec(for: provider).isFinished(state:)) ?? false
     awaitsYou = !finished && snapshot.reviewers.contains { reviewer in
       ownLogins.contains { reviewer.caseInsensitiveCompare($0) == .orderedSame }
@@ -44,7 +46,8 @@ struct TargetStatus: Equatable, Sendable {
   }
 
   /// The marks in reading order: the user's own review first, then where
-  /// review, checks, and merging stand, as the provider draws them. While
+  /// review, checks, and merging stand, and last the target's workflow
+  /// status, as the provider draws them. While
   /// the target waits on the user, the review mark shows only when it asks
   /// for something of its own (changes requested): a plain "review
   /// required" beside "awaiting your review" says the same thing twice.
@@ -62,6 +65,9 @@ struct TargetStatus: Equatable, Sendable {
     }
     if let badge = merge.flatMap(providerSpec.mergeBadge) {
       marks.append(StatusMark(id: "merge", badge: badge))
+    }
+    if let badge = status.flatMap(providerSpec.statusBadge) {
+      marks.append(StatusMark(id: "status", badge: badge))
     }
     return marks
   }
@@ -95,7 +101,7 @@ private let awaitingYourReview = CardBadge(
 
 /// One mark, ready to draw.
 struct StatusMark: Identifiable {
-  /// What it speaks to: "you", "review", "checks", or "merge".
+  /// What it speaks to: "you", "review", "checks", "merge", or "status".
   let id: String
   let badge: CardBadge
 }

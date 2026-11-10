@@ -20,7 +20,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
   case labels
   /// The state-or-reason capsule.
   case status
-  /// Where the target's review, checks, and merging stand.
+  /// Where the target's review, checks, merging, and status stand.
   case target
   /// A couple of lines of the item's text.
   case excerpt
@@ -50,7 +50,7 @@ enum RowField: String, Codable, CaseIterable, Sendable, Identifiable {
     case .provider: "Where it came from"
     case .labels: "The labels it carries"
     case .status: "Its state or reason"
-    case .target: "Where review, checks, and merging stand"
+    case .target: "Where review, checks, merging, and status stand"
     case .excerpt: "Its summary, or a couple of lines of its text"
     }
   }

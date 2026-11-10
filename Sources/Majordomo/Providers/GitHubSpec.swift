@@ -8,7 +8,7 @@ struct GitHubSpec: GitForgeSpec {
   let id = ProviderId.github
   let displayName = "GitHub"
   let needsBaseUrl = false
-  let tokenHint = "A classic personal access token with the notifications scope."
+  let tokenHint = "A classic personal access token with the notifications scope, and read:project for the statuses its projects give issues."
   // Classic tokens are the only kind the notifications API takes, and the
   // only classic scope that reads private repositories also writes them.
   let previewScopeNote: String? = """

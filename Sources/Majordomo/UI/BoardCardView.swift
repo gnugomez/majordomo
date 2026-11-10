@@ -1,10 +1,10 @@
 // One card on a board: a target at a glance. The kind glyph in its current
-// state, where it lives, its title, where review, checks, and merging stand
-// (TargetBadges, the marks the inbox rows draw too), who it is assigned to,
-// and what moved since the user last looked — the unread dot for
-// notifications, "+N" for comments. Every mark of the target's tokens comes
-// from the provider's spec; a card that has gone quiet fades rather than
-// leaves.
+// state, where it lives, its title, where its review, checks, merging, and
+// workflow status stand (TargetBadges, the marks the inbox rows draw too),
+// who it is assigned to, and what moved since the user last looked — the
+// unread dot for notifications, "+N" for comments. Every mark of the
+// target's tokens comes from the provider's spec; a card that has gone
+// quiet fades rather than leaves.
 
 import SwiftUI
 

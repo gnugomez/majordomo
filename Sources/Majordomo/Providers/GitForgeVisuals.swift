@@ -55,6 +55,10 @@ extension GitForgeSpec {
     GitForgeVisuals.mergeBadge(merge)
   }
 
+  func statusBadge(_ status: WorkStatus) -> CardBadge? {
+    GitForgeVisuals.statusBadge(status)
+  }
+
   func tokens(for field: RuleField) -> [String] {
     GitForgeVisuals.tokens(for: field)
   }
@@ -237,6 +241,25 @@ enum GitForgeVisuals {
     }
   }
 
+  /// Status stages, both forges, each under the status's own name:
+  /// "triage", not yet taken on; "todo"; "in_progress"; "done"; and
+  /// "canceled", closed without being done. A stage the forge left
+  /// unsaid wears a plain ring.
+  static func statusBadge(_ status: WorkStatus) -> CardBadge? {
+    switch status.stage {
+    case "triage":
+      CardBadge(glyph: Octicon.issueDraft, label: status.name, color: stateColor(""))
+    case "in_progress":
+      CardBadge(glyph: Octicon.circleHalf, label: status.name, color: pendingColor)
+    case "done":
+      CardBadge(glyph: Octicon.checkCircle, label: status.name, color: stateColor("open"))
+    case "canceled":
+      CardBadge(glyph: Octicon.skip, label: status.name, color: stateColor(""))
+    default:
+      CardBadge(glyph: Octicon.circle, label: status.name, color: stateColor(""))
+    }
+  }
+
   /// The vocabulary of the token fields, as both forges speak it.
   static func tokens(for field: RuleField) -> [String] {
     switch field {
@@ -246,6 +269,7 @@ enum GitForgeVisuals {
     case .review: ["approved", "changes_requested", "review_required"]
     case .checks: ["success", "failure", "pending"]
     case .merge: ["ready", "conflicts", "behind", "blocked", "unstable", "unresolved"]
+    case .status: ["triage", "todo", "in_progress", "done", "canceled"]
     default: []
     }
   }

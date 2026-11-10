@@ -129,6 +129,9 @@ enum RuleField: String, Codable, CaseIterable, Sendable {
   case checks
   /// The provider token for whether the target can merge ("conflicts"…).
   case merge
+  /// Where a work item stands in its workflow: the stage token ("todo",
+  /// "in_progress"…) or the status's own name, either holds.
+  case status
   case milestone
   /// Whoever wrote the target's latest comment.
   case lastCommenter

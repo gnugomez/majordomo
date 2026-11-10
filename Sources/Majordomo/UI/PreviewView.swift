@@ -266,9 +266,9 @@ struct PreviewView: View {
 }
 
 /// The title; the state and reason capsules with where the target's
-/// review, checks, and merging stand under them; then the facts. The
-/// target reads as it stands now: a pull request merged since its
-/// notification came reads merged.
+/// review, checks, merging, and workflow status stand under them; then
+/// the facts. The target reads as it stands now: a pull request merged
+/// since its notification came reads merged.
 private struct PreviewHeader: View {
   let model: AppModel
   let thread: InboxThread

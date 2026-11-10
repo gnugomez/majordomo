@@ -36,7 +36,7 @@ extension InboxItem: RuleSubject {
     case .provider: [provider.rawValue]
     case .account: [accountId]
     case .upstreamLabel: upstreamLabels
-    case .assignee, .reviewer, .review, .checks, .merge, .milestone, .lastCommenter, .mention, .unread, .question: []
+    case .assignee, .reviewer, .review, .checks, .merge, .status, .milestone, .lastCommenter, .mention, .unread, .question: []
     }
   }
 

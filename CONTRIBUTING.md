@@ -141,8 +141,9 @@ Adding a provider means:
 1. a `ProviderClient` that speaks the API and normalizes to `FetchedItem`
    tokens, and refreshes the targets boards and previews are built from
    (`fetchTargets`, at most `targetBatchLimit` per round: state,
-   assignees, reviewers, review, checks, and merge tokens, the latest
-   commenter, and for the keys it is asked to, the conversation: who
+   assignees, reviewers, review, checks, and merge tokens, a work item's
+   status under its stage token (`WorkStatus`), the latest commenter,
+   and for the keys it is asked to, the conversation: who
    opened the target and when, its description and latest comments as
    Markdown, each with its author's picture, and events worth a place
    among them — a review's verdict — as entries carrying an event token,
@@ -162,11 +163,12 @@ Adding a provider means:
    `previewScopeNote` when previews need a scope beyond the token hint's,
    and the board hooks: which target an item is about (`boardKey`), the
    comment it points at (`triggerCommentId`), which states are finished,
-   the review, checks, and merge badges (marked `needsAction` when they
-   say something must be done — what a cramped inbox row keeps), and the
-   token vocabulary the board editor offers. The badges draw on board
-   cards and, through `TargetBadges`, on inbox rows, whose glyph and
-   capsule read the target's current state once it has been refreshed.
+   the review, checks, merge, and status badges (marked `needsAction`
+   when they say something must be done — what a cramped inbox row
+   keeps), and the token vocabulary the board editor offers. The badges
+   draw on board cards and, through `TargetBadges`, on inbox rows, whose
+   glyph and capsule read the target's current state once it has been
+   refreshed.
    For previews: the mark an event token wears in the conversation
    (`eventBadge`) and where a link or image a body writes points
    (`bodyURL` — GitLab's uploads are relative to the project);

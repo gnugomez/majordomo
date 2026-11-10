@@ -19,6 +19,10 @@ and RELEASING.md.
   set is assembled (built-ins first, then the user's) — read it from
   `AppModel.catalog` or the engine's `catalog()` rather than composing
   unions at a call site. Never interpret provider tokens in core/UI code.
+  A fact both forges track in words of their own reaches the core in one
+  shared vocabulary, translated by each client — a merge token, the stage
+  of a status (`WorkStatus`) — so one rule or column tests it on every
+  provider.
 - **One sidebar for every account**: buckets sharing an id merge into one
   inbox, and every inbox holds every account's items — the selection
   (`SidebarSelection`) names an inbox or a board, never an account. One

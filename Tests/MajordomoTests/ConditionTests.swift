@@ -84,6 +84,19 @@ struct ConditionTests {
     #expect(holds(condition(.reviewer, .is, "kim"), for: card(reviewers: ["mona", "kim"])))
   }
 
+  @Test func statusHoldsOnItsStageOrItsOwnName() {
+    let reviewing = card(status: WorkStatus(name: "In review", stage: "in_progress"))
+    #expect(holds(condition(.status, .is, "in_progress"), for: reviewing))
+    #expect(holds(condition(.status, .is, "in review"), for: reviewing))
+    #expect(holds(condition(.status, .contains, "review"), for: reviewing))
+    #expect(!holds(condition(.status, .is, "todo"), for: reviewing))
+    // A status whose stage the provider left unsaid still answers to its name.
+    let custom = card(status: WorkStatus(name: "QA", stage: nil))
+    #expect(holds(condition(.status, .is, "qa"), for: custom))
+    #expect(!holds(condition(.status, .is, "in_progress"), for: custom))
+    #expect(!holds(condition(.status, .exists), for: card()))
+  }
+
   @Test func cardFieldsReadNothingOnANotification() {
     #expect(!holds(condition(.assignee, .exists), for: item()))
   }

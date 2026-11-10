@@ -8,9 +8,9 @@
 
 import Foundation
 
-/// What a provider says about a target right now. Review, checks, and
-/// merge are provider tokens like kind and state: the spec renders them,
-/// and the core only compares them.
+/// What a provider says about a target right now. Review, checks, merge,
+/// and a status's stage are provider tokens like kind and state: the spec
+/// renders them, and the core only compares them.
 struct TargetSnapshot: Codable, Hashable, Sendable {
   var title: String
   var state: String?
@@ -28,6 +28,9 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
   /// Whether it could be merged right now ("conflicts", "ready"…); nil
   /// for what isn't open for merging, or while the provider can't tell.
   var merge: String? = nil
+  /// Where it stands in its workflow, when its provider tracks that apart
+  /// from its state; nil where none does, or the target has none.
+  var status: WorkStatus? = nil
   /// Comments by people, when the provider counts them.
   var commentCount: Int?
   /// Whoever wrote the latest comment or review.
@@ -172,6 +175,7 @@ extension BoardCard: RuleSubject {
     case .review: return [snapshot?.review ?? ""]
     case .checks: return [snapshot?.checks ?? ""]
     case .merge: return [snapshot?.merge ?? ""]
+    case .status: return [snapshot?.status?.stage ?? "", snapshot?.status?.name ?? ""]
     case .milestone: return [snapshot?.milestone ?? ""]
     case .lastCommenter: return [snapshot?.lastCommenter ?? ""]
     case .mention, .unread, .question: return []

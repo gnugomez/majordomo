@@ -55,6 +55,7 @@ func fieldLabel(_ field: RuleField) -> String {
   case .review: "Review"
   case .checks: "Checks"
   case .merge: "Merge"
+  case .status: "Status"
   case .milestone: "Milestone"
   case .lastCommenter: "Last commenter"
   case .unread: "Activity"

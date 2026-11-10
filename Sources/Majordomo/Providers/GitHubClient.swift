@@ -90,7 +90,7 @@ private let conversationsPerQuery = 20
 /// What a target query asks of each issue or pull request; the pull-only
 /// fields come back nil on an issue.
 private let targetFragments = """
-  fragment Issue on Issue { title state updatedAt author { login avatarUrl } \
+  fragment Issue on Issue { title state stateReason updatedAt author { login avatarUrl } \
   assignees(first: 10) { nodes { login avatarUrl } } labels(first: 20) { nodes { name } } milestone { title } \
   comments(last: 1) { totalCount nodes { author { login } createdAt } } }
   fragment Pull on PullRequest { title state isDraft updatedAt author { login avatarUrl } \
@@ -112,6 +112,20 @@ private let conversationFragments = """
   talk: comments(last: \(detailCommentLimit)) { totalCount nodes { databaseId author { ...Person } createdAt body } } \
   verdicts: reviews(last: \(detailCommentLimit)) { nodes { databaseId author { ...Person } state submittedAt body } } }
   fragment Person on Actor { login avatarUrl(size: 80) }
+  """
+
+/// What a query asks of each target about its projects: the status each
+/// gives it, a project's Status being a single-select field of its own
+/// that goes by that name. A card archived in a project is left out: its
+/// status is history. Reading projects takes a scope of its own
+/// (read:project), and GitHub answers a query that asks without it with
+/// an error for the query, so these go only into the queries of a round
+/// that may.
+private let projectFragments = """
+  fragment IssueProject on Issue { projectItems(first: 5, includeArchived: false) { nodes { ...ItemStatus } } }
+  fragment PullProject on PullRequest { projectItems(first: 5, includeArchived: false) { nodes { ...ItemStatus } } }
+  fragment ItemStatus on ProjectV2Item { status: fieldValueByName(name: "Status") \
+  { ... on ProjectV2ItemFieldSingleSelectValue { name } } }
   """
 
 private struct GQLLogin: Decodable {
@@ -185,9 +199,20 @@ private struct GQLTarget: Decodable {
     let commit: Commit?
   }
 
+  struct ProjectItem: Decodable {
+    struct Value: Decodable {
+      let name: String?
+    }
+
+    let status: Value?
+  }
+
   let __typename: String
   let title: String
   let state: String
+  /// Why an issue is closed: "COMPLETED", "NOT_PLANNED", or "DUPLICATE";
+  /// "REOPENED" on one open again.
+  let stateReason: String?
   let isDraft: Bool?
   let updatedAt: String
   let author: GQLLogin?
@@ -204,6 +229,8 @@ private struct GQLTarget: Decodable {
   let mergeStateStatus: String?
   let reviewRequests: GQLNodes<ReviewRequest>?
   let commits: GQLNodes<CommitNode>?
+  /// Its place in each project it is in, when the query asked.
+  let projectItems: GQLNodes<ProjectItem>?
   /// The opening post, latest comments, and latest reviews, when the
   /// query asked for them.
   let body: String?
@@ -229,6 +256,15 @@ private struct GQLTargetsResponse: Decodable {
 
   let data: [String: Failable<GQLRepository>]?
   let errors: [Failure]?
+}
+
+/// The token's scopes don't reach projects: GitHub refused the query
+/// whole for asking about them.
+private struct ProjectsUnreadable: Error {}
+
+/// Whether an error says the token's scopes fall short of the query.
+private func lacksScopes(_ failure: GQLTargetsResponse.Failure) -> Bool {
+  failure.type == "INSUFFICIENT_SCOPES" || failure.message?.contains("required scopes") == true
 }
 
 /// One step of an error's path: a field or alias name, or a list index.
@@ -291,6 +327,7 @@ private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
     review: review,
     checks: checks,
     merge: state == "open" ? mergeToken(target) : nil,
+    status: workStatus(target),
     commentCount: target.comments?.totalCount,
     lastCommenter: lastCommenter,
     updatedAt: updatedAt,
@@ -317,6 +354,52 @@ private func mergeToken(_ target: GQLTarget) -> String? {
   case "CLEAN", "HAS_HOOKS": "ready"
   default: nil
   }
+}
+
+/// Where the target stands in its workflow: the status the first of its
+/// projects gives it, when the token could read them; else, on a closed
+/// issue, why it was closed — done with, or not to be done — which the
+/// issue carries itself.
+private func workStatus(_ target: GQLTarget) -> WorkStatus? {
+  if let name = target.projectItems?.values.compactMap(\.status?.name).first(where: { !$0.isEmpty }) {
+    return WorkStatus(name: name, stage: projectStatusStage(name))
+  }
+  return switch target.stateReason {
+  case "COMPLETED": WorkStatus(name: "Completed", stage: "done")
+  case "NOT_PLANNED": WorkStatus(name: "Not planned", stage: "canceled")
+  case "DUPLICATE": WorkStatus(name: "Duplicate", stage: "canceled")
+  default: nil
+  }
+}
+
+/// The stage a project's status stands for, read off its name: a
+/// project's own are Todo, In Progress, and Done, and the names people
+/// give the statuses they add tend to say which step they mean — In
+/// review, Backlog, Won't fix. A name that says nothing leaves the stage
+/// unsaid, and the status answers to its name alone.
+func projectStatusStage(_ name: String) -> String? {
+  let name = name.lowercased()
+  let words = Set(name.split { !$0.isLetter }.map(String.init))
+  func says(_ phrases: String...) -> Bool {
+    phrases.contains { $0.contains(" ") ? name.contains($0) : words.contains($0) }
+  }
+  if name.contains("won't") || name.contains("wont")
+      || says("not planned", "canceled", "cancelled", "duplicate", "declined", "rejected", "abandoned") {
+    return "canceled"
+  }
+  if says("progress", "review", "doing", "development", "testing", "active", "started", "wip") {
+    return "in_progress"
+  }
+  if says("done", "complete", "completed", "shipped", "released", "closed", "finished", "merged") {
+    return "done"
+  }
+  if says("triage", "untriaged", "new", "inbox") {
+    return "triage"
+  }
+  if says("to do", "todo", "backlog", "ready", "planned", "scheduled", "open", "next") {
+    return "todo"
+  }
+  return nil
 }
 
 private func toConversation(_ target: GQLTarget) -> TargetConversation? {
@@ -573,9 +656,22 @@ actor GitHubClient: ProviderClient {
     }
     let queries = chunked(talking, by: conversationsPerQuery).map { (batch: $0, conversations: true) }
       + chunked(quiet, by: targetsPerQuery).map { (batch: $0, conversations: false) }
+    // Projects are asked about until the token proves unable to read
+    // them, once per round: the rest of the round asks without.
+    var projects = true
     for query in queries {
       do {
-        let answer = try await askTargets(query.batch, conversations: query.conversations, token: config.token)
+        let answer: TargetRound
+        do {
+          answer = try await askTargets(
+            query.batch, conversations: query.conversations, projects: projects, token: config.token
+          )
+        } catch is ProjectsUnreadable {
+          projects = false
+          answer = try await askTargets(
+            query.batch, conversations: query.conversations, projects: false, token: config.token
+          )
+        }
         round.refreshed.merge(answer.refreshed) { $1 }
         round.unreadable.merge(answer.unreadable) { $1 }
       } catch {
@@ -590,16 +686,26 @@ actor GitHubClient: ProviderClient {
     return round
   }
 
-  /// One GraphQL request for a batch of targets, an alias each.
+  /// One GraphQL request for a batch of targets, an alias each. Throws
+  /// `ProjectsUnreadable` when the query asked about projects and the
+  /// token's scopes don't reach them.
   private func askTargets(
-    _ batch: [(key: String, target: QueryTarget)], conversations: Bool, token: String
+    _ batch: [(key: String, target: QueryTarget)], conversations: Bool, projects: Bool, token: String
   ) async throws -> TargetRound {
-    let shape = conversations ? "__typename ...Issue ...Pull ...IssueTalk ...PullTalk" : "__typename ...Issue ...Pull"
+    var shape = "__typename ...Issue ...Pull"
+    var fragments = targetFragments
+    if conversations {
+      shape += " ...IssueTalk ...PullTalk"
+      fragments += "\n\(conversationFragments)"
+    }
+    if projects {
+      shape += " ...IssueProject ...PullProject"
+      fragments += "\n\(projectFragments)"
+    }
     let aliases = batch.enumerated().map { index, entry in
       "t\(index): repository(owner: \"\(entry.target.owner)\", name: \"\(entry.target.name)\") "
         + "{ issueOrPullRequest(number: \(entry.target.number)) { \(shape) } }"
     }
-    let fragments = conversations ? "\(targetFragments)\n\(conversationFragments)" : targetFragments
     let query = "query { \(aliases.joined(separator: " ")) }\n\(fragments)"
     var request = request(URL(string: "https://api.github.com/graphql")!, token: token)
     request.httpMethod = "POST"
@@ -610,6 +716,13 @@ actor GitHubClient: ProviderClient {
       throw statusError(http.statusCode, githubContext)
     }
     let response = try? JSONDecoder().decode(GQLTargetsResponse.self, from: data)
+    // A query about projects the token can't read fails as a whole, with
+    // the scopes it lacks named; a query that failed whole for any other
+    // reason is given the one more try without them too, since asking
+    // about them is the one thing that sets it apart.
+    if projects, response?.data == nil || response?.errors?.contains(where: lacksScopes) == true {
+      throw ProjectsUnreadable()
+    }
     guard let response, let answers = response.data else {
       let limited = response?.errors?.contains { $0.type == "RATE_LIMITED" } == true
       throw ProviderError(

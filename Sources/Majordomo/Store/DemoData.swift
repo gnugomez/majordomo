@@ -330,13 +330,14 @@ enum DemoData {
 
     // What the boards know about each target, as a refresh would have
     // left it: enough to put a card in every column of the starter board,
-    // and to show every review, checks, and merge mark on the rows — the
-    // user's own review awaited, conflicts, and a draft marked ready since
-    // its notification came, which the row reads as open.
+    // and to show every review, checks, merge, and status mark on the
+    // rows — the user's own review awaited, conflicts, and a draft marked
+    // ready since its notification came, which the row reads as open.
     func target(
       _ item: StoredItem, state: String? = nil, assignees: [String] = [], reviewers: [String] = [],
       labels: [String] = [], milestone: String? = nil, review: String? = nil, checks: String? = nil,
-      merge: String? = nil, comments: Int = 0, lastCommenter: String? = nil, seenComments: Int? = nil
+      merge: String? = nil, status: WorkStatus? = nil, comments: Int = 0, lastCommenter: String? = nil,
+      seenComments: Int? = nil
     ) -> TrackedTarget {
       let key = String(item.url.prefix { $0 != "#" })
       return TrackedTarget(
@@ -345,7 +346,7 @@ enum DemoData {
         snapshot: TargetSnapshot(
           title: item.title, state: state ?? item.state, author: item.author, assignees: assignees,
           reviewers: reviewers, labels: labels, milestone: milestone, review: review, checks: checks, merge: merge,
-          commentCount: comments, lastCommenter: lastCommenter, updatedAt: item.updatedAt
+          status: status, commentCount: comments, lastCommenter: lastCommenter, updatedAt: item.updatedAt
         ),
         fetchedAt: now,
         seenAt: seenComments.map { _ in now.addingTimeInterval(-3600) },
@@ -362,7 +363,10 @@ enum DemoData {
         on(github, 4), assignees: ["mona"], reviewers: ["octocat"], labels: ["storage"],
         review: "review_required", checks: "success", merge: "blocked", comments: 3, lastCommenter: "mona"
       ),
-      target(on(github, 26), labels: ["bug", "crash"], comments: 7, lastCommenter: "hubot", seenComments: 5),
+      target(
+        on(github, 26), labels: ["bug", "crash"], status: WorkStatus(name: "In Progress", stage: "in_progress"),
+        comments: 7, lastCommenter: "hubot", seenComments: 5
+      ),
       target(
         on(gitlab, 12), assignees: ["sasha"], reviewers: ["octocat"],
         review: "review_required", checks: "pending", comments: 2, lastCommenter: "sasha"
@@ -377,7 +381,7 @@ enum DemoData {
       ),
       target(
         on(github, 65), assignees: ["octocat"], labels: ["urgent", "backend"], milestone: "v2.4",
-        comments: 2, lastCommenter: "octocat"
+        status: WorkStatus(name: "Todo", stage: "todo"), comments: 2, lastCommenter: "octocat"
       ),
       target(on(github, 3 * 60), labels: ["dependencies"], checks: "success"),
       target(
@@ -386,10 +390,11 @@ enum DemoData {
       ),
       target(on(gitlab, 2 * 60), assignees: ["mona"], review: "approved", checks: "success", comments: 1),
       target(
-        on(gitlab, 8 * 60), assignees: ["octocat"], milestone: "17.4 upgrade", comments: 1, lastCommenter: "sasha"
+        on(gitlab, 8 * 60), assignees: ["octocat"], milestone: "17.4 upgrade",
+        status: WorkStatus(name: "In progress", stage: "in_progress"), comments: 1, lastCommenter: "sasha"
       ),
       target(on(github, 26 * 60), labels: ["design"], comments: 3, lastCommenter: "kim"),
-      target(on(gitlab, 49 * 60), labels: ["flaky"], comments: 1),
+      target(on(gitlab, 49 * 60), labels: ["flaky"], status: WorkStatus(name: "To do", stage: "todo"), comments: 1),
       target(on(github, 52 * 60), state: "open", checks: "failure", merge: "unstable"),
       target(on(github, 95)),
       target(on(gitlab, 3 * 60), comments: 1, lastCommenter: "priya"),

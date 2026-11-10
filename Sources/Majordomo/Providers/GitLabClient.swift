@@ -109,6 +109,46 @@ private struct GLApprovals: Decodable {
   let approved_by: [Approver]?
 }
 
+/// What the status query asks of each work item: its status widget's
+/// name and category. Statuses are GraphQL's alone; the issues API
+/// doesn't carry them.
+private let statusWidget = "widgets { ... on WorkItemWidgetStatus { status { name category } } }"
+
+/// The status query's answer: a project per alias, its work items each
+/// with the widgets asked for, of which only the status widget has a
+/// status.
+private struct GLStatusResponse: Decodable {
+  struct Project: Decodable {
+    struct Items: Decodable {
+      let nodes: [Failable<WorkItem>]?
+    }
+
+    let workItems: Items?
+  }
+
+  struct WorkItem: Decodable {
+    struct Widget: Decodable {
+      let status: Status?
+    }
+
+    struct Status: Decodable {
+      let name: String?
+      /// "TRIAGE", "TO_DO", "IN_PROGRESS", "DONE", or "CANCELED", in
+      /// either case.
+      let category: String?
+    }
+
+    let iid: String?
+    let widgets: [Failable<Widget>]?
+
+    var status: Status? {
+      widgets?.compactMap(\.value?.status).first
+    }
+  }
+
+  let data: [String: Failable<Project>]?
+}
+
 /// Targets one refresh round reads at most. GitLab answers one target per
 /// request — its notes take another, a merge request's approvals a third
 /// — so a round stays small and the rest wait for the next.
@@ -142,6 +182,19 @@ private func mergeToken(_ status: String?) -> String? {
   }
 }
 
+/// A status category as a stage token. The reference spells the
+/// categories in capitals; gitlab.com answers them in lower case.
+private func stageToken(_ category: String?) -> String? {
+  switch category?.uppercased() {
+  case "TRIAGE": "triage"
+  case "TO_DO": "todo"
+  case "IN_PROGRESS": "in_progress"
+  case "DONE": "done"
+  case "CANCELED": "canceled"
+  default: nil
+  }
+}
+
 /// Notes a refresh reads to find the latest comments: system notes crowd
 /// a busy merge request, so it reads past them.
 private let notePage = 50
@@ -159,6 +212,12 @@ private struct GLTargetRef {
   func apiUrl(origin: String) -> String {
     let project = project.replacingOccurrences(of: "/", with: "%2F")
     return "\(origin)/api/v4/projects/\(project)/\(collection)/\(iid)"
+  }
+
+  /// Whether the project's path is one GitLab could have given — letters,
+  /// digits, and a few marks — and so safe to write into a query.
+  var hasPlainProject: Bool {
+    project.wholeMatch(of: #/[A-Za-z0-9_.\-/]+/#) != nil
   }
 }
 
@@ -436,6 +495,15 @@ struct GitLabClient: ProviderClient {
     let ctx = context(baseUrl)
     let token = config.token
     var round = TargetRound()
+    // The round's issues' statuses first, in one request: a work item's
+    // status is GraphQL's alone, and a round's issues fit one query. An
+    // instance without statuses answers none, and the targets go on
+    // without.
+    let issues = keys.compactMap { key -> (key: String, ref: GLTargetRef)? in
+      guard let ref = targetRef(key, origin: baseUrl), ref.collection == "issues" else { return nil }
+      return (key, ref)
+    }
+    let statuses = await fetchStatuses(issues, token: token, origin: baseUrl, ctx: ctx)
     for start in stride(from: 0, to: keys.count, by: targetConcurrency) {
       let wave = keys[start ..< min(start + targetConcurrency, keys.count)]
       do {
@@ -449,7 +517,7 @@ struct GitLabClient: ProviderClient {
             group.addTask {
               let answer = try await self.refreshTarget(
                 url, mergeRequest: ref.collection == "merge_requests", conversation: conversation,
-                token: token, ctx: ctx
+                status: statuses[key], token: token, ctx: ctx
               )
               return (key, answer)
             }
@@ -476,11 +544,12 @@ struct GitLabClient: ProviderClient {
 
   /// One target: the issue or merge request itself, its approvals for a
   /// merge request, and its latest notes — for the latest comment's
-  /// author, and the conversation when one is wanted. A rejected token or
-  /// a refusal of the target itself throws, since every other target
-  /// would fail the same way.
+  /// author, and the conversation when one is wanted. An issue's status
+  /// came ahead of the round (`fetchStatuses`). A rejected token or a
+  /// refusal of the target itself throws, since every other target would
+  /// fail the same way.
   private func refreshTarget(
-    _ url: URL, mergeRequest: Bool, conversation: Bool, token: String, ctx: RequestContext
+    _ url: URL, mergeRequest: Bool, conversation: Bool, status: WorkStatus?, token: String, ctx: RequestContext
   ) async throws -> TargetAnswer {
     let target: GLTargetState
     switch try await getTarget(url, token: token, ctx: ctx) as Fetched<GLTargetState> {
@@ -537,6 +606,7 @@ struct GitLabClient: ProviderClient {
       review: review,
       checks: checksToken(target.head_pipeline?.status),
       merge: mergeRequest && state == "open" ? mergeToken(target.detailed_merge_status) : nil,
+      status: status,
       commentCount: target.user_notes_count,
       lastCommenter: people?.first?.author?.username,
       updatedAt: updatedAt,
@@ -582,6 +652,46 @@ struct GitLabClient: ProviderClient {
       return .failed
     }
     return .found(decoded)
+  }
+
+  /// The workflow statuses of a round's issues, by key: one GraphQL
+  /// request, an alias per project, each asking its work items by iid.
+  /// Statuses are an extra: an instance too old to have them refuses the
+  /// query whole, a tier without them (they are Premium's and Ultimate's)
+  /// lists no status widget, and either leaves the issues without one.
+  private func fetchStatuses(
+    _ issues: [(key: String, ref: GLTargetRef)], token: String, origin: String, ctx: RequestContext
+  ) async -> [String: WorkStatus] {
+    let projects = Dictionary(grouping: issues.filter(\.ref.hasPlainProject), by: \.ref.project)
+    let paths = projects.keys.sorted()
+    guard !paths.isEmpty, let url = URL(string: "\(origin)/api/graphql") else {
+      return [:]
+    }
+    let aliases = paths.enumerated().map { index, path in
+      let iids = (projects[path] ?? []).map { "\"\($0.ref.iid)\"" }.joined(separator: ", ")
+      return "p\(index): project(fullPath: \"\(path)\") "
+        + "{ workItems(iids: [\(iids)]) { nodes { iid \(statusWidget) } } }"
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": "query { \(aliases.joined(separator: " ")) }"])
+    guard let (data, http) = try? await send(request, ctx: ctx), (200 ..< 300).contains(http.statusCode),
+          let answers = (try? JSONDecoder().decode(GLStatusResponse.self, from: data))?.data else {
+      return [:]
+    }
+    var statuses: [String: WorkStatus] = [:]
+    for (index, path) in paths.enumerated() {
+      let items = answers["p\(index)"]?.value?.workItems?.nodes?.compactMap(\.value) ?? []
+      let byIid = Dictionary(items.compactMap { item in item.iid.map { ($0, item) } }) { first, _ in first }
+      for issue in projects[path] ?? [] {
+        if let status = byIid[issue.ref.iid]?.status, let name = status.name, !name.isEmpty {
+          statuses[issue.key] = WorkStatus(name: name, stage: stageToken(status.category))
+        }
+      }
+    }
+    return statuses
   }
 
   // MARK: Images

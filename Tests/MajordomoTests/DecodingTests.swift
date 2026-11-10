@@ -139,4 +139,14 @@ struct DecodingTests {
     #expect(RuleEngine.matches(rule.filter, yes))
     #expect(!RuleEngine.matches(rule.filter, no))
   }
+
+  @Test func snapshotFromBeforeStatusesStillReads() throws {
+    let snapshot = try decode(TargetSnapshot.self, """
+      {"title":"Importer","state":"open","assignees":[],"reviewers":[],"labels":[],"updatedAt":0}
+      """)
+    #expect(snapshot.status == nil)
+    let status = WorkStatus(name: "In review", stage: "in_progress")
+    let stored = try JSONEncoder().encode(TargetSnapshot(title: "Importer", status: status, updatedAt: referenceDate))
+    #expect(try decode(TargetSnapshot.self, String(decoding: stored, as: UTF8.self)).status == status)
+  }
 }

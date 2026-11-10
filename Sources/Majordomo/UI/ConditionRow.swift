@@ -196,6 +196,7 @@ struct ConditionRow: View {
     case .review: return "approved"
     case .checks: return "failure"
     case .merge: return "conflicts"
+    case .status: return "in_progress"
     case .milestone: return "v2.0"
     case .provider, .account, .mention, .unread, .question: return ""
     }
