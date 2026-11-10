@@ -808,6 +808,7 @@ final class Store {
       target.snapshot = refresh.snapshot
       target.fetchedAt = date
       target.unreadable = nil
+      target.shape = snapshotShape
       if let conversation = refresh.conversation {
         conversations.write(conversation, for: key)
         target.conversationAt = refresh.snapshot.updatedAt
@@ -818,6 +819,7 @@ final class Store {
       guard var target = target(key) else { continue }
       target.fetchedAt = date
       target.unreadable = reason
+      target.shape = snapshotShape
       data.targets[key] = target
     }
     noteChange()

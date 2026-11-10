@@ -61,6 +61,13 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
   }
 }
 
+/// The shape of snapshot a refresh fills today. Bumped when a refresh
+/// learns to fill a field it didn't before — a work item's status — so
+/// every target stored is asked once more, finished ones included, which
+/// otherwise wait for new activity, and shows the field without waiting
+/// for any.
+let snapshotShape = 1
+
 /// One target the app tracks, keyed by the url its notifications share
 /// (fragment stripped) — one record across every account that reaches it.
 struct TrackedTarget: Codable, Hashable, Sendable {
@@ -82,6 +89,9 @@ struct TrackedTarget: Codable, Hashable, Sendable {
   /// gone, or out of the token's reach — in words fit to show; nil once
   /// it does.
   var unreadable: String?
+  /// The shape of snapshot the last refresh answered in
+  /// (`snapshotShape`); nil from before shapes were noted.
+  var shape: Int?
 
   /// Whether the conversation is missing, or older than the target's
   /// last known activity. A target the provider won't show waits for new

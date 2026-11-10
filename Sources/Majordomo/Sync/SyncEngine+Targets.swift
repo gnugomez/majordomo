@@ -19,9 +19,10 @@ extension SyncEngine {
   /// activity since their last refresh (or none yet), newest first; then
   /// those whose conversation is missing or behind their last activity —
   /// the backfill, newest first; then open ones gone stale, longest
-  /// waiting first. The first two bring their conversations along. What a
-  /// round leaves unanswered — a failure, a limit — is first in line the
-  /// next time.
+  /// waiting first; and last, once, those answered in an older shape of
+  /// snapshot (`snapshotShape`), finished or not. The first two bring
+  /// their conversations along. What a round leaves unanswered — a
+  /// failure, a limit — is first in line the next time.
   func refreshTargets() async {
     guard !offline, !refreshingTargets else {
       return
@@ -39,6 +40,7 @@ extension SyncEngine {
     var active: [(key: String, item: InboxItem)] = []
     var behind: [(key: String, item: InboxItem)] = []
     var stale: [(key: String, item: InboxItem, fetchedAt: Date)] = []
+    var dated: [(key: String, item: InboxItem, fetchedAt: Date)] = []
     for (key, item) in newest {
       guard let target = known[key], let fetchedAt = target.fetchedAt, fetchedAt >= item.updatedAt else {
         active.append((key, item))
@@ -53,14 +55,18 @@ extension SyncEngine {
       } ?? false
       if !finished, now.timeIntervalSince(fetchedAt) >= openTargetRefreshInterval {
         stale.append((key, item, fetchedAt))
+      } else if target.shape != snapshotShape, target.unreadable == nil {
+        dated.append((key, item, fetchedAt))
       }
     }
     active.sort { $0.item.updatedAt > $1.item.updatedAt }
     behind.sort { $0.item.updatedAt > $1.item.updatedAt }
     stale.sort { $0.fetchedAt < $1.fetchedAt }
+    dated.sort { $0.fetchedAt < $1.fetchedAt }
 
     let talking = active + behind
-    await refresh(talking + stale.map { ($0.key, $0.item) }, conversations: Set(talking.map(\.key)), at: now)
+    let waiting = (stale + dated).map { ($0.key, $0.item) }
+    await refresh(talking + waiting, conversations: Set(talking.map(\.key)), at: now)
   }
 
   /// Fetches one target's conversation now, ahead of the rounds — for a
