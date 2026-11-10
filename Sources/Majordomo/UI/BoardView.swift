@@ -20,9 +20,12 @@ import SwiftUI
 
 private let columnWidth: CGFloat = 256
 /// Cards one slot draws before it offers the rest behind a button: a
-/// maintainer's In Progress can run to hundreds, and every card drawn is
-/// layout the board pays for on each redraw.
+/// maintainer's In Progress can run to hundreds, and a slot that long is
+/// a long walk for the arrows and the scroller alike.
 private let slotCardLimit = 40
+/// A card's height with the gap under it, near enough to step a slot by
+/// toward a card it hasn't built (`approach`).
+private let cardEstimate: CGFloat = 104
 private let columnGap: CGFloat = 10
 /// The grid's leading margin, which the first column's label keeps too.
 private let gridInset: CGFloat = 8
@@ -101,11 +104,21 @@ struct BoardView: View {
     var latest = Date.distantPast
   }
 
+  /// The grid as drawn, handed down to the views that bring cards into
+  /// view: the lanes and columns a card is located in, and the proxy that
+  /// scrolls to one the grid has built.
+  private struct Drawn {
+    let lanes: [Lane]
+    let columns: [DrawnColumn]
+    let proxy: ScrollViewProxy
+  }
+
   var body: some View {
     let columns = drawnColumns
     let lanes = lanes(of: columns)
     ScrollViewReader { proxy in
-      grid(lanes, columns: columns, proxy: proxy)
+      let drawn = Drawn(lanes: lanes, columns: columns, proxy: proxy)
+      grid(drawn)
         // The preview Space opens narrows the pane as it slides in, or
         // rises over its foot, and may cover the card it shows: once the
         // pane holds still, the card comes back into view.
@@ -114,7 +127,7 @@ struct BoardView: View {
         } action: { _, _ in
           keyboard.paneResized { card in
             if model.selectedCardId == card {
-              reveal(card, proxy: proxy, animated: true)
+              reveal(card, in: drawn, animated: true)
             }
           }
         }
@@ -122,7 +135,7 @@ struct BoardView: View {
         // board's keyboard.
         .background {
           BoardKeyboard(focus: keyboard, label: "\(board.name) board") { key in
-            answer(key, lanes: lanes, columns: columns, proxy: proxy)
+            answer(key, in: drawn)
           }
           // Out of VoiceOver's tree: there, the pane's size, it would
           // answer for every card under the pointer. Holding the keyboard,
@@ -132,20 +145,20 @@ struct BoardView: View {
     }
   }
 
-  private func grid(_ lanes: [Lane], columns: [DrawnColumn], proxy: ScrollViewProxy) -> some View {
+  private func grid(_ drawn: Drawn) -> some View {
     let scroll = scroll
     return ScrollView([.horizontal, .vertical]) {
       // Lazy, so a board with dozens of repositories builds the lanes in
       // view and the rest as they scroll in.
       LazyVStack(alignment: .leading, spacing: 10) {
-        ForEach(lanes) { lane in
-          laneView(lane, columns: columns)
+        ForEach(drawn.lanes) { lane in
+          laneView(lane, in: drawn)
             // Which lanes are built, for the arrows: a card in one that
             // isn't is reached by scrolling to its lane first, and comes
             // into view as the lane does.
             .onAppear {
               if let card = keyboard.laneAppeared(lane.id) {
-                reveal(card, proxy: proxy, animated: false)
+                reveal(card, in: drawn, animated: false)
               }
             }
             .onDisappear {
@@ -199,7 +212,7 @@ struct BoardView: View {
     // whole band, so cards pass out of sight under the labels instead of
     // crowding them.
     .safeAreaBar(edge: .top, spacing: 0) {
-      ColumnHeaderRow(columns: columns.map(header), leading: gridInset, scroll: scroll)
+      ColumnHeaderRow(columns: drawn.columns.map(header), leading: gridInset, scroll: scroll)
     }
     .onScrollGeometryChange(for: ScrollGeometry.self) { $0 } action: { _, geometry in
       scroll.track(geometry)
@@ -294,9 +307,23 @@ struct BoardView: View {
     )
   }
 
+  /// Where a card stands as drawn: its slot, and its place among the cards
+  /// the slot shows.
+  private func locate(_ card: String, in drawn: Drawn) -> (slot: String, index: Int)? {
+    for lane in drawn.lanes where !collapsedLanes.contains(lane.id) {
+      for column in drawn.columns {
+        let key = slotKey(lane: lane.id, column: column.id)
+        if let index = shownCards(lane.slots[column.id] ?? [], slot: key).firstIndex(where: { $0.id == card }) {
+          return (key, index)
+        }
+      }
+    }
+    return nil
+  }
+
   /// Answers a key the board's keyboard read; false hands it on. A key
   /// selects, shows, and opens just as a click on the card does.
-  private func answer(_ key: BoardKey, lanes: [Lane], columns: [DrawnColumn], proxy: ScrollViewProxy) -> Bool {
+  private func answer(_ key: BoardKey, in drawn: Drawn) -> Bool {
     let selected = model.selectedCardId.flatMap { placement.byId[$0] }
     switch key {
     case .move(let move):
@@ -304,13 +331,13 @@ struct BoardView: View {
       let aim = keyboard.cursor?.card == from ? keyboard.cursor?.aim : nil
       // At an edge the key is still the board's: nothing moves, and
       // nothing beeps.
-      guard let next = navigationGrid(lanes, columns: columns).step(move, from: from, aim: aim) else {
+      guard let next = navigationGrid(drawn.lanes, columns: drawn.columns).step(move, from: from, aim: aim) else {
         return true
       }
       keyboard.cursor = next
       keyboard.cancelReveal()
       model.selectedCardId = next.card
-      reveal(next.card, proxy: proxy, animated: false)
+      reveal(next.card, in: drawn, animated: false)
       if let card = placement.byId[next.card] {
         keyboard.announce(card.title)
       }
@@ -352,23 +379,59 @@ struct BoardView: View {
   /// it is in view already. An arrow scrolls at once: a scroll animating
   /// as the next key arrives drops that key's scroll, and the selection
   /// would run off the pane.
-  private func reveal(_ card: String, proxy: ScrollViewProxy, animated: Bool) {
+  private func reveal(_ card: String, in drawn: Drawn, animated: Bool) {
     // In a lane the lazy grid hasn't built, the card isn't there to scroll
     // to yet: the lane comes into view first, and the card once it is
     // built (the lane's onAppear).
     if let lane = placement.byId[card].map(board.lane(for:)), !keyboard.isShown(lane) {
       keyboard.revealOnArrival(card, in: lane)
-      proxy.scrollTo(lane, anchor: nil)
+      drawn.proxy.scrollTo(lane, anchor: nil)
+      return
+    }
+    // In a slot that hasn't built it either — the slots are lazy too —
+    // the grid steps toward where the card stands, and the card is
+    // revealed as it is built (its onAppear).
+    guard keyboard.isBuilt(card) else {
+      approach(card, in: drawn)
       return
     }
     let frame = RevealFrame(card: card)
     if animated {
       withAnimation(.snappy(duration: 0.2)) {
-        proxy.scrollTo(frame, anchor: nil)
+        drawn.proxy.scrollTo(frame, anchor: nil)
       }
     } else {
-      proxy.scrollTo(frame, anchor: nil)
+      drawn.proxy.scrollTo(frame, anchor: nil)
     }
+  }
+
+  /// Moves the grid a step toward a card its slot hasn't built: by the
+  /// cards between it and the slot's nearest built one, at a typical
+  /// card's height, or up a pane when the slot has none built — its cards
+  /// are above then, every slot running its row's full height. A step is
+  /// at most a pane less a card, so what it builds adjoins what was
+  /// built, and the card is reached in a step or a few: each batch built
+  /// brings the next (`BoardFocus.cardAppeared`) until the card is in it.
+  /// Through the clip view, as a pan goes, so nothing redraws but what
+  /// comes into view.
+  private func approach(_ card: String, in drawn: Drawn) {
+    guard let place = locate(card, in: drawn), keyboard.approaching(card, in: place.slot) else {
+      return
+    }
+    let reach = max(laneViewport - cardEstimate, cardEstimate)
+    let step: CGFloat
+    if let built = keyboard.builtRange(in: place.slot) {
+      if place.index > built.upperBound {
+        step = min(CGFloat(place.index - built.upperBound) * cardEstimate, reach)
+      } else if place.index < built.lowerBound {
+        step = max(CGFloat(place.index - built.lowerBound) * cardEstimate, -reach)
+      } else {
+        return
+      }
+    } else {
+      step = -reach
+    }
+    scroll.nudge(by: step)
   }
 
   // MARK: Pieces
@@ -397,7 +460,7 @@ struct BoardView: View {
   }
 
   @ViewBuilder
-  private func laneView(_ lane: Lane, columns: [DrawnColumn]) -> some View {
+  private func laneView(_ lane: Lane, in drawn: Drawn) -> some View {
     let collapsed = collapsedLanes.contains(lane.id)
     VStack(alignment: .leading, spacing: 6) {
       if showsLaneTitles {
@@ -433,8 +496,8 @@ struct BoardView: View {
         // stretches to: a row reads as a row, and without lanes every
         // column runs as long as the longest.
         HStack(alignment: .top, spacing: columnGap) {
-          ForEach(columns) { column in
-            cell(column, cards: lane.slots[column.id] ?? [], lane: lane.id)
+          ForEach(drawn.columns) { column in
+            cell(column, cards: lane.slots[column.id] ?? [], lane: lane.id, in: drawn)
           }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -442,7 +505,7 @@ struct BoardView: View {
     }
   }
 
-  private func cell(_ column: DrawnColumn, cards: [BoardCard], lane: String) -> some View {
+  private func cell(_ column: DrawnColumn, cards: [BoardCard], lane: String, in drawn: Drawn) -> some View {
     let key = slotKey(lane: lane, column: column.id)
     let droppable = column.kind == .column
     // Without lanes the one row of slots runs at least the pane's height,
@@ -451,9 +514,12 @@ struct BoardView: View {
     let stretch = showsLaneTitles ? 0 : max(0, laneViewport - gridTopInset - gridBottomInset)
     let expanded = expandedSlots.contains(key)
     let shown = shownCards(cards, slot: key)
-    return VStack(spacing: 8) {
-      ForEach(shown) { card in
-        cardView(card, leadsSlot: card.id == shown.first?.id, lane: lane)
+    // Lazy, like the lanes: a board without lanes holds every card in one
+    // row, and every card built is one that every scroll step re-renders
+    // and every wheel event hit-tests, in view or not.
+    return LazyVStack(spacing: 8) {
+      ForEach(Array(shown.enumerated()), id: \.element.id) { index, card in
+        cardView(card, at: index, lane: lane, slot: key, in: drawn)
       }
       if cards.count > slotCardLimit {
         Button(expanded ? "Show Fewer" : "Show All \(cards.count)") {
@@ -498,12 +564,13 @@ struct BoardView: View {
     }
   }
 
-  /// One card in `lane`, `leadsSlot` when it is the first its slot draws.
-  private func cardView(_ card: BoardCard, leadsSlot: Bool, lane: String) -> some View {
+  /// One card in `lane`, at `index` among the cards its `slot` draws.
+  private func cardView(_ card: BoardCard, at index: Int, lane: String, slot: String, in drawn: Drawn) -> some View {
     // The faces come the way a preview's do, through the account the
     // card's lead notification came through.
     let faces = model.bodyImages(for: card.lead)
     let selected = model.selectedCardId == card.id
+    let leadsSlot = index == 0
     return BoardCardView(
       card: card,
       now: model.now,
@@ -530,12 +597,30 @@ struct BoardView: View {
           trailing: -revealMargin
         ))
     }
+    // Which cards the lazy slot has built, for the arrows: one it hasn't
+    // is approached in steps (`approach`), and revealed as it is built.
+    .onAppear {
+      switch keyboard.cardAppeared(card.id, slot: slot, index: index) {
+      case .awaited(let awaited)?:
+        reveal(awaited, in: drawn, animated: false)
+      case .nearer(let awaited)?:
+        keyboard.onceBuilt {
+          reveal(awaited, in: drawn, animated: false)
+        }
+      case nil:
+        break
+      }
+    }
+    .onDisappear {
+      keyboard.cardDisappeared(card.id)
+    }
     .contentShape(RoundedRectangle(cornerRadius: 9))
     .onTapGesture {
       // A click hands the board the keyboard, the arrows going on from
       // the card it picks.
       keyboard.take()
       keyboard.cursor = nil
+      keyboard.cancelReveal()
       // The second click of a double-click is the browser's, not a toggle.
       guard (NSApp.currentEvent?.clickCount ?? 1) < 2 else {
         return
@@ -637,6 +722,20 @@ private final class BoardScroll {
     let dy = document.isFlipped ? -translation.height : translation.height
     let target = NSRect(origin: NSPoint(x: start.x - translation.width, y: start.y + dy), size: clip.bounds.size)
     clip.setBoundsOrigin(clip.constrainBoundsRect(target).origin)
+    view.reflectScrolledClipView(clip)
+  }
+
+  /// Moves the grid down by `dy`, up when it is negative: a step the
+  /// arrows take toward a card the lazy grid hasn't built. Through the
+  /// clip view, as a pan goes.
+  func nudge(by dy: CGFloat) {
+    guard let view, let document = view.documentView else {
+      return
+    }
+    let clip = view.contentView
+    var origin = clip.bounds.origin
+    origin.y += document.isFlipped ? dy : -dy
+    clip.setBoundsOrigin(clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin)
     view.reflectScrolledClipView(clip)
   }
 

@@ -78,13 +78,45 @@ final class BoardFocus {
   /// into view first (`awaited`).
   private var shownLanes: Set<String> = []
   private var awaited: (lane: String, card: String)?
+  /// The cards the lazy slots have built, each with its slot and its
+  /// place in it; a card not here is not there to scroll to yet.
+  private var builtCards: [String: (slot: String, index: Int)] = [:]
+  /// A card its slot hasn't built, waited on while the grid steps toward
+  /// it: its slot, when the first step was taken, and how many so far.
+  private var approach: (card: String, slot: String, since: ContinuousClock.Instant, steps: Int)?
+  private var stepTask: Task<Void, Never>?
   /// A card to bring into view once the pane holds still: the preview
   /// Space opens narrows the pane, and may cover the card it shows.
   private var pendingReveal: String?
   private var revealTask: Task<Void, Never>?
 
+  /// What a card's building means for the arrows.
+  enum Arrival {
+    /// The card they wait on; it can be scrolled to now.
+    case awaited(String)
+    /// A card built in the awaited card's slot, so the slot has moved on:
+    /// one more step toward the awaited card builds the next batch.
+    case nearer(String)
+  }
+
   func isShown(_ lane: String) -> Bool {
     shownLanes.contains(lane)
+  }
+
+  func isBuilt(_ card: String) -> Bool {
+    builtCards[card] != nil
+  }
+
+  /// The places of a slot's built cards, lowest to highest; nil while it
+  /// has none.
+  func builtRange(in slot: String) -> ClosedRange<Int>? {
+    var low = Int.max
+    var high = Int.min
+    for place in builtCards.values where place.slot == slot {
+      low = min(low, place.index)
+      high = max(high, place.index)
+    }
+    return low <= high ? low...high : nil
   }
 
   /// Brings `card` into view once its lane, scrolled to, is built.
@@ -106,6 +138,57 @@ final class BoardFocus {
     shownLanes.remove(lane)
   }
 
+  /// Notes a step toward `card`, in `slot`: true to take it, false once
+  /// the steps have gone on too long to be getting anywhere — a dozen, or
+  /// half a second, past which they could only fight the user's own
+  /// scrolling — when the card is given up.
+  func approaching(_ card: String, in slot: String) -> Bool {
+    let now = ContinuousClock.now
+    if approach?.card != card {
+      approach = (card, slot, now, 0)
+    }
+    guard var approach, approach.steps < 12, now - approach.since < .milliseconds(500) else {
+      approach = nil
+      return false
+    }
+    approach.steps += 1
+    self.approach = approach
+    return true
+  }
+
+  /// Notes a card built, at `index` in `slot`, handing back what it
+  /// means for a card the arrows wait on.
+  func cardAppeared(_ card: String, slot: String, index: Int) -> Arrival? {
+    builtCards[card] = (slot, index)
+    guard let approach else {
+      return nil
+    }
+    if approach.card == card {
+      self.approach = nil
+      return .awaited(card)
+    }
+    return approach.slot == slot ? .nearer(approach.card) : nil
+  }
+
+  func cardDisappeared(_ card: String) {
+    builtCards[card] = nil
+  }
+
+  /// Runs `step` once the batch being built is in: a batch appears card
+  /// by card, and one step toward the awaited card serves the whole of it.
+  func onceBuilt(_ step: @escaping @MainActor () -> Void) {
+    guard stepTask == nil else {
+      return
+    }
+    stepTask = Task {
+      stepTask = nil
+      guard !Task.isCancelled else {
+        return
+      }
+      step()
+    }
+  }
+
   /// Brings `card` into view after the pane's next resize settles.
   func revealAfterResize(_ card: String) {
     pendingReveal = card
@@ -114,6 +197,9 @@ final class BoardFocus {
   /// Drops any reveal still waiting: the keys have moved on.
   func cancelReveal() {
     awaited = nil
+    approach = nil
+    stepTask?.cancel()
+    stepTask = nil
     pendingReveal = nil
     revealTask?.cancel()
   }

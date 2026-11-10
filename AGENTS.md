@@ -158,7 +158,16 @@ reintroduces the bug:
   rests clear of the header band and the scrollers; a card in a lane the
   LazyVStack hasn't built is reached by scrolling to the lane and then to
   the card in the lane's `onAppear`, since `scrollTo` finds nothing in an
-  unbuilt lane.
+  unbuilt lane. The slots are lazy too (`cell`): without lanes the one
+  row holds every card, and SwiftUI's ScrollView re-renders every card
+  built on each scroll step and hit-tests every one on each wheel event,
+  in view or not — a board of two hundred cards scrolled at half the
+  display's rate. A card its slot hasn't built is approached through the
+  clip view (`approach`, `BoardScroll.nudge`), by the cards between it and
+  the slot's built ones at a typical card's height, each batch built
+  bringing the next step (`BoardFocus.cardAppeared`), and is scrolled to
+  in its own `onAppear`; the steps give up after a dozen or half a
+  second, so they never fight a wheel.
 - The filter glyph, the filter control's label, is an `NSImage` painted
   via a symbol configuration (FilterToolbarControl.glyph): the toolbar
   draws item images itself as templates, so SwiftUI
