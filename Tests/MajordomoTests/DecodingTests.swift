@@ -140,6 +140,11 @@ struct DecodingTests {
     #expect(!RuleEngine.matches(rule.filter, no))
   }
 
+  @Test func aDayComparisonRoundTrips() throws {
+    let stored = try decode(RuleCondition.self, #"{"field":"dueDate","op":"before","value":"in 7 days","negated":false}"#)
+    #expect(stored == condition(.dueDate, .before, "in 7 days"))
+  }
+
   @Test func snapshotFromBeforeStatusesStillReads() throws {
     let snapshot = try decode(TargetSnapshot.self, """
       {"title":"Importer","state":"open","assignees":[],"reviewers":[],"labels":[],"updatedAt":0}

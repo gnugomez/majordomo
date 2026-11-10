@@ -337,7 +337,8 @@ extension ConditionDraft {
     guard fields.contains(field) else {
       return .failure(RuleField.cardFields.contains(field) ? .boardOnlyField(field.rawValue) : .unknownField(field.rawValue))
     }
-    guard let op = RuleOperator(rawValue: op.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else {
+    guard let op = RuleOperator(rawValue: op.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
+          field.isDay || !op.comparesDays else {
       return .failure(.unknownOperator(op))
     }
     // A flag field is a test of its own: whatever value came with it would

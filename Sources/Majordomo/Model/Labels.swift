@@ -164,6 +164,11 @@ extension RuleField {
   var isFlag: Bool {
     self == .mention || self == .unread
   }
+
+  /// A calendar day, which `before` and `after` can set against another.
+  var isDay: Bool {
+    self == .dueDate
+  }
 }
 
 enum RuleOperator: String, Codable, CaseIterable, Sendable {
@@ -177,10 +182,21 @@ enum RuleOperator: String, Codable, CaseIterable, Sendable {
   case matches
   /// The field has any value at all; the value is ignored.
   case exists
+  /// A day field falls earlier than the day the value names: one in
+  /// full ("2026-11-12"), or one set against today ("today",
+  /// "tomorrow", "in 7 days", "3 weeks ago"; `DueDate.reference`).
+  case before
+  /// A day field falls later than the day the value names.
+  case after
 
   /// What the rule composer may propose: `exists` needs no value, and a
-  /// proposal without one reads as a mistake.
+  /// proposal without one reads as a mistake; the days are a board's.
   static let composable: [RuleOperator] = [.is, .contains, .matches]
+
+  /// Whether it sets a day against another: only a day field offers it.
+  var comparesDays: Bool {
+    self == .before || self == .after
+  }
 }
 
 /// One test inside a filter's group (RuleFilter).

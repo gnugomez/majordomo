@@ -32,6 +32,10 @@ struct ConditionTest: Hashable {
     case (.matches, true): return "doesn't match"
     case (.exists, false): return "is set"
     case (.exists, true): return "is not set"
+    case (.before, false): return "is before"
+    case (.before, true): return "is not before"
+    case (.after, false): return "is after"
+    case (.after, true): return "is not after"
     }
   }
 }

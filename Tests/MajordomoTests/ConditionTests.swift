@@ -108,6 +108,27 @@ struct ConditionTests {
     #expect(!holds(condition(.dueDate, .exists), for: card()))
   }
 
+  @Test func aDayStandsBeforeOrAfterTheOneNamed() {
+    let now = referenceDate
+    let inThree = card(dueDate: isoDay(3, from: now), now: now)
+    #expect(holds(condition(.dueDate, .after, "today"), for: inThree))
+    #expect(holds(condition(.dueDate, .after, "tomorrow"), for: inThree))
+    #expect(holds(condition(.dueDate, .before, "in 7 days"), for: inThree))
+    #expect(holds(condition(.dueDate, .before, "1 week"), for: inThree))
+    #expect(!holds(condition(.dueDate, .before, "in 3 days"), for: inThree))
+    #expect(!holds(condition(.dueDate, .after, "in 3 days"), for: inThree))
+    #expect(holds(condition(.dueDate, .before, isoDay(4, from: now)), for: inThree))
+    #expect(holds(condition(.dueDate, .after, isoDay(2, from: now)), for: inThree))
+    #expect(holds(condition(.dueDate, .before, "today", negated: true), for: inThree))
+    let gone = card(dueDate: isoDay(-10, from: now), now: now)
+    #expect(holds(condition(.dueDate, .before, "7 days ago"), for: gone))
+    #expect(holds(condition(.dueDate, .after, "2 weeks ago"), for: gone))
+    // A day no one can read, or a card without one, never holds.
+    #expect(!holds(condition(.dueDate, .before, "soon"), for: inThree))
+    #expect(!holds(condition(.dueDate, .before, "today"), for: card()))
+    #expect(!holds(condition(.title, .before, "today"), for: inThree))
+  }
+
   @Test func cardFieldsReadNothingOnANotification() {
     #expect(!holds(condition(.assignee, .exists), for: item()))
   }

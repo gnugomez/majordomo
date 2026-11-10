@@ -128,8 +128,10 @@ struct BoardCard: Identifiable, Equatable, Sendable {
   let activityAt: Date
   /// Whether any of its notifications is unread.
   let unread: Bool
-  /// How the target's due day stood when the card was made
-  /// (`DueDate.words`); none without one.
+  /// The target's due day, set against the day the card was made; nil
+  /// without one.
+  let dueDay: FieldDay?
+  /// How the due day stood then (`DueDate.words`); none without one.
   let dueWords: [String]
 
   init(
@@ -143,6 +145,7 @@ struct BoardCard: Identifiable, Equatable, Sendable {
     self.verdicts = verdicts
     activityAt = max(target?.snapshot?.updatedAt ?? .distantPast, items[0].updatedAt)
     unread = items.contains { !$0.read }
+    dueDay = target?.snapshot?.dueDate.flatMap { DueDate.fieldDay($0, now: now) }
     dueWords = target?.snapshot?.dueDate.map { DueDate.words(for: $0, now: now) } ?? []
   }
 
@@ -174,6 +177,10 @@ struct BoardCard: Identifiable, Equatable, Sendable {
 }
 
 extension BoardCard: RuleSubject {
+  func day(of field: RuleField) -> FieldDay? {
+    field == .dueDate ? dueDay : nil
+  }
+
   func values(of field: RuleField) -> [String] {
     let snapshot = snapshot
     switch field {

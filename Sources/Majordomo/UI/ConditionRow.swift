@@ -89,13 +89,14 @@ struct ConditionRow: View {
     )
   }
 
-  /// Picker-valued and flag fields offer only `is` (negatable); text
-  /// fields offer every operator.
+  /// Picker-valued and flag fields offer only `is` (negatable); a day
+  /// field offers before and after as well; text fields every other
+  /// operator.
   private var tests: [ConditionTest] {
     if condition.field.isFlag || [.provider, .account].contains(condition.field) {
       return [ConditionTest(op: .is, negated: false), ConditionTest(op: .is, negated: true)]
     }
-    return RuleOperator.allCases.flatMap { op in
+    return RuleOperator.allCases.filter { condition.field.isDay || !$0.comparesDays }.flatMap { op in
       [ConditionTest(op: op, negated: false), ConditionTest(op: op, negated: true)]
     }
   }
@@ -164,10 +165,13 @@ struct ConditionRow: View {
     }
   }
 
-  /// Values worth offering for the field: the providers' own tokens, and
-  /// `@me` wherever a login goes — on a board, which knows whose cards
-  /// they are.
+  /// Values worth offering for the field: the providers' own tokens, the
+  /// words and days a due day is read by, and `@me` wherever a login goes
+  /// — on a board, which knows whose cards they are.
   private var suggestions: [String] {
+    if condition.field.isDay, condition.op.comparesDays {
+      return DueDate.references
+    }
     guard condition.op == .is else {
       return []
     }

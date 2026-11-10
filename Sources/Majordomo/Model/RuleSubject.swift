@@ -13,6 +13,9 @@ protocol RuleSubject {
   func values(of field: RuleField) -> [String]
   /// The answer to a flag field (`isFlag`).
   func flag(_ field: RuleField) -> Bool
+  /// The day a day field (`isDay`) holds, set against the day the subject
+  /// was made; nil when it holds none.
+  func day(of field: RuleField) -> FieldDay?
   /// The logins `@me` stands for; empty when the subject can't tell.
   var ownLogins: [String] { get }
   /// What the on-device model answered to a question about this subject,
@@ -22,6 +25,11 @@ protocol RuleSubject {
 }
 
 extension InboxItem: RuleSubject {
+  /// A notification holds no day a rule reads.
+  func day(of field: RuleField) -> FieldDay? {
+    nil
+  }
+
   /// A missing single value reads as the empty string, which no test
   /// matches but a negated one does.
   func values(of field: RuleField) -> [String] {

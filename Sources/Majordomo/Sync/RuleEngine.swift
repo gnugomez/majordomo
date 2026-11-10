@@ -274,6 +274,9 @@ struct CompiledGroup {
 struct CompiledCondition {
   let condition: RuleCondition
   let regex: NSRegularExpression?
+  /// The day a `before` or `after` sets the field's day against; nil
+  /// when the value names none, and the condition never holds.
+  let dayReference: DayReference?
   /// The key the answers to a question are kept under; nil for any other
   /// condition.
   let questionKey: String?
@@ -282,6 +285,7 @@ struct CompiledCondition {
     self.condition = condition
     questionKey = condition.question.map(RuleEngine.questionKey)
     let pattern = condition.value.trimmingCharacters(in: .whitespacesAndNewlines)
+    dayReference = condition.op.comparesDays ? DueDate.reference(pattern) : nil
     switch condition.op {
     case _ where condition.field == .question:
       regex = nil
@@ -308,9 +312,10 @@ struct CompiledCondition {
   }
 
   /// A flag field ignores operator and value; a question holds on the
-  /// answer it wants and never without one; any other holds when one of
-  /// the subject's values for it passes (an issue's labels, its
-  /// assignees). `negated` inverts the outcome.
+  /// answer it wants and never without one; a day set before or after
+  /// another holds on the days alone, and never without both; any other
+  /// holds when one of the subject's values for it passes (an issue's
+  /// labels, its assignees). `negated` inverts the outcome.
   func holds(for subject: some RuleSubject) -> Bool {
     if condition.field == .question {
       return answer(for: subject) == true
@@ -318,6 +323,13 @@ struct CompiledCondition {
     let outcome: Bool
     if condition.field.isFlag {
       outcome = subject.flag(condition.field)
+    } else if condition.op.comparesDays {
+      if let day = subject.day(of: condition.field), let dayReference {
+        let distance = DueDate.distance(of: day, from: dayReference)
+        outcome = condition.op == .before ? distance < 0 : distance > 0
+      } else {
+        outcome = false
+      }
     } else {
       let values = subject.values(of: condition.field)
       let own = subject.ownLogins
@@ -350,6 +362,9 @@ struct CompiledCondition {
         return false
       }
       return regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+    case .before, .after:
+      // Days are set against each other in `holds`, never as text.
+      return false
     }
   }
 }
