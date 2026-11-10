@@ -336,8 +336,8 @@ enum DemoData {
     func target(
       _ item: StoredItem, state: String? = nil, assignees: [String] = [], reviewers: [String] = [],
       labels: [String] = [], milestone: String? = nil, review: String? = nil, checks: String? = nil,
-      merge: String? = nil, status: WorkStatus? = nil, comments: Int = 0, lastCommenter: String? = nil,
-      seenComments: Int? = nil
+      merge: String? = nil, status: WorkStatus? = nil, due: String? = nil, comments: Int = 0,
+      lastCommenter: String? = nil, seenComments: Int? = nil
     ) -> TrackedTarget {
       let key = String(item.url.prefix { $0 != "#" })
       return TrackedTarget(
@@ -346,7 +346,8 @@ enum DemoData {
         snapshot: TargetSnapshot(
           title: item.title, state: state ?? item.state, author: item.author, assignees: assignees,
           reviewers: reviewers, labels: labels, milestone: milestone, review: review, checks: checks, merge: merge,
-          status: status, commentCount: comments, lastCommenter: lastCommenter, updatedAt: item.updatedAt
+          status: status, dueDate: due, commentCount: comments, lastCommenter: lastCommenter,
+          updatedAt: item.updatedAt
         ),
         fetchedAt: now,
         seenAt: seenComments.map { _ in now.addingTimeInterval(-3600) },
@@ -357,6 +358,12 @@ enum DemoData {
     let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
     func on(_ account: AccountId, _ minutesAgo: Double) -> StoredItem {
       byId["\(account):\(Int(minutesAgo))"]!
+    }
+    /// A due day so many days from today, as a provider writes one.
+    func day(_ offset: Int) -> String {
+      let calendar = Calendar.current
+      let parts = calendar.dateComponents([.year, .month, .day], from: calendar.date(byAdding: .day, value: offset, to: now) ?? now)
+      return String(format: "%04d-%02d-%02d", parts.year ?? 2026, parts.month ?? 1, parts.day ?? 1)
     }
     let targets = [
       // Assigned to a crowd: the card folds the faces past three into a
@@ -384,7 +391,7 @@ enum DemoData {
       ),
       target(
         on(github, 65), assignees: ["octocat"], labels: ["urgent", "backend"], milestone: "v2.4",
-        status: WorkStatus(name: "Todo", stage: "todo"), comments: 2, lastCommenter: "octocat"
+        status: WorkStatus(name: "Todo", stage: "todo"), due: day(3), comments: 2, lastCommenter: "octocat"
       ),
       target(on(github, 3 * 60), labels: ["dependencies"], checks: "success"),
       target(
@@ -394,10 +401,12 @@ enum DemoData {
       target(on(gitlab, 2 * 60), assignees: ["mona"], review: "approved", checks: "success", comments: 1),
       target(
         on(gitlab, 8 * 60), assignees: ["octocat"], milestone: "17.4 upgrade",
-        status: WorkStatus(name: "In progress", stage: "in_progress"), comments: 1, lastCommenter: "sasha"
+        status: WorkStatus(name: "In progress", stage: "in_progress"), due: day(-2), comments: 1, lastCommenter: "sasha"
       ),
       target(on(github, 26 * 60), labels: ["design"], comments: 3, lastCommenter: "kim"),
-      target(on(gitlab, 49 * 60), labels: ["flaky"], status: WorkStatus(name: "To do", stage: "todo"), comments: 1),
+      target(
+        on(gitlab, 49 * 60), labels: ["flaky"], status: WorkStatus(name: "To do", stage: "todo"), due: day(0), comments: 1
+      ),
       target(on(github, 52 * 60), state: "open", checks: "failure", merge: "unstable"),
       target(on(github, 95)),
       target(on(gitlab, 3 * 60), comments: 1, lastCommenter: "priya"),

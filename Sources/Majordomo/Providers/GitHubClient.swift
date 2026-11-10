@@ -116,16 +116,19 @@ private let conversationFragments = """
 
 /// What a query asks of each target about its projects: the status each
 /// gives it, a project's Status being a single-select field of its own
-/// that goes by that name. A card archived in a project is left out: its
-/// status is history. Reading projects takes a scope of its own
-/// (read:project), and GitHub answers a query that asks without it with
-/// an error for the query, so these go only into the queries of a round
-/// that may.
+/// that goes by that name, and the day it is due, a date field named Due
+/// date or Target date — GitHub's own name for the one it adds. A card
+/// archived in a project is left out: its status is history. Reading
+/// projects takes a scope of its own (read:project), and GitHub answers a
+/// query that asks without it with an error for the query, so these go
+/// only into the queries of a round that may.
 private let projectFragments = """
-  fragment IssueProject on Issue { projectItems(first: 5, includeArchived: false) { nodes { ...ItemStatus } } }
-  fragment PullProject on PullRequest { projectItems(first: 5, includeArchived: false) { nodes { ...ItemStatus } } }
-  fragment ItemStatus on ProjectV2Item { status: fieldValueByName(name: "Status") \
-  { ... on ProjectV2ItemFieldSingleSelectValue { name } } }
+  fragment IssueProject on Issue { projectItems(first: 5, includeArchived: false) { nodes { ...ItemFacts } } }
+  fragment PullProject on PullRequest { projectItems(first: 5, includeArchived: false) { nodes { ...ItemFacts } } }
+  fragment ItemFacts on ProjectV2Item { status: fieldValueByName(name: "Status") \
+  { ... on ProjectV2ItemFieldSingleSelectValue { name } } \
+  due: fieldValueByName(name: "Due date") { ... on ProjectV2ItemFieldDateValue { date } } \
+  target: fieldValueByName(name: "Target date") { ... on ProjectV2ItemFieldDateValue { date } } }
   """
 
 private struct GQLLogin: Decodable {
@@ -204,7 +207,14 @@ private struct GQLTarget: Decodable {
       let name: String?
     }
 
+    struct Day: Decodable {
+      /// "2026-11-12".
+      let date: String?
+    }
+
     let status: Value?
+    let due: Day?
+    let target: Day?
   }
 
   let __typename: String
@@ -328,6 +338,7 @@ private func toSnapshot(_ target: GQLTarget) -> TargetSnapshot? {
     checks: checks,
     merge: state == "open" ? mergeToken(target) : nil,
     status: workStatus(target),
+    dueDate: target.projectItems?.values.compactMap { $0.due?.date ?? $0.target?.date }.first,
     commentCount: target.comments?.totalCount,
     lastCommenter: lastCommenter,
     updatedAt: updatedAt,

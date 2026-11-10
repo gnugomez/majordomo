@@ -97,6 +97,17 @@ struct ConditionTests {
     #expect(!holds(condition(.status, .exists), for: card()))
   }
 
+  @Test func dueDateHoldsOnTheDayOrHowItStands() {
+    let now = referenceDate
+    let today = card(dueDate: isoDay(0, from: now), now: now)
+    #expect(holds(condition(.dueDate, .exists), for: today))
+    #expect(holds(condition(.dueDate, .is, "today"), for: today))
+    #expect(holds(condition(.dueDate, .is, isoDay(0, from: now)), for: today))
+    #expect(!holds(condition(.dueDate, .is, "overdue"), for: today))
+    #expect(holds(condition(.dueDate, .is, "overdue"), for: card(dueDate: isoDay(-3, from: now), now: now)))
+    #expect(!holds(condition(.dueDate, .exists), for: card()))
+  }
+
   @Test func cardFieldsReadNothingOnANotification() {
     #expect(!holds(condition(.assignee, .exists), for: item()))
   }

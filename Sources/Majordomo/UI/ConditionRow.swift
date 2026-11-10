@@ -171,6 +171,9 @@ struct ConditionRow: View {
     guard condition.op == .is else {
       return []
     }
+    if condition.field == .dueDate {
+      return DueDate.vocabulary
+    }
     if [.author, .assignee, .reviewer, .lastCommenter].contains(condition.field), fields != RuleField.itemFields {
       return ["@me"]
     }
@@ -198,6 +201,7 @@ struct ConditionRow: View {
     case .merge: return "conflicts"
     case .status: return "in_progress"
     case .milestone: return "v2.0"
+    case .dueDate: return "today"
     case .provider, .account, .mention, .unread, .question: return ""
     }
   }

@@ -122,7 +122,8 @@ struct BoardCardView: View, Equatable {
     let marked = status.map { !$0.marks.isEmpty } ?? false
     let labels = Array((snapshot?.labels ?? card.lead.upstreamLabels).prefix(visibleLabels))
     let milestone = snapshot?.milestone
-    if marked || !labels.isEmpty || milestone != nil {
+    let due = snapshot?.dueDate.flatMap { DueDate.parse($0) }
+    if marked || !labels.isEmpty || milestone != nil || due != nil {
       FlowLayout(spacing: 4, lineSpacing: 4) {
         if let status {
           TargetBadges(status: status, density: .regular)
@@ -136,6 +137,19 @@ struct BoardCardView: View, Equatable {
             .font(.app(.badge, weight: .medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
+        }
+        if let due {
+          // The day, red once it has gone by.
+          let overdue = card.dueWords.contains("overdue")
+          Label {
+            Text(due, format: .dateTime.day().month(.abbreviated))
+          } icon: {
+            GlyphImage(glyph: Octicon.calendar, size: 10)
+          }
+            .font(.app(.badge, weight: .medium))
+            .foregroundStyle(overdue ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+            .lineLimit(1)
+            .help((overdue ? "Overdue since " : "Due ") + due.formatted(date: .long, time: .omitted))
         }
         ForEach(labels, id: \.self) { label in
           CapsuleTag(text: label)

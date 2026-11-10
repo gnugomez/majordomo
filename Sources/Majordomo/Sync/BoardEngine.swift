@@ -33,11 +33,12 @@ enum BoardEngine {
   /// One card per target the items point at — only items whose provider
   /// can name a target make one — newest activity first. Each card's
   /// notifications run newest first, `@me` stands for the logins of the
-  /// accounts they came through, and the model's answers about the target
-  /// come from `verdicts`, by target key.
+  /// accounts they came through, the model's answers about the target
+  /// come from `verdicts`, by target key, and a due day stands against
+  /// `now`.
   static func cards(
     items: [InboxItem], targets: [String: TrackedTarget], logins: [AccountId: String],
-    verdicts: [String: [String: Bool]] = [:]
+    verdicts: [String: [String: Bool]] = [:], now: Date = Date()
   ) -> [BoardCard] {
     var grouped: [String: [InboxItem]] = [:]
     for item in items {
@@ -50,7 +51,8 @@ enum BoardEngine {
         let sorted = members.sorted { $0.updatedAt > $1.updatedAt }
         let own = Set(sorted.compactMap { logins[$0.accountId] })
         return BoardCard(
-          id: key, items: sorted, target: targets[key], ownLogins: own.sorted(), verdicts: verdicts[key] ?? [:]
+          id: key, items: sorted, target: targets[key], ownLogins: own.sorted(), verdicts: verdicts[key] ?? [:],
+          now: now
         )
       }
       .sorted { $0.activityAt > $1.activityAt }

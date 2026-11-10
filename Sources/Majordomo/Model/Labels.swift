@@ -133,6 +133,9 @@ enum RuleField: String, Codable, CaseIterable, Sendable {
   /// "in_progress"…) or the status's own name, either holds.
   case status
   case milestone
+  /// The day the target is due ("2026-11-12"), or how it stands against
+  /// today ("today", "overdue"…; `DueDate`).
+  case dueDate
   /// Whoever wrote the target's latest comment.
   case lastCommenter
   /// Whether any notification on the target is unread; the operator and

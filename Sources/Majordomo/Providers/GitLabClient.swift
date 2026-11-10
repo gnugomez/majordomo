@@ -91,6 +91,8 @@ private struct GLTargetState: Decodable {
   let reviewers: [GLTodo.GLAuthor]?
   let labels: [String]?
   let milestone: Milestone?
+  /// The day an issue is due ("2026-11-12").
+  let due_date: String?
   /// Comments by people, GitLab's own system notes left out.
   let user_notes_count: Int?
   let head_pipeline: Pipeline?
@@ -607,6 +609,7 @@ struct GitLabClient: ProviderClient {
       checks: checksToken(target.head_pipeline?.status),
       merge: mergeRequest && state == "open" ? mergeToken(target.detailed_merge_status) : nil,
       status: status,
+      dueDate: target.due_date,
       commentCount: target.user_notes_count,
       lastCommenter: people?.first?.author?.username,
       updatedAt: updatedAt,

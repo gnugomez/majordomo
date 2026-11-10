@@ -142,9 +142,9 @@ Adding a provider means:
    tokens, and refreshes the targets boards and previews are built from
    (`fetchTargets`, at most `targetBatchLimit` per round: state,
    assignees, reviewers, review, checks, and merge tokens, a work item's
-   status under its stage token (`WorkStatus`), the latest commenter,
-   and for the keys it is asked to, the conversation: who
-   opened the target and when, its description and latest comments as
+   status under its stage token (`WorkStatus`) and the day it is due, the
+   latest commenter, and for the keys it is asked to, the conversation:
+   who opened the target and when, its description and latest comments as
    Markdown, each with its author's picture, and events worth a place
    among them — a review's verdict — as entries carrying an event token,
    words optional (`TargetConversation`, `DetailComment`; every field a

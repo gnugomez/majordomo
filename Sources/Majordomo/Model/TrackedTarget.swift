@@ -31,6 +31,8 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
   /// Where it stands in its workflow, when its provider tracks that apart
   /// from its state; nil where none does, or the target has none.
   var status: WorkStatus? = nil
+  /// The calendar day it is due ("2026-11-12"), when it has one.
+  var dueDate: String? = nil
   /// Comments by people, when the provider counts them.
   var commentCount: Int?
   /// Whoever wrote the latest comment or review.
@@ -62,11 +64,11 @@ struct TargetSnapshot: Codable, Hashable, Sendable {
 }
 
 /// The shape of snapshot a refresh fills today. Bumped when a refresh
-/// learns to fill a field it didn't before — a work item's status — so
-/// every target stored is asked once more, finished ones included, which
-/// otherwise wait for new activity, and shows the field without waiting
-/// for any.
-let snapshotShape = 1
+/// learns to fill a field it didn't before — a work item's status, its
+/// due day — so every target stored is asked once more, finished ones
+/// included, which otherwise wait for new activity, and shows the field
+/// without waiting for any.
+let snapshotShape = 2
 
 /// One target the app tracks, keyed by the url its notifications share
 /// (fragment stripped) — one record across every account that reaches it.
@@ -126,9 +128,13 @@ struct BoardCard: Identifiable, Equatable, Sendable {
   let activityAt: Date
   /// Whether any of its notifications is unread.
   let unread: Bool
+  /// How the target's due day stood when the card was made
+  /// (`DueDate.words`); none without one.
+  let dueWords: [String]
 
   init(
-    id: String, items: [InboxItem], target: TrackedTarget?, ownLogins: [String], verdicts: [String: Bool] = [:]
+    id: String, items: [InboxItem], target: TrackedTarget?, ownLogins: [String], verdicts: [String: Bool] = [:],
+    now: Date = Date()
   ) {
     self.id = id
     self.items = items
@@ -137,6 +143,7 @@ struct BoardCard: Identifiable, Equatable, Sendable {
     self.verdicts = verdicts
     activityAt = max(target?.snapshot?.updatedAt ?? .distantPast, items[0].updatedAt)
     unread = items.contains { !$0.read }
+    dueWords = target?.snapshot?.dueDate.map { DueDate.words(for: $0, now: now) } ?? []
   }
 
   var lead: InboxItem { items[0] }
@@ -187,6 +194,7 @@ extension BoardCard: RuleSubject {
     case .merge: return [snapshot?.merge ?? ""]
     case .status: return [snapshot?.status?.stage ?? "", snapshot?.status?.name ?? ""]
     case .milestone: return [snapshot?.milestone ?? ""]
+    case .dueDate: return [snapshot?.dueDate ?? ""] + dueWords
     case .lastCommenter: return [snapshot?.lastCommenter ?? ""]
     case .mention, .unread, .question: return []
     }

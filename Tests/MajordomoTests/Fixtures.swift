@@ -54,17 +54,27 @@ func card(
   reviewers: [String] = [],
   review: String? = nil,
   status: WorkStatus? = nil,
+  dueDate: String? = nil,
   updatedAt: Date = referenceDate,
   ownLogins: [String] = ["octocat"],
-  verdicts: [String: Bool] = [:]
+  verdicts: [String: Bool] = [:],
+  now: Date = referenceDate
 ) -> BoardCard {
   let members = items ?? [item("\(id):1", state: state, updatedAt: updatedAt)]
   let snapshot = TargetSnapshot(
     title: members[0].title, state: state, author: members[0].author, assignees: assignees,
-    reviewers: reviewers, review: review, status: status, updatedAt: updatedAt
+    reviewers: reviewers, review: review, status: status, dueDate: dueDate, updatedAt: updatedAt
   )
   let target = TrackedTarget(key: id, provider: .github, snapshot: snapshot)
-  return BoardCard(id: id, items: members, target: target, ownLogins: ownLogins, verdicts: verdicts)
+  return BoardCard(id: id, items: members, target: target, ownLogins: ownLogins, verdicts: verdicts, now: now)
+}
+
+/// A due day so many days from `now`, as a provider writes one, in the
+/// current calendar.
+func isoDay(_ offset: Int, from now: Date) -> String {
+  let calendar = Calendar.current
+  let parts = calendar.dateComponents([.year, .month, .day], from: calendar.date(byAdding: .day, value: offset, to: now)!)
+  return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
 }
 
 func condition(

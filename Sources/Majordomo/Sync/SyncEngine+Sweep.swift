@@ -50,10 +50,10 @@ extension SyncEngine {
       items = labeled
       moved = true
     }
-    let cards = BoardEngine.cards(
-      items: items, targets: store.targets(), logins: accountLogins(), verdicts: store.targetVerdicts()
-    )
     let now = Date()
+    let cards = BoardEngine.cards(
+      items: items, targets: store.targets(), logins: accountLogins(), verdicts: store.targetVerdicts(), now: now
+    )
     var placements: [BoardId: BoardPlacement] = [:]
     var openTargets: RuleEngine.OpenQuestions = [:]
     for board in compiled.boards {

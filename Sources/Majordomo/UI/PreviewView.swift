@@ -352,6 +352,12 @@ private struct PreviewHeader: View {
         fieldLabel("Updated")
         Text("\(absoluteTime(item.updatedAt)) · \(relativeTime(item.updatedAt, now: model.now))")
       }
+      if let due = snapshot?.dueDate, let day = DueDate.parse(due) {
+        GridRow {
+          fieldLabel("Due")
+          Text(dueText(day, words: DueDate.words(for: due, now: model.now)))
+        }
+      }
       GridRow {
         fieldLabel("Labels")
         labelsRow
@@ -414,6 +420,16 @@ private struct PreviewHeader: View {
 }
 
 /// People the facts name, each by face and login, on one line.
+/// The day in full, and where it stands when that is today, tomorrow, or
+/// gone by.
+private func dueText(_ day: Date, words: [String]) -> String {
+  let date = day.formatted(date: .long, time: .omitted)
+  guard let standing = ["overdue", "today", "tomorrow"].first(where: words.contains) else {
+    return date
+  }
+  return "\(date) · \(standing)"
+}
+
 private struct PeopleLine: View {
   let logins: [String]
   let provider: ProviderId
