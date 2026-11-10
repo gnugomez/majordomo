@@ -37,8 +37,10 @@ extension SyncEngine {
       let profile = try await client.validate(config)
       let identity = AccountIdentity(provider: provider, baseUrl: config.baseUrl, username: profile.username)
       let id = store.findAccount(identity) ?? UUID().uuidString
+      let before = store.getAccount(id)?.note
       store.setAccount(id, provider: provider, config: config, profile: profile)
       tokenAccepted(id)
+      reachRegained(from: before, to: profile, provider: provider)
       // Deep from the start: a new account seeds its whole backlog (and
       // silently — see doSync's seeding rule); a revived one catches up on
       // whatever arrived while it was away.
@@ -71,6 +73,7 @@ extension SyncEngine {
       }
       store.setAccount(id, provider: account.provider, config: config, profile: profile)
       tokenAccepted(id)
+      reachRegained(from: account.note, to: profile, provider: account.provider)
       // A dead token may have kept this account from syncing for days:
       // catch up everywhere, not just the recent pages.
       Task {
@@ -114,10 +117,21 @@ extension SyncEngine {
         continue
       }
       store.updateProfile(account.id, profile: profile)
+      reachRegained(from: account.note, to: profile, provider: account.provider)
       changed = true
     }
     if changed {
       record(.accounts)
+    }
+  }
+
+  /// A token that reaches what it didn't — the note on the account gone
+  /// — has every target of its provider asked once more, at the next
+  /// round, so what the new reach reads shows without waiting for new
+  /// activity or the open targets' own clock.
+  private func reachRegained(from before: String?, to profile: ProviderProfile, provider: ProviderId) {
+    if before != nil, profile.note == nil {
+      store.forgetTargetShapes(provider: provider)
     }
   }
 }

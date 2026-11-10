@@ -832,6 +832,18 @@ final class Store {
     noteChange()
   }
 
+  /// Forgets the shape the provider's targets were last answered in, so
+  /// each is asked once more — for a token that reaches more than it
+  /// did, so what the new reach reads shows without waiting for activity.
+  func forgetTargetShapes(provider: ProviderId) {
+    for (key, target) in data.targets where target.provider == provider && target.shape != nil {
+      var target = target
+      target.shape = nil
+      data.targets[key] = target
+    }
+    noteChange()
+  }
+
   /// Notes that a target's conversation is no longer held; false when it
   /// wasn't noted as held anyway.
   func forgetConversation(_ key: String) -> Bool {
