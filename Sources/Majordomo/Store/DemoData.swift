@@ -359,9 +359,12 @@ enum DemoData {
       byId["\(account):\(Int(minutesAgo))"]!
     }
     let targets = [
+      // Assigned to a crowd: the card folds the faces past three into a
+      // count, and the preview's facts wrap them.
       target(
-        on(github, 4), assignees: ["mona"], reviewers: ["octocat"], labels: ["storage"],
-        review: "review_required", checks: "success", merge: "blocked", comments: 3, lastCommenter: "mona"
+        on(github, 4), assignees: ["mona", "hubot", "kim", "priya", "sasha", "lin", "octocat"], reviewers: ["octocat"],
+        labels: ["storage"], review: "review_required", checks: "success", merge: "blocked", comments: 3,
+        lastCommenter: "mona"
       ),
       target(
         on(github, 26), labels: ["bug", "crash"], status: WorkStatus(name: "In Progress", stage: "in_progress"),

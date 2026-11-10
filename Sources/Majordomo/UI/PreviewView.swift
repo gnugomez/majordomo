@@ -425,7 +425,9 @@ private struct PeopleLine: View {
   @Environment(\.searchHighlightTerms) private var highlightTerms
 
   var body: some View {
-    HStack(spacing: 10) {
+    // Wrapping, each person a piece: a target assigned to a crowd would
+    // run past the pane's edge on one line.
+    FlowLayout(spacing: 10, lineSpacing: 4) {
       ForEach(logins, id: \.self) { login in
         HStack(spacing: 5) {
           PersonAvatar(
