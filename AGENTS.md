@@ -261,7 +261,10 @@ reintroduces the bug:
   as the hosting view invalidated its size constraints mid-layout. An
   overlay never reaches the board's size; the board runs on beneath it,
   as under the sidebar, its scroll content and scrollers ending at the
-  pane's edge through `contentMargins`. The pane stands on the sidebar's
+  pane's edge through `contentMargins`, carried by an animatable modifier
+  (`PaneMargin`): a margin set in one step lands at once, and the
+  scrollers would jump to where the pane will be while it is still
+  sliding up. The pane stands on the sidebar's
   own glass (`SidebarGlass`): an `NSGlassEffectView` in the private
   variant the split view gives its sidebar, set only where the glass view
   answers to it. The inspector binding's setter only writes the card

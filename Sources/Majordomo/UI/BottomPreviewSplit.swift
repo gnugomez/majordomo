@@ -28,8 +28,7 @@ struct BottomPreviewSplit<Content: View, Preview: View>: View {
   var body: some View {
     let pane = shown ? fittedPaneHeight(height, room: room) : 0
     content
-      .contentMargins(.bottom, pane, for: .scrollContent)
-      .contentMargins(.bottom, pane, for: .scrollIndicators)
+      .modifier(PaneMargin(height: pane))
       // Over the view rather than beside it, so the pane's height never
       // reaches the view's size, nor the window's minimum size that
       // follows it: one that moved with every step of a drag took AppKit's
@@ -76,6 +75,26 @@ struct BottomPreviewSplit<Content: View, Preview: View>: View {
             UserDefaults.standard.set(Double(height), forKey: previewHeightKey)
           }
       )
+  }
+}
+
+/// The room the view's scroll content and scrollers leave for the pane,
+/// as a value an animation can carry: a content margin set in one step
+/// lands at once, and the scrollers would jump to where the pane will be
+/// while it is still sliding up. Animatable, the margin follows the slide
+/// frame by frame, in the same transaction as the pane's transition.
+private struct PaneMargin: ViewModifier, Animatable {
+  var height: CGFloat
+
+  nonisolated var animatableData: CGFloat {
+    get { height }
+    set { height = newValue }
+  }
+
+  func body(content: Content) -> some View {
+    content
+      .contentMargins(.bottom, height, for: .scrollContent)
+      .contentMargins(.bottom, height, for: .scrollIndicators)
   }
 }
 
