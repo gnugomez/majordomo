@@ -87,7 +87,7 @@ final class AppModel {
   /// True while an add-account validation runs; its failure lands in
   /// `connectError` for the sheet.
   private(set) var connecting = false
-  private(set) var connectError: String?
+  private(set) var connectError: AccountTrouble?
   /// Ticked every 30s so relative timestamps stay fresh.
   private(set) var now = Date()
 

@@ -153,7 +153,10 @@ Adding a provider means:
    conversations it lacks; a target the provider won't show comes back
    unreadable with the reason, and keys left out of the answer are asked
    again next round. Errors are human-readable `ProviderError` strings,
-   which render verbatim in the UI, a missing token scope named as such.
+   which render verbatim in the UI, a missing token scope named as such;
+   each carries the exchange behind it as text (`details`, built by
+   `transcript`: status, headers, body — never a token), which the
+   Accounts pane opens in full behind a Details button.
    The images a body shows come through the client too (`fetchImage`,
    anonymous by default): the account's token goes only to the provider's
    own API origin over https — never to an image host — and

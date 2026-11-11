@@ -637,10 +637,13 @@ actor GitHubClient: ProviderClient {
     let url = URL(string: "https://api.github.com/user")!
     let (data, http) = try await send(request(url, token: config.token), ctx: githubContext)
     guard (200 ..< 300).contains(http.statusCode) else {
-      throw statusError(http.statusCode, githubContext)
+      throw statusError(http, data, githubContext)
     }
     guard let user = try? JSONDecoder().decode(GHUser.self, from: data), let login = user.login else {
-      throw ProviderError(message: "GitHub accepted the token but returned no username — try again later.")
+      throw ProviderError(
+        message: "GitHub accepted the token but returned no username — try again later.",
+        details: transcript(of: http, body: data)
+      )
     }
     return ProviderProfile(username: login, name: user.name, avatarUrl: user.avatar_url, note: scopeNote(http))
   }
@@ -668,7 +671,7 @@ actor GitHubClient: ProviderClient {
         break
       }
       guard (200 ..< 300).contains(http.statusCode) else {
-        throw statusError(http.statusCode, githubContext)
+        throw statusError(http, data, githubContext)
       }
       guard let body = try? JSONDecoder().decode([Failable<GHNotification>].self, from: data) else {
         break
@@ -765,7 +768,7 @@ actor GitHubClient: ProviderClient {
     request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query])
     let (data, http) = try await send(request, ctx: githubContext)
     guard (200 ..< 300).contains(http.statusCode) else {
-      throw statusError(http.statusCode, githubContext)
+      throw statusError(http, data, githubContext)
     }
     let response = try? JSONDecoder().decode(GQLTargetsResponse.self, from: data)
     // A query about projects the token can't read fails as a whole, with
@@ -780,7 +783,8 @@ actor GitHubClient: ProviderClient {
       throw ProviderError(
         message: limited
           ? "GitHub's hourly limit for this token is used up; the refresh picks up again once it resets."
-          : "GitHub couldn't answer the refresh just now."
+          : "GitHub couldn't answer the refresh just now.",
+        details: transcript(of: http, body: data)
       )
     }
     var round = TargetRound()

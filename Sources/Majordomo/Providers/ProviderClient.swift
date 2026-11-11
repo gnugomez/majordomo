@@ -151,6 +151,11 @@ struct ProviderError: LocalizedError, Sendable {
   /// The provider refused the token itself (HTTP 401): expired, revoked,
   /// or never valid — what a new token fixes.
   var rejectsToken = false
+  /// The exchange behind the message, as text (`transcript`): the status,
+  /// headers, and body the provider answered with, or what the system
+  /// said when nothing answered — for the user to read when the message
+  /// alone doesn't say what to fix. Never carries a token.
+  var details: String? = nil
   var errorDescription: String? { message }
 }
 

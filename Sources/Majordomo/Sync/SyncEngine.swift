@@ -35,9 +35,9 @@ actor SyncEngine {
 
   // Accounts and syncing.
 
-  /// Sync/validation errors per account; the rest of an account's state
-  /// reads straight from the store.
-  var errors: [AccountId: String] = [:]
+  /// Sync/validation errors per account, each with the exchange behind
+  /// it; the rest of an account's state reads straight from the store.
+  var errors: [AccountId: AccountTrouble] = [:]
   var lastSyncAt: Date?
   var lastFullSyncAt: Date?
   var syncing = false
@@ -112,7 +112,7 @@ actor SyncEngine {
     store.seed(labels: StarterSetup.labels, rules: StarterSetup.rules)
     store.seedBoards(GitForgeBoards.starters, firstSet: GitForgeBoards.firstSet)
     for account in store.accounts() where account.config == nil {
-      errors[account.id] = "The stored token can't be read — remove and re-add the account."
+      errors[account.id] = AccountTrouble(message: "The stored token can't be read — remove and re-add the account.")
     }
   }
 
@@ -345,4 +345,10 @@ func displayMessage(for error: Error) -> String {
     return provider.message
   }
   return error.localizedDescription
+}
+
+/// An error as an account shows it: the message, and the exchange behind
+/// it when the provider's client kept one.
+func accountTrouble(for error: Error) -> AccountTrouble {
+  AccountTrouble(message: displayMessage(for: error), details: (error as? ProviderError)?.details)
 }

@@ -146,18 +146,20 @@ extension SyncEngine {
     emit(.accountRecovered(id))
   }
 
-  /// The account's sync failed: the error shows on it, and is announced
-  /// when it is news — the account was working, or failed differently.
+  /// The account's sync failed: the error shows on it, with the latest
+  /// exchange behind it, and is announced when it is news — the account
+  /// was working, or failed differently.
   private func accountFailed(_ id: AccountId, _ error: Error) {
-    let reason = displayMessage(for: error)
-    guard errors[id] != reason else {
+    let trouble = accountTrouble(for: error)
+    let news = errors[id]?.message != trouble.message
+    errors[id] = trouble
+    guard news else {
       return
     }
-    errors[id] = reason
     if (error as? ProviderError)?.rejectsToken == true {
-      emit(.tokenRejected(id, reason: reason))
+      emit(.tokenRejected(id, reason: trouble.message))
     } else {
-      emit(.syncFailed(id, reason: reason))
+      emit(.syncFailed(id, reason: trouble.message))
     }
   }
 

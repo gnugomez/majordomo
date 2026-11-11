@@ -420,10 +420,11 @@ struct GitLabClient: ProviderClient {
     let data = try await sendExpectingSuccess(request(url, token: config.token), ctx: ctx)
     guard let user = try? JSONDecoder().decode(GLUser.self, from: data), let username = user.username else {
       if (try? JSONSerialization.jsonObject(with: data)) == nil {
-        throw ProviderError(message: invalidJsonMessage(ctx))
+        throw ProviderError(message: invalidJsonMessage(ctx), details: bodyText(data))
       }
       throw ProviderError(
-        message: "\(baseUrl) accepted the token but returned no username — is it really a GitLab instance?"
+        message: "\(baseUrl) accepted the token but returned no username — is it really a GitLab instance?",
+        details: bodyText(data)
       )
     }
     return ProviderProfile(username: username, name: user.name, avatarUrl: user.avatar_url)
@@ -646,7 +647,7 @@ struct GitLabClient: ProviderClient {
   private func getTarget<T: Decodable>(_ url: URL, token: String, ctx: RequestContext) async throws -> Fetched<T> {
     let (data, http) = try await send(request(url, token: token), ctx: ctx)
     if http.statusCode == 401 || http.statusCode == 403 || http.statusCode == 429 {
-      throw statusError(http.statusCode, ctx)
+      throw statusError(http, data, ctx)
     }
     if http.statusCode == 404 {
       return .missing

@@ -42,7 +42,7 @@ func fetchPublicImage(_ url: URL) async throws -> Data {
 func imageData(for request: URLRequest, ctx: RequestContext) async throws -> Data {
   let (data, http) = try await send(request, ctx: ctx)
   guard (200 ..< 300).contains(http.statusCode) else {
-    throw statusError(http.statusCode, ctx)
+    throw statusError(http, data, ctx)
   }
   guard isImage(http), data.count <= imageByteLimit else {
     throw ProviderError(message: "\(ctx.service) didn't answer with an image.")

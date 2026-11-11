@@ -19,6 +19,8 @@ struct AddAccountSheet: View {
   @State private var token = ""
   @State private var localError: String?
   @State private var submitted = false
+  /// Whether the failure is open in full.
+  @State private var troubleShown = false
 
   init(model: AppModel, updating: AccountState? = nil) {
     self.model = model
@@ -62,9 +64,19 @@ struct AddAccountSheet: View {
       }
 
       if let error = displayError {
-        Text(error)
-          .font(.app(.caption))
-          .foregroundStyle(.red)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Text(error)
+            .font(.app(.caption))
+            .foregroundStyle(.red)
+          if submitted, model.connectError?.details != nil {
+            Button("Details…") {
+              troubleShown = true
+            }
+            .buttonStyle(.link)
+            .font(.app(.caption))
+            .help("What \(chosenSpec.displayName) answered")
+          }
+        }
       }
 
       HStack {
@@ -92,6 +104,11 @@ struct AddAccountSheet: View {
     .onChange(of: providerId) {
       localError = nil
       submitted = false
+    }
+    .sheet(isPresented: $troubleShown) {
+      if let trouble = model.connectError {
+        AccountTroubleSheet(title: updating.map(accountDescriptor) ?? chosenSpec.displayName, trouble: trouble)
+      }
     }
   }
 
@@ -153,7 +170,7 @@ struct AddAccountSheet: View {
     if model.connecting {
       return nil
     }
-    return localError ?? (submitted ? model.connectError : nil)
+    return localError ?? (submitted ? model.connectError?.message : nil)
   }
 
   private func submit() {

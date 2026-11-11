@@ -17,21 +17,23 @@ extension SyncEngine {
         name: stored.name,
         avatarUrl: stored.avatarUrl,
         baseUrl: stored.baseUrl,
-        error: errors[stored.id],
+        error: errors[stored.id]?.message,
+        errorDetails: errors[stored.id]?.details,
+        failedAt: errors[stored.id]?.at,
         note: stored.note
       )
     }
   }
 
   /// Validates and stores an account (any number per provider). Returns
-  /// nil on success, or the human-readable failure. The same user on the
+  /// nil on success, or the failure, worded and in full. The same user on the
   /// same instance is the same account: connecting one already connected
   /// swaps in the new token, and connecting one removed earlier revives its
   /// record — items and read state included — instead of starting a
   /// duplicate.
-  func connectAccount(_ provider: ProviderId, config: AccountConfig) async -> String? {
+  func connectAccount(_ provider: ProviderId, config: AccountConfig) async -> AccountTrouble? {
     guard let client = clients[provider] else {
-      return "Unknown provider."
+      return AccountTrouble(message: "Unknown provider.")
     }
     do {
       let profile = try await client.validate(config)
@@ -49,17 +51,17 @@ extension SyncEngine {
       }
       return nil
     } catch {
-      return displayMessage(for: error)
+      return accountTrouble(for: error)
     }
   }
 
   /// Swaps a connected account's token — the remedy for one that expired
   /// or was revoked. The new token must belong to the same user; the
   /// account's id, items, and read state are untouched. Returns nil on
-  /// success, or the human-readable failure.
-  func updateToken(_ id: AccountId, token: String) async -> String? {
+  /// success, or the failure, worded and in full.
+  func updateToken(_ id: AccountId, token: String) async -> AccountTrouble? {
     guard let account = store.getAccount(id), let client = clients[account.provider] else {
-      return "That account is no longer connected."
+      return AccountTrouble(message: "That account is no longer connected.")
     }
     let config = AccountConfig(token: token, baseUrl: account.baseUrl)
     do {
@@ -69,7 +71,7 @@ extension SyncEngine {
       }
       let offered = AccountIdentity(provider: account.provider, baseUrl: account.baseUrl, username: profile.username)
       if let stored, stored != offered {
-        return "That token belongs to @\(profile.username), not @\(account.username ?? "")."
+        return AccountTrouble(message: "That token belongs to @\(profile.username), not @\(account.username ?? "").")
       }
       store.setAccount(id, provider: account.provider, config: config, profile: profile)
       tokenAccepted(id)
@@ -81,7 +83,7 @@ extension SyncEngine {
       }
       return nil
     } catch {
-      return displayMessage(for: error)
+      return accountTrouble(for: error)
     }
   }
 

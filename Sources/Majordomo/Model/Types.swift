@@ -87,9 +87,27 @@ struct AccountState: Identifiable, Sendable, Hashable {
   var baseUrl: String?
   /// Human-readable error from the last validation or sync attempt.
   var error: String?
+  /// The exchange behind the error, as text (`ProviderError.details`),
+  /// when the provider answered at all.
+  var errorDetails: String?
+  /// When the error was last met.
+  var failedAt: Date?
   /// What the token leaves out of reach that an extra needs, when the
   /// provider could tell (`ProviderProfile.note`).
   var note: String?
+
+  /// The error as the Details sheet shows it; nil while the account works.
+  var trouble: AccountTrouble? {
+    error.map { AccountTrouble(message: $0, details: errorDetails, at: failedAt ?? Date()) }
+  }
+}
+
+/// Why an account's last sync or token failed: the message the account
+/// shows, the exchange behind it for the user to read, and when.
+struct AccountTrouble: Hashable, Sendable {
+  let message: String
+  var details: String? = nil
+  var at = Date()
 }
 
 /// One part of the published state. Each is versioned on its own, so a

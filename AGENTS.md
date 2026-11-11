@@ -51,7 +51,9 @@ and RELEASING.md.
   store writes a moment after a change, off the actor, and on quit.
 - **Style**: strict Swift 6 concurrency, 2-space indent, one type per file
   where sensible; extract well-named helpers over clever one-liners.
-  Provider errors are human-readable strings — they render verbatim.
+  Provider errors are human-readable strings — they render verbatim —
+  with the exchange behind them as `details`, for the Accounts pane's
+  Details sheet.
 - **Comments describe the present**: document what the code does now and
   why, never what it used to be. No lineage ("ported from src/…", "the
   Swift side of …", "like the Electron app"), no removed alternatives, no

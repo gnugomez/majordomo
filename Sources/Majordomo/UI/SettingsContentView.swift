@@ -15,6 +15,8 @@ struct AccountsSettingsView: View {
   @State private var addSheetShown = false
   /// The account whose token is being replaced, while its sheet is up.
   @State private var updating: AccountState?
+  /// The account whose error is open in full, while its sheet is up.
+  @State private var troubled: AccountState?
   @State private var confirmRemove = false
 
   var body: some View {
@@ -31,6 +33,15 @@ struct AccountsSettingsView: View {
                 ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange)
             )
             Spacer()
+            // What the provider answered, in full, when the line can't
+            // say what went wrong.
+            if account.errorDetails != nil {
+              Button("Details…") {
+                troubled = account
+              }
+              .controlSize(.small)
+              .help("What \(account.provider.displayName) answered")
+            }
             Circle()
               .fill(account.error == nil ? Color.green : Color.orange)
               .frame(width: 7, height: 7)
@@ -70,6 +81,11 @@ struct AccountsSettingsView: View {
     }
     .sheet(item: $updating) { account in
       AddAccountSheet(model: model, updating: account)
+    }
+    .sheet(item: $troubled) { account in
+      if let trouble = account.trouble {
+        AccountTroubleSheet(title: accountDescriptor(account), trouble: trouble)
+      }
     }
     .confirmationDialog(
       "Remove this account?",

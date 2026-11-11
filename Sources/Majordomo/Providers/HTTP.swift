@@ -1,7 +1,8 @@
 // Shared HTTP plumbing for the provider clients: a 15-second-capped
 // URLSession that keeps tokens on their own origin, and the error phrasing
 // helpers. The strings surface directly in the Accounts pane, so they must
-// be helpful.
+// be helpful — and each failure keeps the exchange behind it as text, the
+// pane's Details sheet, for what the message can't say.
 
 import Foundation
 
@@ -57,10 +58,71 @@ func statusMessage(_ status: Int, _ ctx: RequestContext) -> String {
   }
 }
 
-/// The error a non-success HTTP status throws: its message, and whether
-/// the token itself was refused.
-func statusError(_ status: Int, _ ctx: RequestContext) -> ProviderError {
-  ProviderError(message: statusMessage(status, ctx), rejectsToken: status == 401)
+/// The error a non-success HTTP status throws: its message, whether the
+/// token itself was refused, and the answer in full.
+func statusError(_ http: HTTPURLResponse, _ body: Data, _ ctx: RequestContext) -> ProviderError {
+  ProviderError(
+    message: statusMessage(http.statusCode, ctx), rejectsToken: http.statusCode == 401,
+    details: transcript(of: http, body: body)
+  )
+}
+
+/// Past this many characters a body is cut short in a transcript.
+private let bodyTextLimit = 32_000
+
+/// An answer as text: the status and the address it came from, the
+/// response headers in order (a cookie left out — it could stand for a
+/// session), and the body.
+func transcript(of http: HTTPURLResponse, body: Data) -> String {
+  let reason = HTTPURLResponse.localizedString(forStatusCode: http.statusCode).capitalized
+  var lines = ["HTTP \(http.statusCode) \(reason)"]
+  if let url = http.url {
+    lines.append(url.absoluteString)
+  }
+  let headers = http.allHeaderFields
+    .compactMap { key, value -> (name: String, value: String)? in
+      guard let name = (key as? String)?.lowercased(), name != "set-cookie" else {
+        return nil
+      }
+      return (name, "\(value)")
+    }
+    .sorted { $0.name < $1.name }
+  if !headers.isEmpty {
+    lines.append("")
+    lines += headers.map { "\($0.name): \($0.value)" }
+  }
+  lines.append("")
+  lines.append(bodyText(body))
+  return lines.joined(separator: "\n")
+}
+
+/// A body as text: JSON laid out line by line, anything else as it came,
+/// a long one cut short.
+func bodyText(_ data: Data) -> String {
+  guard !data.isEmpty else {
+    return "(empty body)"
+  }
+  var text: String
+  if let json = try? JSONSerialization.jsonObject(with: data),
+     let laidOut = try? JSONSerialization.data(
+       withJSONObject: json, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+     ) {
+    text = String(decoding: laidOut, as: UTF8.self)
+  } else {
+    text = String(decoding: data, as: UTF8.self)
+  }
+  if text.count > bodyTextLimit {
+    text = String(text.prefix(bodyTextLimit)) + "\n… (\(text.count - bodyTextLimit) more characters)"
+  }
+  return text
+}
+
+/// A request nothing answered, as text: what was asked, and what the
+/// system said. The request's headers stay out — one carries the token.
+func transportTranscript(_ request: URLRequest, _ error: Error) -> String {
+  let asked = "\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")"
+  let failure = error as NSError
+  return "\(asked)\n\n\(failure.localizedDescription) (\(failure.domain) \(failure.code))"
 }
 
 /// Normalizes a user-typed instance origin: trims whitespace and trailing
@@ -150,17 +212,19 @@ func send(_ request: URLRequest, ctx: RequestContext) async throws -> (Data, HTT
   do {
     let (data, response) = try await providerSession.data(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw ProviderError(message: unreachableMessage(ctx))
+      throw ProviderError(
+        message: unreachableMessage(ctx), details: "\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")"
+      )
     }
     return (data, http)
   } catch let error as ProviderError {
     throw error
   } catch let error as URLError where error.code == .timedOut {
-    throw ProviderError(message: timeoutMessage(ctx))
+    throw ProviderError(message: timeoutMessage(ctx), details: transportTranscript(request, error))
   } catch is CancellationError {
     throw CancellationError()
   } catch {
-    throw ProviderError(message: unreachableMessage(ctx))
+    throw ProviderError(message: unreachableMessage(ctx), details: transportTranscript(request, error))
   }
 }
 
@@ -168,7 +232,7 @@ func send(_ request: URLRequest, ctx: RequestContext) async throws -> (Data, HTT
 func sendExpectingSuccess(_ request: URLRequest, ctx: RequestContext) async throws -> Data {
   let (data, http) = try await send(request, ctx: ctx)
   guard (200 ..< 300).contains(http.statusCode) else {
-    throw statusError(http.statusCode, ctx)
+    throw statusError(http, data, ctx)
   }
   return data
 }

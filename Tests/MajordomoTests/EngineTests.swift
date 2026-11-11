@@ -144,8 +144,8 @@ struct EngineTests {
     let client = ScriptedClient([
       .failure(ProviderError(message: "GitHub is having trouble right now.")),
       .success(FetchResult(items: [], complete: false)),
-      .failure(ProviderError(message: "GitHub token was rejected (401).", rejectsToken: true)),
-      .failure(ProviderError(message: "GitHub token was rejected (401).", rejectsToken: true)),
+      .failure(ProviderError(message: "GitHub token was rejected (401).", rejectsToken: true, details: "HTTP 401")),
+      .failure(ProviderError(message: "GitHub token was rejected (401).", rejectsToken: true, details: "HTTP 401 again")),
     ])
     let engine = await launched(fixtureStore(items: [storedItem(1)]), client: client)
     let events = await engine.events()
@@ -159,6 +159,10 @@ struct EngineTests {
       .accountRecovered("acct"),
       .tokenRejected("acct", reason: "GitHub token was rejected (401)."),
     ])
-    #expect(await engine.currentState().accounts.first?.error == "GitHub token was rejected (401).")
+    // The account carries the latest exchange behind the message it shows.
+    let account = await engine.currentState().accounts.first
+    #expect(account?.error == "GitHub token was rejected (401).")
+    #expect(account?.errorDetails == "HTTP 401 again")
+    #expect(account?.failedAt != nil)
   }
 }
