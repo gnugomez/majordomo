@@ -38,6 +38,24 @@ struct BodyImageSource: Equatable, Sendable {
   func cachedImage(at url: URL, pixelWidth: CGFloat) -> BodyImage? {
     BodyImageLoader.shared.cached(url, pixelWidth: pixelWidth)
   }
+
+  /// The bytes at an address, whole, for Quick Look: as the cache holds
+  /// them, or fetched now and kept.
+  func data(at url: URL) async -> Data? {
+    await storedOrFetched(url, fetch: fetch)
+  }
+}
+
+/// The bytes at an address: ImageCache's, or fetched and stored there.
+private func storedOrFetched(_ url: URL, fetch: @Sendable (URL) async -> Data?) async -> Data? {
+  if let stored = await ImageCache.shared.data(for: url) {
+    return stored
+  }
+  guard let fetched = await fetch(url) else {
+    return nil
+  }
+  await ImageCache.shared.store(fetched, for: url)
+  return fetched
 }
 
 extension EnvironmentValues {
@@ -112,15 +130,8 @@ final class BodyImageLoader {
       return await running.value
     }
     let task = Task<BodyImage?, Never> {
-      let data: Data
-      if let stored = await ImageCache.shared.data(for: url) {
-        data = stored
-      } else {
-        guard let fetched = await fetch(url) else {
-          return nil
-        }
-        await ImageCache.shared.store(fetched, for: url)
-        data = fetched
+      guard let data = await storedOrFetched(url, fetch: fetch) else {
+        return nil
       }
       return await decode(data, maxPixelWidth: wanted)
     }

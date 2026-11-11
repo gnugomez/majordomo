@@ -6,6 +6,7 @@
 // toolbar.
 
 import AppKit
+import QuickLookUI
 import SwiftUI
 
 private let defaultSize = NSSize(width: 980, height: 640)
@@ -96,5 +97,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
     model.releaseKeptReads()
+  }
+
+  // MARK: Quick Look
+
+  // The Quick Look panel finds its controller down the responder chain
+  // from the key window: over the main window, the pictures' own
+  // (ImageQuickLook), which a clicked picture in a preview opens it with.
+  // The panel asks on the main thread; the overridden methods don't say so.
+  override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+    true
+  }
+
+  override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    MainActor.assumeIsolated {
+      ImageQuickLook.shared.control(panel)
+    }
+  }
+
+  override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    MainActor.assumeIsolated {
+      ImageQuickLook.shared.release(panel)
+    }
   }
 }

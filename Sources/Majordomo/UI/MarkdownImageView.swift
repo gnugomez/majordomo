@@ -1,10 +1,10 @@
 // The images a body shows. A picture fits the column at most, keeps its
 // shape, and stays at the width the body asks for when that is smaller; a
 // gray box holds its place while it loads, and a compact line naming it
-// with a way to the browser stands in when it can't be had. A click opens
-// it in the browser. Status badges sit in a row at text height. Pictures
-// come through the environment's BodyImageSource; without one, every
-// image is that line.
+// with a way to the browser stands in when it can't be had. A click shows
+// it in Quick Look (ImageQuickLook), whole; the browser is a menu away.
+// Status badges sit in a row at text height. Pictures come through the
+// environment's BodyImageSource; without one, every image is that line.
 
 import SwiftUI
 
@@ -45,6 +45,8 @@ struct MarkdownImageView: View {
   @State private var columnWidth: CGFloat = 0
   @State private var loaded: BodyImage?
   @State private var failed = false
+  /// Where the picture stands on screen, for Quick Look to zoom from.
+  @State private var anchor = ScreenAnchor()
 
   private struct LoadKey: Equatable {
     let url: URL?
@@ -88,17 +90,21 @@ struct MarkdownImageView: View {
       .frame(maxWidth: image.width ?? natural.width)
       .clipShape(RoundedRectangle(cornerRadius: 6))
       .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator, lineWidth: 0.5))
+      .background(ScreenAnchorView(anchor: anchor))
       .contentShape(Rectangle())
       .onTapGesture {
         if let url {
-          openURL(url)
+          quickLook(url, shown: shown)
         }
       }
-      .pointerStyle(.link)
-      .help(image.alt.isEmpty ? "Open the image in the browser" : image.alt)
+      .pointerStyle(.zoomIn)
+      .help(image.alt.isEmpty ? "Show the image in Quick Look" : image.alt)
       .accessibilityLabel(image.alt.isEmpty ? "Image" : image.alt)
       .contextMenu {
         if let url {
+          Button("Quick Look") {
+            quickLook(url, shown: shown)
+          }
           Button("Open Image in Browser") {
             openURL(url)
           }
@@ -126,6 +132,22 @@ struct MarkdownImageView: View {
         ProgressView()
           .controlSize(.small)
       }
+  }
+
+  /// Shows the picture in Quick Look, whole, as a file of the bytes the
+  /// preview fetched; the browser when they can't be had any more.
+  private func quickLook(_ url: URL, shown: BodyImage) {
+    let frame = anchor.frame ?? .zero
+    let transition = shown.image
+    Task {
+      guard let source, let data = await source.data(at: url),
+            let file = await QuickLookFiles.shared.file(for: url, data: data) else {
+        openURL(url)
+        return
+      }
+      let title = image.alt.isEmpty ? file.lastPathComponent : image.alt
+      ImageQuickLook.shared.show(file, title: title, from: frame, transition: transition)
+    }
   }
 
   private func load(_ url: URL?) async {
