@@ -1,6 +1,6 @@
 // What can be done with a selection where it is shown: open it in the
 // browser, which marks it read too, only mark it read — offered only
-// while something in it is still unread — or put it away for a while
+// while something in it is still unread — or quiet it for a while
 // (Snooze), to be reminded of later rather than marking read what still
 // needs doing. The preview carries it for one thread or a message picked
 // in it, the pane of a multiple selection for several; ⌘O and ⇧⌘U reach
@@ -33,7 +33,7 @@ struct SelectionActions: View {
         Label(threads.allSatisfy(\.snoozed) ? "Snoozed" : "Snooze", systemImage: "clock")
       }
       .fixedSize()
-      .help("Put it away for a while; it comes back unread, with a banner")
+      .help("Quiet it for a while: it stays here with a clock, and comes back unread, with a banner")
     }
   }
 

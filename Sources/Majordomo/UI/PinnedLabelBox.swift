@@ -61,7 +61,7 @@ func pinnedBoxes(model: AppModel, threads: [InboxThread]) -> [PinnedBox] {
       return nil
     }
     let unread = threads.filter { thread in
-      !thread.read && thread.items.contains { $0.labels.contains(label.id) }
+      thread.pending && thread.items.contains { $0.labels.contains(label.id) }
     }
     guard !unread.isEmpty else {
       return nil

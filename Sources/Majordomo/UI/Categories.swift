@@ -11,8 +11,9 @@ let recentCategory = CategorySpec(id: catchAllInboxId, label: "Recent", symbol: 
   true
 }
 
-/// What is put away: the one bucket a snoozed item is in. Drawn after the
-/// layout's rows, never in the layout, never hideable.
+/// What is snoozed, gathered: a snoozed item stays in its own buckets as
+/// well. Drawn after the layout's rows, never in the layout, never
+/// hideable.
 let snoozedCategory = CategorySpec(id: snoozedInboxId, label: "Snoozed", symbol: "clock", order: Int.max) {
   $0.snoozedUntil != nil
 }
@@ -48,18 +49,10 @@ func categories(for labels: [InboxLabel]) -> [CategorySpec] {
 /// Every list and badge in the app comes through here, so this is where a
 /// moved item is kept out: a rule that moves rather than copies records
 /// the inboxes it hid the item from, and those inboxes skip it — the
-/// catch-all included. A snoozed item is out of every bucket but Snoozed.
+/// catch-all included.
 func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] {
   specs.map { spec in
-    Category(
-      spec: spec,
-      items: items.filter { item in
-        guard spec.id != snoozedInboxId else {
-          return spec.matches(item)
-        }
-        return item.snoozedUntil == nil && spec.matches(item) && !item.hiddenFrom.contains(spec.id)
-      }
-    )
+    Category(spec: spec, items: items.filter { spec.matches($0) && !$0.hiddenFrom.contains(spec.id) })
   }
 }
 
@@ -114,13 +107,13 @@ func visibleCategories(layout: SidebarLayout, categories: [Category]) -> [Catego
   sidebarRows(layout: layout, categories: categories).flatMap(\.inboxes) + categories.filter { $0.id == snoozedInboxId }
 }
 
-/// Unread threads across these rows' inboxes — an item in two of them
-/// counts once, so a folder's badge never exceeds what opening its
-/// inboxes would show.
+/// Unread threads across these rows' inboxes, snoozed ones quiet — an
+/// item in two of them counts once, so a folder's badge never exceeds
+/// what opening its inboxes would show.
 func unreadThreadCount(in rows: [SidebarRow]) -> Int {
   var seen = Set<String>()
   let items = rows.flatMap(\.inboxes).flatMap(\.items).filter { seen.insert($0.id).inserted }
-  return groupIntoThreads(items).count { !$0.read }
+  return groupIntoThreads(items).count(where: \.pending)
 }
 
 /// Newest activity first — the order every list in the app shows items in.
@@ -215,13 +208,14 @@ func matchingWindow(_ cards: [BoardCard], since cutoff: Date?) -> [BoardCard] {
   return cards.filter { $0.activityAt >= cutoff }
 }
 
-/// The toolbar's unread filter over threads: the unread ones, plus any
-/// holding an item in `kept` — read while the filter showed it, and left
-/// where it was rather than taken out from under the pointer. Works on
-/// threads, not items, so an unread thread keeps its read members.
+/// The toolbar's unread filter over threads: the unread ones in play —
+/// a snoozed thread is quiet — plus any holding an item in `kept`: read
+/// while the filter showed it, and left where it was rather than taken
+/// out from under the pointer. Works on threads, not items, so an unread
+/// thread keeps its read members.
 func matchingUnread(_ threads: [InboxThread], kept: Set<String>) -> [InboxThread] {
   threads.filter { thread in
-    !thread.read || thread.items.contains { kept.contains($0.id) }
+    thread.pending || thread.items.contains { kept.contains($0.id) }
   }
 }
 

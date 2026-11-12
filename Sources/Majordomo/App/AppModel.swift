@@ -266,13 +266,12 @@ final class AppModel {
   /// The unread figures the chrome and the window read, from the items as
   /// they now stand.
   private func noteUnread() {
-    let awake = items.filter { $0.snoozedUntil == nil }
-    anyUnread = awake.contains { !$0.read }
-    unreadCount = groupIntoThreads(awake).count { !$0.read }
-    unreadMentionDot = awake.contains { $0.isMention && !$0.read }
+    anyUnread = items.contains(where: \.pending)
+    unreadCount = groupIntoThreads(items).count(where: \.pending)
+    unreadMentionDot = items.contains { $0.isMention && $0.pending }
   }
 
-  /// The threads put away, for the Snoozed inbox's badge.
+  /// The threads snoozed, for the Snoozed inbox's badge.
   var snoozedThreadCount: Int {
     groupIntoThreads(items.filter { $0.snoozedUntil != nil }).count
   }
@@ -569,7 +568,7 @@ final class AppModel {
       for row in rows {
         switch row {
         case .inbox(let category):
-          unread[category.id] = groupIntoThreads(category.items).count { !$0.read }
+          unread[category.id] = groupIntoThreads(category.items).count(where: \.pending)
         case .folder(let folder, let inside):
           unread[folder.id] = unreadThreadCount(in: inside)
           count(inside)
@@ -613,7 +612,7 @@ final class AppModel {
     }
   }
 
-  /// Puts items away until the preset's time.
+  /// Quiets items until the preset's time.
   func snooze(_ ids: Set<String>, for preset: SnoozePreset) {
     guard !ids.isEmpty else {
       return

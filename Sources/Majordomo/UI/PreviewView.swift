@@ -303,7 +303,9 @@ private struct PreviewHeader: View {
           // thread's reasons ride on its messages below.
           ReasonCapsule(item: item)
         }
-        if !thread.read {
+        if thread.snoozed {
+          CapsuleTag(text: "snoozed")
+        } else if !thread.read {
           CapsuleTag(text: "unread", tint: Color.accentColor)
         }
       }
@@ -489,7 +491,9 @@ private struct MessageCard: View {
     let author = comment?.author ?? member.author
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        if !member.read {
+        if member.snoozedUntil != nil {
+          UnreadDot(snoozed: true)
+        } else if !member.read {
           UnreadDot()
             .help("Unread")
         }

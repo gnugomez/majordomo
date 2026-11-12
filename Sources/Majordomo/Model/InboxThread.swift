@@ -17,8 +17,10 @@ struct InboxThread: Identifiable, Sendable {
   var lead: InboxItem { items[0] }
   /// Read only when every member is.
   var read: Bool { items.allSatisfy(\.read) }
+  /// Unread and in play: a member that is (`InboxItem.pending`).
+  var pending: Bool { items.contains(where: \.pending) }
   var itemIds: [String] { items.map(\.id) }
-  /// Put away as a whole: every member snoozed.
+  /// Quiet as a whole: every member snoozed.
   var snoozed: Bool { items.allSatisfy { $0.snoozedUntil != nil } }
   /// When the thread comes back, if it is put away: the latest of its
   /// members' times.

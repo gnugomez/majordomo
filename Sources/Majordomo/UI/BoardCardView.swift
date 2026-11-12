@@ -53,7 +53,9 @@ struct BoardCardView: View, Equatable {
             .foregroundStyle(.tertiary)
             .help("Placed here by hand")
         }
-        if card.unread {
+        if card.snoozed {
+          UnreadDot(snoozed: true)
+        } else if card.unread {
           UnreadDot()
             .help("Unread notifications")
         }

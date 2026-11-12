@@ -1,5 +1,5 @@
 // The Snooze menu's items, the same wherever a thread's menu offers them:
-// a preset each, and Unsnooze for what is put away. The preview's button,
+// a preset each, and Unsnooze for what is snoozed. The preview's button,
 // a row's menu, and a card's menu all carry it.
 
 import SwiftUI

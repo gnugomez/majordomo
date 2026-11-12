@@ -91,7 +91,7 @@ struct InboxListView: View {
         EmptyStateView(
           symbol: "clock",
           title: "Nothing snoozed",
-          caption: "Snooze a notification from its menu to put it away until later; it comes back unread, with a banner."
+          caption: "Snooze a notification from its menu to quiet it until later: it stays in its inbox with a clock, and comes back unread, with a banner."
         )
       } else {
         EmptyStateView(

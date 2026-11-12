@@ -1,13 +1,14 @@
-// Putting a thread away for a while: the presets the Snooze menu offers,
-// when each ends, and how a snooze reads on a row. A snoozed thread leaves
-// every inbox, count, and banner until its time — or until its target
-// moves, which is sooner — and comes back unread with a banner: the
-// reminder the snooze was for. The sidebar lists what is put away under
-// Snoozed, where a snooze is cut short by hand.
+// Quieting a thread for a while: the presets the Snooze menu offers, when
+// each ends, and how a snooze reads on a row. A snoozed thread stays in
+// its inboxes, marked with a clock in place of its unread dot, but out of
+// every count and banner until its time — or until its target moves,
+// which is sooner — and then comes back unread with a banner: the
+// reminder the snooze was for. The sidebar lists what is snoozed under
+// Snoozed as well, and any menu's Unsnooze cuts one short.
 
 import Foundation
 
-/// The sidebar's inbox of what is put away, drawn after the layout's rows.
+/// The sidebar's inbox of what is snoozed, drawn after the layout's rows.
 let snoozedInboxId = "snoozed"
 
 /// The hour a morning snooze ends at.

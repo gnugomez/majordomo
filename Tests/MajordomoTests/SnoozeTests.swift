@@ -40,16 +40,25 @@ struct SnoozeTests {
     #expect(snoozeWording(until: utc("2026-12-01T09:00:00Z"), now: now, calendar: calendar) == "until 1 Dec 09:00")
   }
 
-  @Test func aSnoozedItemIsOnlyInTheSnoozedBucket() {
-    var away = item("acct:2")
+  @Test func aSnoozedItemStaysInItsBucketsButQuiet() {
+    var away = item("acct:2", title: "Rate-limit the search endpoint")
     away.snoozedUntil = Date().addingTimeInterval(3600)
     let buckets = categorize([item("acct:1"), away], into: categories(for: []))
-    #expect(buckets.first { $0.id == catchAllInboxId }?.items.map(\.id) == ["acct:1"])
+    #expect(buckets.first { $0.id == catchAllInboxId }?.items.map(\.id) == ["acct:1", "acct:2"])
     #expect(buckets.first { $0.id == snoozedInboxId }?.items.map(\.id) == ["acct:2"])
+    #expect(!away.pending)
+    #expect(item("acct:1").pending)
     let thread = InboxThread(id: "t", items: [away])
     #expect(thread.snoozed)
+    #expect(!thread.pending)
     #expect(thread.snoozedUntil == away.snoozedUntil)
     #expect(!InboxThread(id: "t", items: [item("acct:1"), away]).snoozed)
+    // The unread filter and the badges count it quiet, unless it was read
+    // in place.
+    let threads = groupIntoThreads([item("acct:1"), away])
+    #expect(matchingUnread(threads, kept: []).map(\.id) == [threads[0].id])
+    #expect(matchingUnread(threads, kept: ["acct:2"]).count == 2)
+    #expect(unreadThreadCount(in: [.inbox(buckets[0])]) == 1)
   }
 
   @Test func theStoreBringsAnItemBackAtItsTimeUnreadOrByHandAsItWas() {

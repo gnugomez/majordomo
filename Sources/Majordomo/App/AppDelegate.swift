@@ -344,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// The inbox rows: unread mentions first, then the recent tail, capped.
   private func addInboxRows(to menu: NSMenu) {
-    let threads = groupIntoThreads(inboxOrder(model.items.filter { $0.snoozedUntil == nil }))
+    let threads = groupIntoThreads(inboxOrder(model.items))
     guard !threads.isEmpty else {
       let empty = NSMenuItem(
         title: model.hasAccounts ? "You're all caught up" : "No accounts connected",
@@ -356,7 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       return
     }
     let mentions = threads.filter { thread in
-      thread.items.contains { $0.isMention && !$0.read }
+      thread.items.contains { $0.isMention && $0.pending }
     }.prefix(menuMentionCap)
     let mentionIds = Set(mentions.map(\.id))
     let recent = threads.filter { !mentionIds.contains($0.id) }.prefix(menuRecentCap)
@@ -430,7 +430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ))
     row.attributedTitle = text
     row.image = Self.providerMenuImage(item.provider)
-    if !thread.read {
+    if thread.pending {
       row.state = .on
       row.onStateImage = Self.unreadDot
     }

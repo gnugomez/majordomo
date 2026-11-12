@@ -42,8 +42,9 @@ Layers, lower never importing higher:
   a change), the targets' conversations, a file each beside the store,
   and the images previews have shown, kept within a size under the user's
   Caches. An item's read state and its snooze (`snoozedUntil`) live on
-  it: a snoozed thread is out of every inbox, count, and banner until its
-  time or its target's next activity, when it comes back unread and
+  it: a snoozed thread stays in its inboxes with a clock but is quiet —
+  out of every count and banner (`pending`) — until its time or its
+  target's next activity, when it comes back unread and
   `DomainEvent.snoozesEnded` posts the reminder.
 - `Sources/Majordomo/Sync/` — the sync engine, one actor split by concern:
   `SyncEngine.swift` (the change log, `settle`, publishing, the streams,

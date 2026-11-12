@@ -133,6 +133,8 @@ struct BoardCard: Identifiable, Equatable, Sendable {
   let dueDay: FieldDay?
   /// How the due day stood then (`DueDate.words`); none without one.
   let dueWords: [String]
+  /// Every notification on it put away (Snooze): the card shows a clock.
+  let snoozed: Bool
 
   init(
     id: String, items: [InboxItem], target: TrackedTarget?, ownLogins: [String], verdicts: [String: Bool] = [:],
@@ -144,7 +146,8 @@ struct BoardCard: Identifiable, Equatable, Sendable {
     self.ownLogins = ownLogins
     self.verdicts = verdicts
     activityAt = max(target?.snapshot?.updatedAt ?? .distantPast, items[0].updatedAt)
-    unread = items.contains { !$0.read }
+    unread = items.contains(where: \.pending)
+    snoozed = items.allSatisfy { $0.snoozedUntil != nil }
     dueDay = target?.snapshot?.dueDate.flatMap { DueDate.fieldDay($0, now: now) }
     dueWords = target?.snapshot?.dueDate.map { DueDate.words(for: $0, now: now) } ?? []
   }

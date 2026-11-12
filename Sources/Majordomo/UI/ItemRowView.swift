@@ -89,16 +89,16 @@ struct ItemRowView: View, Equatable {
     // Two lines center against the dot; with an excerpt the row runs to
     // three, and the dot rides at the top the way the member rows' does.
     HStack(alignment: excerpt == nil ? .center : .top, spacing: 8) {
-      // The unread gutter: a leading accent dot, with the space reserved
-      // on read rows so everything stays aligned.
-      UnreadDot(unread: !thread.read, size: 8, selected: selected)
+      // The unread gutter: a leading accent dot, a clock while snoozed,
+      // with the space reserved on read rows so everything stays aligned.
+      UnreadDot(unread: thread.pending, snoozed: thread.snoozed, size: 8, selected: selected)
         .padding(.top, excerpt == nil ? 0 : 4)
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 4) {
           GlyphImage(glyph: spec(for: item.provider).glyph(for: item))
             .foregroundStyle(spec(for: item.provider).color(for: item).onRow(selected: selected))
           Text(highlighted(item.title, terms: highlightTerms))
-            .font(.app(.body, weight: thread.read ? .regular : .semibold))
+            .font(.app(.body, weight: thread.pending ? .semibold : .regular))
             .lineLimit(1)
             .truncationMode(.tail)
         }
@@ -280,7 +280,7 @@ struct MemberRowView: View, Equatable {
 
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
-      UnreadDot(unread: !member.read, size: 8, selected: selected)
+      UnreadDot(unread: member.pending, snoozed: member.snoozedUntil != nil, size: 8, selected: selected)
         .padding(.top, 4)
       VStack(alignment: .leading, spacing: 3) {
         HStack(spacing: 4) {

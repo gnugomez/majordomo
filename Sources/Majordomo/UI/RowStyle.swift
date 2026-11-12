@@ -14,17 +14,27 @@ extension Color {
   }
 }
 
-/// The unread mark: an accent dot. A row keeps the dot's room when there is
-/// nothing unread (`unread` false draws it clear), so every row's title
-/// starts at the same place.
+/// The unread mark: an accent dot — or a clock, in the dot's place, while
+/// the row is snoozed. A row keeps the dot's room when there is nothing
+/// unread (`unread` false draws it clear), so every row's title starts at
+/// the same place.
 struct UnreadDot: View {
   var unread = true
+  var snoozed = false
   var size: CGFloat = 7
   var selected = false
 
   var body: some View {
-    Circle()
-      .fill(unread ? Color.accentColor.onRow(selected: selected) : AnyShapeStyle(.clear))
-      .frame(width: size, height: size)
+    if snoozed {
+      Image(systemName: "clock")
+        .font(.system(size: size + 3, weight: .medium))
+        .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+        .frame(width: size, height: size)
+        .help("Snoozed")
+    } else {
+      Circle()
+        .fill(unread ? Color.accentColor.onRow(selected: selected) : AnyShapeStyle(.clear))
+        .frame(width: size, height: size)
+    }
   }
 }

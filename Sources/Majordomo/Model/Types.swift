@@ -52,8 +52,9 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// generated; nothing else reads it.
   var summary: String?
   var read: Bool
-  /// Until when the item is put away (Snooze): out of every inbox, count,
-  /// and banner, listed under Snoozed. nil while it is in play.
+  /// Until when the item is quiet (Snooze): in its inboxes still, marked
+  /// with a clock, but out of every count and banner until then; listed
+  /// under Snoozed too. nil while it is in play.
   var snoozedUntil: Date?
   /// What the on-device model answered about this item, by question key
   /// (RuleEngine.questionKey): yes, no, or absent for a question it hasn't
@@ -69,6 +70,10 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// Labels the target carries at the provider (an issue's own labels) —
   /// opaque strings, there for rules to test.
   var upstreamLabels: [String] = []
+
+  /// Unread and in play: what the dots, the badges, the tray, and the
+  /// unread filter count. A snoozed item is quiet until it wakes.
+  var pending: Bool { !read && snoozedUntil == nil }
 }
 
 /// What the user supplies to connect an account.
