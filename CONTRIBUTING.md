@@ -41,7 +41,10 @@ Layers, lower never importing higher:
   (`Store`, written off the engine's actor by `StoreWriter` a moment after
   a change), the targets' conversations, a file each beside the store,
   and the images previews have shown, kept within a size under the user's
-  Caches.
+  Caches. An item's read state and its snooze (`snoozedUntil`) live on
+  it: a snoozed thread is out of every inbox, count, and banner until its
+  time or its target's next activity, when it comes back unread and
+  `DomainEvent.snoozesEnded` posts the reminder.
 - `Sources/Majordomo/Sync/` — the sync engine, one actor split by concern:
   `SyncEngine.swift` (the change log, `settle`, publishing, the streams,
   start and stop), `EngineChange.swift` (the reaction table), and the

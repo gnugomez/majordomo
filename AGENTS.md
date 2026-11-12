@@ -28,7 +28,10 @@ and RELEASING.md.
   (`SidebarSelection`) names an inbox or a board, never an account. One
   provider's items are the toolbar filter's Provider pick; an account in
   trouble (`AccountState.error`) shows at the sidebar's foot, opening
-  Settings on Accounts, for as long as it is.
+  Settings on Accounts, for as long as it is. Snoozed (`snoozedInboxId`)
+  is drawn after the layout's rows and is never in the layout: a snoozed
+  item is in that bucket alone (`categorize`), out of every count and
+  banner until its time or its target's next activity.
 - **One filter model, one sweep**: label rules, board scopes, and board
   columns all hold a `RuleFilter` (groups of conditions, all/any at both
   levels; an Apple Intelligence check is a `.question` condition), edited

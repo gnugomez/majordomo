@@ -17,6 +17,8 @@ enum EngineChange: Hashable, Sendable, CaseIterable {
   /// the ones a banner may be worth.
   case arrivals
   case readState
+  /// Items put away or brought back (Snooze).
+  case snoozes
   /// The user's hand on an item's label.
   case labelOverrides
   case summaries
@@ -98,7 +100,7 @@ extension EngineChange {
       [.relabel, .place, .forgetAnswers, .askQuestions]
     case .boards:
       [.place, .forgetAnswers, .askQuestions]
-    case .sidebar, .suggestions, .syncStatus:
+    case .sidebar, .suggestions, .syncStatus, .snoozes:
       []
     case .synced:
       // Placement reads the clock (a board's Done and Other windows), so
@@ -120,7 +122,7 @@ extension EngineChange {
     switch self {
     case .launch:
       Set(StateSlice.allCases)
-    case .itemContent, .readState, .labelOverrides, .summaries, .itemVerdicts:
+    case .itemContent, .readState, .snoozes, .labelOverrides, .summaries, .itemVerdicts:
       [.items]
     case .arrivals, .targetVerdicts, .synced, .intelligenceOn, .summariesOn:
       []

@@ -266,9 +266,15 @@ final class AppModel {
   /// The unread figures the chrome and the window read, from the items as
   /// they now stand.
   private func noteUnread() {
-    anyUnread = items.contains { !$0.read }
-    unreadCount = groupIntoThreads(items).count { !$0.read }
-    unreadMentionDot = items.contains { $0.isMention && !$0.read }
+    let awake = items.filter { $0.snoozedUntil == nil }
+    anyUnread = awake.contains { !$0.read }
+    unreadCount = groupIntoThreads(awake).count { !$0.read }
+    unreadMentionDot = awake.contains { $0.isMention && !$0.read }
+  }
+
+  /// The threads put away, for the Snoozed inbox's badge.
+  var snoozedThreadCount: Int {
+    groupIntoThreads(items.filter { $0.snoozedUntil != nil }).count
   }
 
   func startTicker() {
@@ -604,6 +610,26 @@ final class AppModel {
     }
     Task {
       await engine?.markRead(ids: Array(ids))
+    }
+  }
+
+  /// Puts items away until the preset's time.
+  func snooze(_ ids: Set<String>, for preset: SnoozePreset) {
+    guard !ids.isEmpty else {
+      return
+    }
+    let until = preset.wakeDate(from: Date())
+    Task {
+      await engine?.snooze(ids: Array(ids), until: until)
+    }
+  }
+
+  func unsnooze(_ ids: Set<String>) {
+    guard !ids.isEmpty else {
+      return
+    }
+    Task {
+      await engine?.unsnooze(ids: Array(ids))
     }
   }
 

@@ -134,6 +134,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       log.notice("token rejected for \(account, privacy: .public): \(reason, privacy: .public)")
     case .accountRecovered(let account):
       log.notice("account \(account, privacy: .public) works again")
+    case .snoozesEnded(let items):
+      // The reminder the snooze was for: a banner whatever the scope and
+      // the labels say, since the user asked for it by name.
+      for item in items {
+        notifier.post(item, sound: model.notificationSound, subtitle: "Snooze ended")
+      }
     }
   }
 
@@ -338,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// The inbox rows: unread mentions first, then the recent tail, capped.
   private func addInboxRows(to menu: NSMenu) {
-    let threads = groupIntoThreads(inboxOrder(model.items))
+    let threads = groupIntoThreads(inboxOrder(model.items.filter { $0.snoozedUntil == nil }))
     guard !threads.isEmpty else {
       let empty = NSMenuItem(
         title: model.hasAccounts ? "You're all caught up" : "No accounts connected",

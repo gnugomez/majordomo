@@ -11,6 +11,12 @@ let recentCategory = CategorySpec(id: catchAllInboxId, label: "Recent", symbol: 
   true
 }
 
+/// What is put away: the one bucket a snoozed item is in. Drawn after the
+/// layout's rows, never in the layout, never hideable.
+let snoozedCategory = CategorySpec(id: snoozedInboxId, label: "Snoozed", symbol: "clock", order: Int.max) {
+  $0.snoozedUntil != nil
+}
+
 /// A bucket filled with the items that match it.
 struct Category: Identifiable, Sendable {
   let spec: CategorySpec
@@ -36,16 +42,24 @@ func categories(for labels: [InboxLabel]) -> [CategorySpec] {
       tint: label.tint == .accent ? nil : label.tint,
       labelId: id
     ) { $0.labels.contains(id) }
-  }
+  } + [snoozedCategory]
 }
 
 /// Every list and badge in the app comes through here, so this is where a
 /// moved item is kept out: a rule that moves rather than copies records
 /// the inboxes it hid the item from, and those inboxes skip it — the
-/// catch-all included.
+/// catch-all included. A snoozed item is out of every bucket but Snoozed.
 func categorize(_ items: [InboxItem], into specs: [CategorySpec]) -> [Category] {
   specs.map { spec in
-    Category(spec: spec, items: items.filter { spec.matches($0) && !$0.hiddenFrom.contains(spec.id) })
+    Category(
+      spec: spec,
+      items: items.filter { item in
+        guard spec.id != snoozedInboxId else {
+          return spec.matches(item)
+        }
+        return item.snoozedUntil == nil && spec.matches(item) && !item.hiddenFrom.contains(spec.id)
+      }
+    )
   }
 }
 
@@ -94,9 +108,10 @@ func sidebarRows(layout: SidebarLayout, categories: [Category]) -> [SidebarRow] 
   return rows(for: layout.nodes)
 }
 
-/// The inboxes the sidebar lets the user select, in layout order.
+/// The inboxes the sidebar lets the user select, in layout order, and
+/// Snoozed after them.
 func visibleCategories(layout: SidebarLayout, categories: [Category]) -> [Category] {
-  sidebarRows(layout: layout, categories: categories).flatMap(\.inboxes)
+  sidebarRows(layout: layout, categories: categories).flatMap(\.inboxes) + categories.filter { $0.id == snoozedInboxId }
 }
 
 /// Unread threads across these rows' inboxes — an item in two of them

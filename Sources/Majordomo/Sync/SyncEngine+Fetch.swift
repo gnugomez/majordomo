@@ -53,6 +53,8 @@ extension SyncEngine {
     // items can produce notification-worthy arrivals.
     let seededAccounts = Set(store.getItems().map(\.accountId))
     var changes: Set<EngineChange> = [.syncStatus, .accounts, .synced]
+    // Snoozed items the round's activity brought back.
+    var woken: [String] = []
 
     for (accountId, provider, result) in await fetchAll(depth: depth) {
       // Removed while the fetch was in flight: the account is parked now,
@@ -66,7 +68,12 @@ extension SyncEngine {
         accountWorks(accountId)
 
         // Reconcile, never replace: the collection is the app's own.
-        let added = store.upsertItems(fetch.items, accountId: accountId, provider: provider)
+        let adopted = store.upsertItems(fetch.items, accountId: accountId, provider: provider)
+        let added = adopted.newIds
+        if !adopted.wokenIds.isEmpty {
+          changes.formUnion([.snoozes, .readState])
+          woken += adopted.wokenIds
+        }
         if !fetch.items.isEmpty {
           changes.insert(.itemContent)
         }
@@ -102,6 +109,7 @@ extension SyncEngine {
       lastFullSyncAt = lastSyncAt
     }
     syncing = false
+    announceWoken(woken)
     // Rules run over the refreshed items before the push and before any
     // banner, so both carry their labels (see EngineChange.synced for what
     // follows every pass).

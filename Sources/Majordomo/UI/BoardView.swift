@@ -665,6 +665,9 @@ struct BoardView: View {
       model.markRead(Set(card.items.map(\.id)))
     }
     .disabled(!card.unread)
+    Menu("Snooze") {
+      SnoozeMenuItems(model: model, threads: [InboxThread(id: card.id, items: card.items)])
+    }
     Divider()
     Menu("Move To") {
       ForEach(board.columns) { column in

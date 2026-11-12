@@ -52,6 +52,9 @@ struct InboxItem: Identifiable, Codable, Hashable, Sendable {
   /// generated; nothing else reads it.
   var summary: String?
   var read: Bool
+  /// Until when the item is put away (Snooze): out of every inbox, count,
+  /// and banner, listed under Snoozed. nil while it is in play.
+  var snoozedUntil: Date?
   /// What the on-device model answered about this item, by question key
   /// (RuleEngine.questionKey): yes, no, or absent for a question it hasn't
   /// been asked yet. The rules read it; nothing else interprets it.
@@ -167,6 +170,10 @@ enum DomainEvent: Equatable, Sendable {
   /// An account that was failing works again: it synced, or took a new
   /// token.
   case accountRecovered(AccountId)
+  /// Snoozes that ended — their time came, or their target moved — one
+  /// item standing for each thread, back in the inbox unread: the
+  /// reminder the snooze was for.
+  case snoozesEnded([InboxItem])
 }
 
 /// The full app state the sync engine publishes to the UI.

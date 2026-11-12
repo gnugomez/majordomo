@@ -358,6 +358,12 @@ private struct PreviewHeader: View {
           Text(dueText(day, words: DueDate.words(for: due, now: model.now)))
         }
       }
+      if let until = thread.snoozedUntil {
+        GridRow {
+          fieldLabel("Snoozed")
+          Text("\(snoozeWording(until: until, now: model.now)) · \(absoluteTime(until))")
+        }
+      }
       GridRow {
         fieldLabel("Labels")
         labelsRow

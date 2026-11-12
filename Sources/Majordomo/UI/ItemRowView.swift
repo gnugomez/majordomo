@@ -205,6 +205,9 @@ struct ItemRowView: View, Equatable {
         }
       case .time:
         add(.text(time, truncates: false), to: &pieces)
+        if let until = thread.snoozedUntil {
+          add(.text(snoozeWording(until: until, now: now), truncates: false), to: &pieces)
+        }
       case .provider:
         pieces.append(.mark(item.provider))
       case .labels:

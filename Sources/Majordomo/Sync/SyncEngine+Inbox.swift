@@ -40,6 +40,42 @@ extension SyncEngine {
     store.markAllRead()
     record(.readState)
   }
+
+  // MARK: Snoozes
+
+  /// Puts items away until `until`: out of every inbox, count, and banner
+  /// until then, or until their target moves.
+  func snooze(ids: [String], until: Date) {
+    store.snooze(ids, until: until)
+    record(.snoozes)
+  }
+
+  /// Brings items back now, as they were.
+  func unsnooze(ids: [String]) {
+    store.unsnooze(ids)
+    record(.snoozes)
+  }
+
+  /// Brings back what has waited long enough, unread, and tells the
+  /// subscribers — the timer asks before every sync, so a snooze ends
+  /// within the minute.
+  func wakeSnoozes(now: Date = Date()) {
+    let woken = store.wakeSnoozes(now: now)
+    guard !woken.isEmpty else {
+      return
+    }
+    record([.snoozes, .readState])
+    announceWoken(woken)
+  }
+
+  /// Tells the subscribers of snoozes that ended, one item per thread.
+  func announceWoken(_ ids: [String]) {
+    let byId = Dictionary(uniqueKeysWithValues: store.inboxItems().map { ($0.id, $0) })
+    let fronts = groupIntoThreads(ids.compactMap { byId[$0] }).map(\.lead)
+    if !fronts.isEmpty {
+      emit(.snoozesEnded(fronts))
+    }
+  }
 }
 
 // AppKit is only touched here, isolated so the engine stays testable.

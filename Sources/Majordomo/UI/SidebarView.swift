@@ -25,6 +25,11 @@ struct SidebarView: View {
         ForEach(model.sidebarRows) { row in
           SidebarRowView(row: row, model: model)
         }
+        // What is put away, after the layout's rows: its badge counts the
+        // threads waiting, not unread ones.
+        Label(snoozedCategory.label, systemImage: snoozedCategory.symbol)
+          .badge(model.snoozedThreadCount)
+          .tag(SidebarSelection(category: snoozedInboxId))
       } header: {
         Text("Inboxes")
       }

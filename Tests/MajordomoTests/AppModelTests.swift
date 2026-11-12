@@ -47,6 +47,19 @@ struct AppModelTests {
     #expect(model.labels.map(\.id) == ["home"])
   }
 
+  @Test func snoozedItemsStayOutOfTheCounts() {
+    let model = AppModel(preferences: Preferences(defaults: defaults))
+    var state = AppState()
+    var away = item("acct:2", mention: true)
+    away.snoozedUntil = Date().addingTimeInterval(3600)
+    state.items = [item("acct:1"), away]
+    state.revisions.bump(.items)
+    model.apply(state)
+    #expect(model.unreadCount == 1)
+    #expect(!model.unreadMentionDot)
+    #expect(model.snoozedThreadCount == 1)
+  }
+
   @Test func echoedValueWakesNoReader() {
     let model = AppModel(preferences: Preferences(defaults: defaults))
     var state = AppState()

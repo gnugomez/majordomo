@@ -46,6 +46,13 @@ private func keyedByQuestion(_ verdicts: [String: RuleVerdict]) -> [String: Rule
   Dictionary(verdicts.values.map { ($0.question, $0) }) { first, _ in first }
 }
 
+/// What a fetch's upsert found: the ids new to the collection, and the
+/// snoozed ones its activity woke.
+struct Adopted: Sendable {
+  var newIds: [String] = []
+  var wokenIds: [String] = []
+}
+
 /// A FetchedItem the app has adopted into its own collection. The transient
 /// upstreamRead signal is consumed at upsert and never persisted.
 struct StoredItem: Codable, Sendable {
@@ -82,6 +89,8 @@ struct StoredItem: Codable, Sendable {
   var upstreamLabels: [String]?
   /// What the model answered about the item, by question key.
   var verdicts: [String: RuleVerdict] = [:]
+  /// Until when the item is put away; nil while it is in play.
+  var snoozedUntil: Date? = nil
 
   /// What the model's answers about the item are given for: the title and
   /// the body together, so a comment arriving on a known item is judged
@@ -97,6 +106,7 @@ struct StoredItem: Codable, Sendable {
       id: id, accountId: accountId, provider: provider, kind: kind,
       title: title, repo: repo, url: url, reason: reason, isMention: isMention,
       updatedAt: updatedAt, state: state, author: author, body: body, summary: summary, read: read,
+      snoozedUntil: snoozedUntil,
       verdicts: verdicts.mapValues(\.matched),
       labels: effectiveLabels(auto: autoLabels, overrides: labelOverrides, existing: existingLabels),
       hiddenFrom: hiddenFrom,
@@ -134,6 +144,7 @@ extension StoredItem {
     labelOverrides = try container.decodeIfPresent(LabelOverrides.self, forKey: .labelOverrides) ?? [:]
     upstreamLabels = try container.decodeIfPresent([String].self, forKey: .upstreamLabels)
     verdicts = keyedByQuestion(try container.decodeIfPresent([String: RuleVerdict].self, forKey: .verdicts) ?? [:])
+    snoozedUntil = try container.decodeIfPresent(Date.self, forKey: .snoozedUntil)
   }
 }
 
@@ -479,18 +490,26 @@ final class Store {
 
   /// Adopts new items (unread) and refreshes known ones (fields updated,
   /// lastSeenUpstreamAt bumped, local read preserved). Item ids compose as
-  /// "\(accountId):\(externalId)". Returns the ids new to the collection.
+  /// "\(accountId):\(externalId)". Returns the ids new to the collection,
+  /// and the snoozed ones the fetch's activity woke.
   func upsertItems(
     _ items: [FetchedItem], accountId: AccountId, provider: ProviderId
-  ) -> [String] {
-    guard !items.isEmpty else { return [] }
+  ) -> Adopted {
+    guard !items.isEmpty else { return Adopted() }
     let now = Date()
-    var newIds: [String] = []
+    var adopted = Adopted()
     for fetched in items {
       let id = "\(accountId):\(fetched.externalId)"
       let existing = data.items[id]
       if existing == nil {
-        newIds.append(id)
+        adopted.newIds.append(id)
+      }
+      // A snooze holds until its time or until the target moves, whichever
+      // comes first: activity newer than the item knew ends it, and the
+      // item comes back unread — the one way an item is un-read.
+      let woken = existing?.snoozedUntil != nil && fetched.updatedAt > (existing?.updatedAt ?? .distantPast)
+      if woken {
+        adopted.wokenIds.append(id)
       }
       data.items[id] = StoredItem(
         id: id,
@@ -508,9 +527,9 @@ final class Store {
         state: fetched.state ?? existing?.state,
         author: fetched.author ?? existing?.author,
         body: fetched.body ?? existing?.body,
-        // Local read state only ever moves toward read: the user reading it
-        // here or upstream both count, and nothing un-reads an item.
-        read: (existing?.read ?? false) || fetched.upstreamRead == true,
+        // Local read state only moves toward read — the user reading it
+        // here or upstream both count — except for a snooze ending.
+        read: woken ? false : (existing?.read ?? false) || fetched.upstreamRead == true,
         // The summary rides along: a text that came back unchanged keeps
         // the line the model already wrote for it, and one that changed is
         // picked up by the next sweep (its fingerprint no longer matches).
@@ -526,11 +545,70 @@ final class Store {
         upstreamLabels: fetched.upstreamLabels ?? existing?.upstreamLabels,
         // Answers ride along; the text fingerprint inside each one is what
         // decides whether the sweep asks again.
-        verdicts: existing?.verdicts ?? [:]
+        verdicts: existing?.verdicts ?? [:],
+        snoozedUntil: woken ? nil : existing?.snoozedUntil
       )
     }
+    // A new notification on a put-away thread wakes the rest of it: the
+    // thread is what was snoozed, and it is back in the inbox either way.
+    for id in adopted.newIds {
+      guard let item = data.items[id] else {
+        continue
+      }
+      let thread = threadId(accountId: item.accountId, url: item.url, title: item.title)
+      for (memberId, member) in data.items
+      where member.snoozedUntil != nil && threadId(accountId: member.accountId, url: member.url, title: member.title) == thread {
+        data.items[memberId]?.snoozedUntil = nil
+        data.items[memberId]?.read = false
+        adopted.wokenIds.append(memberId)
+      }
+    }
     noteChange()
-    return newIds
+    return adopted
+  }
+
+  // MARK: Snoozes
+
+  /// Puts items away until `until`.
+  func snooze(_ ids: [String], until: Date) {
+    var changed = false
+    for id in ids where data.items[id] != nil {
+      data.items[id]?.snoozedUntil = until
+      changed = true
+    }
+    if changed {
+      noteChange()
+    }
+  }
+
+  /// Brings items back now, as they were.
+  func unsnooze(_ ids: [String]) {
+    var changed = false
+    for id in ids where data.items[id]?.snoozedUntil != nil {
+      data.items[id]?.snoozedUntil = nil
+      changed = true
+    }
+    if changed {
+      noteChange()
+    }
+  }
+
+  /// Brings back every item whose time has come, unread; returns their
+  /// ids.
+  func wakeSnoozes(now: Date) -> [String] {
+    var woken: [String] = []
+    for (id, item) in data.items where isConnected(item.accountId) {
+      guard let until = item.snoozedUntil, until <= now else {
+        continue
+      }
+      data.items[id]?.snoozedUntil = nil
+      data.items[id]?.read = false
+      woken.append(id)
+    }
+    if !woken.isEmpty {
+      noteChange()
+    }
+    return woken
   }
 
   // MARK: Summaries

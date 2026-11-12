@@ -140,6 +140,49 @@ struct EngineTests {
     #expect(await engine.currentState().items.map(\.id) == ["acct:1"])
   }
 
+  @Test func aSnoozeEndsWithWordAndTheThreadBackUnread() async {
+    let engine = await launched(fixtureStore(items: [storedItem(1, read: true)]))
+    let events = await engine.events()
+    await engine.snooze(ids: ["acct:1"], until: Date().addingTimeInterval(-1))
+    await engine.settle()
+    #expect(await engine.currentState().items.first?.snoozedUntil != nil)
+    await engine.wakeSnoozes()
+    await engine.settle()
+    await engine.stop()
+    let item = await engine.currentState().items.first
+    #expect(item?.snoozedUntil == nil)
+    #expect(item?.read == false)
+    let told = await collect(events)
+    #expect(told.count == 1)
+    if case .snoozesEnded(let fronts)? = told.first {
+      #expect(fronts.map(\.id) == ["acct:1"])
+    } else {
+      Issue.record("no word of the snooze ending: \(told)")
+    }
+  }
+
+  @Test func activityBroughtByASyncEndsASnoozeWithWord() async {
+    var stored = storedItem(1, read: true, updatedAt: Date().addingTimeInterval(-3600))
+    stored.snoozedUntil = Date().addingTimeInterval(3600)
+    var moved = stored
+    moved.updatedAt = Date()
+    let client = ScriptedClient([.success(FetchResult(items: [fetched(moved)], complete: false))])
+    let engine = await launched(fixtureStore(items: [stored]), client: client)
+    let events = await engine.events()
+    await engine.syncNow(depth: .recent)
+    await engine.settle()
+    await engine.stop()
+    let item = await engine.currentState().items.first
+    #expect(item?.snoozedUntil == nil)
+    #expect(item?.read == false)
+    #expect(await collect(events).contains { event in
+      if case .snoozesEnded(let fronts) = event {
+        return fronts.map(\.id) == ["acct:1"]
+      }
+      return false
+    })
+  }
+
   @Test func accountFailuresAndRecoveryAreTold() async {
     let client = ScriptedClient([
       .failure(ProviderError(message: "GitHub is having trouble right now.")),

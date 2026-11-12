@@ -18,6 +18,11 @@ struct InboxThread: Identifiable, Sendable {
   /// Read only when every member is.
   var read: Bool { items.allSatisfy(\.read) }
   var itemIds: [String] { items.map(\.id) }
+  /// Put away as a whole: every member snoozed.
+  var snoozed: Bool { items.allSatisfy { $0.snoozedUntil != nil } }
+  /// When the thread comes back, if it is put away: the latest of its
+  /// members' times.
+  var snoozedUntil: Date? { snoozed ? items.compactMap(\.snoozedUntil).max() : nil }
 }
 
 /// The target an item points at: its url with the fragment stripped (a
@@ -27,8 +32,13 @@ struct InboxThread: Identifiable, Sendable {
 /// (GitHub discussions, security alerts) — the title keeps unrelated ones
 /// apart.
 func threadId(for item: InboxItem) -> String {
-  let target = item.url.prefix { $0 != "#" }
-  return "\(item.accountId):\(target):\(item.title)"
+  threadId(accountId: item.accountId, url: item.url, title: item.title)
+}
+
+/// The same key from an item's parts, for the store's own records.
+func threadId(accountId: AccountId, url: String, title: String) -> String {
+  let target = url.prefix { $0 != "#" }
+  return "\(accountId):\(target):\(title)"
 }
 
 /// Resolves selected row ids against the visible threads: a thread id

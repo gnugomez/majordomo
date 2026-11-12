@@ -314,11 +314,16 @@ actor SyncEngine {
     }
     timer = Task {
       await self.refreshProfiles()
-      // The first sync is always deep (dueDepth: no full pass yet), then
-      // hourly deep passes ride the 60s timer.
+      // Snoozes that ran out while the app was closed end first — after
+      // the subscribers are listening, so their banners are heard. The
+      // first sync is always deep (dueDepth: no full pass yet), then
+      // hourly deep passes ride the 60s timer, each tick ending the
+      // snoozes whose time has come.
+      self.wakeSnoozes()
       await self.syncNow(depth: self.dueDepth())
       while !Task.isCancelled {
         try? await Task.sleep(for: syncInterval)
+        self.wakeSnoozes()
         await self.syncNow(depth: self.dueDepth())
       }
     }

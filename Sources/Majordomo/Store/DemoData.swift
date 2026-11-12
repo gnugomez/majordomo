@@ -452,6 +452,9 @@ enum DemoData {
       }
     }
 
+    // One thread put away until tomorrow morning, for the Snoozed inbox.
+    allItems["\(gitlab):180"]?.snoozedUntil = SnoozePreset.tomorrow.wakeDate(from: now)
+
     return StoreFile(
       accounts: accounts,
       items: allItems,

@@ -87,6 +87,12 @@ struct InboxListView: View {
           title: "You're all caught up",
           caption: "Nothing needs your attention right now."
         )
+      } else if categoryId == snoozedInboxId {
+        EmptyStateView(
+          symbol: "clock",
+          title: "Nothing snoozed",
+          caption: "Snooze a notification from its menu to put it away until later; it comes back unread, with a banner."
+        )
       } else {
         EmptyStateView(
           symbol: "tray",
@@ -196,6 +202,9 @@ struct InboxListView: View {
             model.markRead(Set(picked.flatMap(\.itemIds)))
           }
           .disabled(!picked.contains { !$0.read })
+          Menu("Snooze") {
+            SnoozeMenuItems(model: model, threads: picked)
+          }
           labelsMenu(for: picked.flatMap(\.items))
         } primaryAction: { ids in
           open(resolveSelection(in: threads, ids: ids))
