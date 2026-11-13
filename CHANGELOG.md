@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/gnugomez/majordomo/compare/v1.3.0...v1.4.0) (2026-11-13)
+
+
+### Features
+
+* a due date condition can test before or after a day, named in full or against today ([e95f829](https://github.com/gnugomez/majordomo/commit/e95f829c06d01c1cd684f51fa7e469ddc48f8ee0))
+* a picture in a conversation opens in Quick Look on a click, the browser a menu away ([664fb20](https://github.com/gnugomez/majordomo/commit/664fb2060429fbd9a2f2bfca25cc56e422a8a54d))
+* a thread can be snoozed for a preset while, back unread with a banner at its time or on new activity ([e53a7ef](https://github.com/gnugomez/majordomo/commit/e53a7ef30f8d01abfade0a7bb937f668c437ed1b))
+* an account in trouble shows the provider's full answer behind a Details button ([2b9dc86](https://github.com/gnugomez/majordomo/commit/2b9dc86eb5568efdd5e9f071dc590887ebc6d21f))
+* board cards and rules carry a work item's status, GitLab's and a GitHub project's alike ([fa2e81e](https://github.com/gnugomez/majordomo/commit/fa2e81ef30b8623ff2051e5e10aa61e394a9d94e))
+* cards show a target's due day, and rules test it as the day or as today, tomorrow, this week, or overdue ([e836aaf](https://github.com/gnugomez/majordomo/commit/e836aaff20d88c7d4921c05921452d504a0b18df))
+
+
+### Bug Fixes
+
+* a board without lanes scrolls smoothly, building only the cards in view ([868c192](https://github.com/gnugomez/majordomo/commit/868c192de1d281ddaa3be304f29f75969f265fa5))
+* the preview's assignees and reviewers wrap instead of running past the pane ([f20147a](https://github.com/gnugomez/majordomo/commit/f20147adbdb3159b172adbd07abded86feaac02c))
+
 ## [1.3.0](https://github.com/gnugomez/majordomo/compare/v1.2.0...v1.3.0) (2026-11-05)
 
 
